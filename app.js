@@ -140,10 +140,12 @@
 
 
   // ---- Navigation ------------------------------------------------------------
+  // Top menu: main pages, plus two drop-down groups (Faser, Mer).
   var NAV = [
     ['oversikt', 'Oversikt'], ['oppgaver', 'Oppgaver'], ['prosjekter', 'Prosjekter'], ['sokere', 'Søkere'],
-    ['-', 'Faser'], ['fase/soknad', 'Søknad'], ['fase/1', '1. år'], ['fase/2', '2. år'], ['fase/avslutning', 'Avslutning'],
-    ['-', 'Mer'], ['maned', 'Måned og år'], ['hendelser', 'Hendelser'], ['kunnskap', 'Kunnskap'], ['status', 'Status'], ['sok', 'Søk'], ['progress', 'Progress'], ['innboks', 'Innboks'], ['innstillinger', 'Innstillinger']
+    ['Faser', [['fase/soknad', 'Søknad'], ['fase/1', '1. år'], ['fase/2', '2. år'], ['fase/avslutning', 'Avslutning']]],
+    ['maned', 'Måned og år'], ['innboks', 'Innboks'],
+    ['Mer', [['hendelser', 'Hendelser'], ['kunnskap', 'Kunnskap'], ['status', 'Status'], ['sok', 'Søk'], ['progress', 'Progress'], ['innstillinger', 'Innstillinger']]]
   ];
   function renderNav() {
     var d = state.d;
@@ -153,12 +155,29 @@
       sokere: d.Søkere.filter(function (s) { return s.status === 'Aktiv' || !s.status; }).length
     };
     var cur = state.view === 'prosjekt' ? 'prosjekter' : (state.view === 'serie' || state.view === 'runde') ? 'hendelser' : state.view === 'fase' ? 'fase/' + state.param : state.view;
-    $('side').innerHTML = '<div class="brand">SPARK<small>Samfunnsinnovasjon</small></div>' + NAV.map(function (n) {
-      if (n[0] === '-') return '<div class="navgroup">' + n[1] + '</div>';
+    function link(n) {
       var c = counts[n[0]] ? '<span class="count">' + counts[n[0]] + '</span>' : '';
       return '<a class="nav' + (cur === n[0] ? ' on' : '') + '" href="#' + n[0] + '">' + n[1] + c + '</a>';
-    }).join('') + '<div class="spacer"></div>';
+    }
+    $('side').innerHTML = '<div class="brand">SPARK<small>Samfunnsinnovasjon</small></div>' + NAV.map(function (n) {
+      if (typeof n[1] === 'string') return link(n);
+      var on = n[1].some(function (x) { return x[0] === cur; });
+      return '<details class="dd"><summary class="nav' + (on ? ' on' : '') + '">' + n[0] + ' <span class="caret" aria-hidden="true">▾</span></summary><div class="ddp">' + n[1].map(link).join('') + '</div></details>';
+    }).join('');
   }
+  // Drop-downs: only one open at a time; on a phone the panel is placed under the bar.
+  $('side').addEventListener('toggle', function (e) {
+    var el = e.target;
+    if (!el.classList || !el.classList.contains('dd') || !el.open) return;
+    [].forEach.call($('side').querySelectorAll('details.dd[open]'), function (o) { if (o !== el) o.open = false; });
+    var panel = el.querySelector('.ddp');
+    if (window.matchMedia('(max-width: 820px)').matches) {
+      panel.style.top = Math.round($('side').getBoundingClientRect().bottom + 4) + 'px';
+    } else { panel.style.top = ''; }
+  }, true);
+  document.addEventListener('click', function (e) {
+    [].forEach.call(document.querySelectorAll('#side details.dd[open]'), function (o) { if (!o.contains(e.target)) o.open = false; });
+  });
 
   function route() {
     var h = (location.hash || '#oversikt').slice(1).split('/');
