@@ -1,5 +1,5 @@
 /* =====================================================================
-   SPARK-tracker: the web page (step 3: core pages).
+   SPARK-tracker: the web page (steps 3–4).
 
    How it works:
    - All data comes from the Google Sheet through the Apps Script web app
@@ -98,6 +98,7 @@
 
   // Status of one project on one track (for cards and the big grid).
   function trackStatus(pid, track) {
+    if (track === 'Workshop' && state.d.Serier.some(function (s) { return s.type === 'workshop' && s.obligatorisk === 'ja'; })) return workshopStatus(pid);
     var ts = state.d.Oppgaver.filter(function (t) { return t.prosjekt_id === pid && t.spor === track; });
     if (!ts.length) return { c: 'na', label: '–' };
     var open = ts.filter(openTask);
@@ -141,7 +142,8 @@
   // ---- Navigation ------------------------------------------------------------
   var NAV = [
     ['oversikt', 'Oversikt'], ['oppgaver', 'Oppgaver'], ['prosjekter', 'Prosjekter'], ['sokere', 'Søkere'],
-    ['-', 'Mer'], ['progress', 'Progress'], ['innboks', 'Innboks'], ['innstillinger', 'Innstillinger']
+    ['-', 'Faser'], ['fase/soknad', 'Søknad'], ['fase/1', '1. år'], ['fase/2', '2. år'], ['fase/avslutning', 'Avslutning'],
+    ['-', 'Mer'], ['maned', 'Måned og år'], ['hendelser', 'Hendelser'], ['progress', 'Progress'], ['innboks', 'Innboks'], ['innstillinger', 'Innstillinger']
   ];
   function renderNav() {
     var d = state.d;
@@ -150,7 +152,7 @@
       innboks: d.Innboks.filter(function (i) { return i.sortert !== 'ja'; }).length,
       sokere: d.Søkere.filter(function (s) { return s.status === 'Aktiv' || !s.status; }).length
     };
-    var cur = state.view === 'prosjekt' ? 'prosjekter' : state.view;
+    var cur = state.view === 'prosjekt' ? 'prosjekter' : (state.view === 'serie' || state.view === 'runde') ? 'hendelser' : state.view === 'fase' ? 'fase/' + state.param : state.view;
     $('side').innerHTML = '<div class="brand">SPARK<small>Samfunnsinnovasjon</small></div>' + NAV.map(function (n) {
       if (n[0] === '-') return '<div class="navgroup">' + n[1] + '</div>';
       var c = counts[n[0]] ? '<span class="count">' + counts[n[0]] + '</span>' : '';
@@ -166,7 +168,8 @@
 
   function render() {
     renderNav();
-    var pages = { oversikt: pageOverview, oppgaver: pageTasks, prosjekter: pageProjects, prosjekt: pageProject, sokere: pageApplicants, progress: pageProgress, innboks: pageInbox, innstillinger: pageSettings };
+    var pages = { oversikt: pageOverview, oppgaver: pageTasks, prosjekter: pageProjects, prosjekt: pageProject, sokere: pageApplicants, progress: pageProgress, innboks: pageInbox, innstillinger: pageSettings,
+      fase: pagePhase, maned: pageMonth, hendelser: pageEvents, serie: pageSeries, runde: pageRun, gjennomgang: pageReview };
     ($('main').innerHTML = (pages[state.view] || pageOverview)());
     window.scrollTo(0, 0);
   }
@@ -186,7 +189,7 @@
     var review = d.Innstillinger.gjennomgang_aapen === 'ja';
 
     return head('Oversikt', fmtLong(t)) +
-      (review ? '<div class="banner"><div><b>Nyttårsgjennomgang</b> · tid for å flytte prosjektene til neste fase.</div><span class="hint">Gjennomgangssiden kommer i steg 4. Til da: bruk «Endre fase» på hvert prosjekt.</span></div>' : '') +
+      (review ? '<div class="banner"><div><b>Nyttårsgjennomgang</b> · tid for å flytte prosjektene til neste fase.</div><a class="btn primary" href="#gjennomgang">Start gjennomgangen</a></div>' : '') +
       '<div class="kpis">' +
         kpi('Aktive prosjekter', active.length) + kpi('Søkere ' + year, applicants.length) +
         kpi('Forfalt', late.length, late.length > 0) + kpi('Frist denne uka', thisWeek.length) +
@@ -319,6 +322,7 @@
     var fact = function (l, v) { return '<div><span>' + l + '</span>' + (esc(v) || '–') + '</div>'; };
     var tools = '<button class="btn" data-act="editproject" data-id="' + esc(p.id) + '">Rediger</button>' +
       '<button class="btn" data-act="phase" data-id="' + esc(p.id) + '">Endre fase</button>' +
+      '<button class="btn" data-postpone="' + esc(p.id) + '">Utsett</button>' +
       '<button class="btn primary" data-act="newtask" data-project="' + esc(p.id) + '">Ny oppgave</button>';
 
     return '<div class="top"><div class="ptitle"><div class="short"><a href="#prosjekter">Prosjekter</a> / ' + esc(p.kortnavn) + '</div><h1>' + esc(p.tittel || p.kortnavn) + '</h1>' +
@@ -400,6 +404,7 @@
     var tools = '<select id="fGfase">' + options(['Søknad', '1. år', '2. år', 'Avslutning', 'Felles'], f.gfase || '', 'Alle faser') + '</select>' +
       '<select id="fGtype">' + option('', f.gtype || '', 'Alle typer') + option('generell', f.gtype || '', 'Generell') + option('prosjekt', f.gtype || '', 'Per prosjekt') + '</select>' +
       '<button class="btn" data-act="makegeneral">Lag manglende generelle oppgaver for ' + today().slice(0, 4) + '</button>' +
+      '<a class="btn" href="#gjennomgang">Nyttårsgjennomgang</a>' +
       '<button class="btn primary" data-act="newstep">Nytt steg</button>';
     return head('Progress', 'Årsplanen: generelle oppgaver kommer hvert år, prosjektoppgaver når et prosjekt går inn i fasen', tools) +
       '<div class="panel tablewrap"><table class="t"><tr><th>Mnd</th><th>Fase</th><th>Spor</th><th>Steg</th><th>Type</th><th>Frist</th><th>Flyttes ved forsinkelse</th><th>Aktiv</th></tr>' +
@@ -494,7 +499,7 @@
           frist: val(form, 'frist'), fase: val(form, 'fase'), venter_paa: val(form, 'venter_paa'), oppfolging: val(form, 'oppfolging'), notat: val(form, 'notat'),
           sjekkliste: newCl.length ? JSON.stringify(newCl) : '' };
         if (!row.tittel) { toast('Skriv en tittel'); return; }
-        if (id) row.id = id; else { row.aar = t.aar; row.opprinnelig_frist = row.frist; if (t.progress_id) row.progress_id = t.progress_id; }
+        if (id) row.id = id; else { row.aar = t.aar; row.opprinnelig_frist = row.frist; if (t.progress_id) row.progress_id = t.progress_id; if (t.runde_id) { row.runde_id = t.runde_id; if (!row.fase) row.fase = 'Felles'; } }
         save('Oppgaver', [row]).then(function () { closeDrawer(); toast('Lagret'); render(); });
       });
   }
@@ -603,6 +608,331 @@
   }
 
 
+  // =====================================================================
+  // Step 4: phase pages, month view + year timeline, events, review, postpone
+  // =====================================================================
+
+  // Hash names for the phase pages (ASCII only).
+  var PHASE_SLUG = { soknad: 'Søknad', '1': '1. år', '2': '2. år', avslutning: 'Avslutning' };
+  function phaseSlug(ph) { return Object.keys(PHASE_SLUG).find(function (k) { return PHASE_SLUG[k] === ph; }) || 'soknad'; }
+
+  // A guide Doc link for a phase or event type, from the settings.
+  function guideLink(key, label) {
+    var g = {}; try { g = JSON.parse(state.d.Innstillinger.guider || '{}'); } catch (e) { g = {}; }
+    return g[key] ? '<a href="' + esc(safeUrl(g[key])) + '" target="_blank" rel="noopener noreferrer">' + esc(label || 'Veiledning') + '</a>' : '';
+  }
+
+
+  // ---- Workshops: how many obligatory workshops a project has attended ----
+  // A series and its later versions count as one workshop (followed through forrige_id).
+  function seriesRoot(s) {
+    var seen = {};
+    while (s && s.forrige_id && !seen[s.id]) { seen[s.id] = 1; var prev = byId('Serier', s.forrige_id); if (!prev) break; s = prev; }
+    return s ? s.id : '';
+  }
+  function workshopStatus(pid) {
+    var need = Number(state.d.Innstillinger.workshops_obligatoriske || 3);
+    var roots = {};
+    state.d.Deltakelse.filter(function (x) { return x.prosjekt_id === pid && x.status === 'Deltatt'; }).forEach(function (x) {
+      var r = byId('Runder', x.runde_id); var s = r && byId('Serier', r.serie_id);
+      if (s && s.type === 'workshop' && s.obligatorisk === 'ja') roots[seriesRoot(s)] = 1;
+    });
+    var n = Object.keys(roots).length;
+    return { c: n >= need ? 'done' : n > 0 ? 'prog' : 'na', label: n + ' av ' + need, n: n, need: need };
+  }
+
+
+  // ---- Page: one phase -------------------------------------------------------
+  function pagePhase() {
+    var d = state.d, ph = PHASE_SLUG[state.param] || '1. år', year = today().slice(0, 4);
+    var seg = '<span class="seg">' + ['Søknad', '1. år', '2. år', 'Avslutning'].map(function (p) { return '<button data-go="fase/' + phaseSlug(p) + '" aria-pressed="' + (p === ph) + '">' + p + '</button>'; }).join('') + '</span>';
+    var general = d.Oppgaver.filter(function (t) { return !t.prosjekt_id && t.aar === year && t.fase === ph && t.type !== 'notater'; })
+      .sort(function (a, b) { var pa = progressOf(a), pb = progressOf(b); return Number(pa && pa.maaned || 99) - Number(pb && pb.maaned || 99); });
+    var openGeneral = general.filter(openTask);
+    var guideKey = ph;
+
+    // The application phase shows applicants; the others show projects.
+    var members, grid;
+    if (ph === 'Søknad') {
+      members = d.Søkere.filter(function (s) { return s.soknadsaar === year && (s.status === 'Aktiv' || !s.status); });
+      grid = members.length ? '<div class="tablewrap"><table class="t"><tr><th>Søker</th><th>Steg</th><th>Fakultet</th><th>Åpne oppgaver</th></tr>' + members.map(function (s) {
+        var open = d.Oppgaver.filter(function (t) { return t.prosjekt_id === s.id && openTask(t); }).length;
+        return '<tr class="click" data-edit-applicant="' + esc(s.id) + '"><td class="strong">' + esc(s.kortnavn) + '</td><td><span class="chip c-info">' + esc(s.steg || STEPS[0]) + '</span></td><td>' + esc(s.fakultet) + '</td><td>' + open + '</td></tr>';
+      }).join('') + '</table></div>' : '<div class="empty">Ingen aktive søkere for ' + year + '. <a href="#sokere">Gå til Søkere</a></div>';
+    } else {
+      members = d.Prosjekter.filter(function (p) { return p.fase === ph; });
+      grid = bigGrid(members);
+    }
+    var projTasks = sortTasks(d.Oppgaver.filter(function (t) { return t.prosjekt_id && t.fase === ph && openTask(t) && members.some(function (m) { return m.id === t.prosjekt_id; }) && (isVisible(t) || isLate(t)); }));
+    var delayed = members.filter(function (p) { return p.forsinket === 'ja'; }).length;
+
+    return head(ph, (ph === 'Søknad' ? 'Søknadsår ' + year : members.length + ' prosjekter') + (guideLink(guideKey) ? ' · ' + guideLink(guideKey, 'Veiledning for fasen') : ''), seg) +
+      '<div class="kpis">' + kpi(ph === 'Søknad' ? 'Aktive søkere' : 'Prosjekter', members.length) + kpi('Generelle igjen', openGeneral.length + ' av ' + general.length) +
+        kpi('Prosjektoppgaver nå', projTasks.length) + kpi(ph === 'Søknad' ? 'Forfalt' : 'Forsinket', ph === 'Søknad' ? projTasks.filter(isLate).length : delayed, ph !== 'Søknad' && delayed > 0) + '</div>' +
+      '<section class="panel"><h2>' + (ph === 'Søknad' ? 'Søkere' : 'Prosjektene i fasen') + '</h2>' + grid + '</section>' +
+      '<div class="cols">' +
+        '<section class="panel"><h2>Generelle oppgaver ' + year + ' <span class="hint">uten frist</span></h2>' + taskList(general, { noProject: true, empty: 'Ingen generelle oppgaver i denne fasen.' }) + '</section>' +
+        '<section class="panel"><h2>Oppgaver for prosjektene <span class="hint">synlige nå</span></h2>' + taskList(projTasks, { empty: 'Ingen prosjektoppgaver akkurat nå.' }) + '</section>' +
+      '</div>' +
+      (ph !== 'Søknad' ? '<section class="panel"><h2>Felles <span class="hint">gjelder flere faser, f.eks. workshops</span></h2>' + taskList(d.Oppgaver.filter(function (t) { return !t.prosjekt_id && t.aar === year && t.fase === 'Felles' && openTask(t); }), { noProject: true, empty: 'Ingenting åpent.' }) + '</section>' : '');
+  }
+
+
+  // ---- Page: month view + year timeline -----------------------------------------
+  function pageMonth() {
+    var d = state.d, t = today(), year = Number(state.filters.myear || t.slice(0, 4)), month = Number(state.filters.mmonth || t.slice(5, 7));
+    var mm = String(month).padStart(2, '0'), prefix = year + '-' + mm;
+    var tasks = d.Oppgaver.filter(function (x) { return x.frist && x.frist.slice(0, 7) === prefix; });
+    var general = d.Oppgaver.filter(function (x) { var s = progressOf(x); return !x.prosjekt_id && !x.frist && x.aar === String(year) && s && Number(s.maaned) === month && x.type !== 'notater'; });
+    var runs = d.Runder.filter(function (r) { return r.dato && r.dato.slice(0, 7) === prefix; });
+    var lanes = ['Søknad', '1. år', '2. år', 'Avslutning', 'Felles'];
+
+    var tools = '<button class="btn" data-month="-1" aria-label="Forrige måned">←</button>' +
+      '<select id="fMmonth">' + MONTHS.map(function (m, i) { return option(String(i + 1), String(month), m); }).join('') + '</select>' +
+      '<input type="number" id="fMyear" value="' + year + '" class="yearbox">' +
+      '<button class="btn" data-month="1" aria-label="Neste måned">→</button>' +
+      '<button class="btn" data-month="0">I dag</button>';
+
+    var monthBody = lanes.map(function (ph) {
+      var l = sortTasks(tasks.filter(function (x) { return (x.fase || 'Felles') === ph; }).concat(general.filter(function (x) { return x.fase === ph; })));
+      return l.length ? '<div class="group-h">' + ph + '</div>' + taskList(l) : '';
+    }).join('') || '<div class="empty">Ingen oppgaver med frist eller måned her.</div>';
+
+    var runList = runs.length ? runs.sort(function (a, b) { return a.dato < b.dato ? -1 : 1; }).map(function (r) {
+      var s = byId('Serier', r.serie_id);
+      return '<div class="task"><span></span><div class="t" data-go="runde/' + esc(r.id) + '"><div class="tt">' + esc(s ? s.navn : 'Hendelse') + '</div><div class="meta">' + esc(r.sted || '') + ' <span class="chip ' + (r.status === 'gjennomført' ? 'c-done' : 'c-info') + '">' + esc(r.status || 'planlagt') + '</span></div></div><span class="when">' + esc(fmtDate(r.dato)) + '</span></div>';
+    }).join('') : '<div class="empty">Ingen hendelser med dato denne måneden.</div>';
+
+    return head(MONTHS[month - 1].charAt(0).toUpperCase() + MONTHS[month - 1].slice(1) + ' ' + year, 'Alle faser denne måneden', tools) +
+      '<div class="cols">' +
+        '<section class="panel"><h2>Oppgaver <span class="hint">frist denne måneden, og generelle som pleier å komme nå</span></h2>' + monthBody + '</section>' +
+        '<section class="panel"><h2>Hendelser</h2>' + runList + '</section>' +
+      '</div>' +
+      '<section class="panel"><h2>Året ' + year + ' <span class="hint">én bane per fase · lys = fra årsplanen · klikk en måned for å åpne den</span></h2>' + yearTimeline(year, month) + '</section>';
+  }
+
+  // Year timeline: one lane per phase, one column per month. Items are the
+  // Progress steps for that month (planned) plus dated event runs.
+  function yearTimeline(year, curMonth) {
+    var d = state.d, lanes = ['Søknad', '1. år', '2. år', 'Avslutning', 'Felles'], nowM = Number(today().slice(5, 7)), nowY = Number(today().slice(0, 4));
+    var h = '<div class="tablewrap"><div class="tl"><div></div>' + MONTHS.map(function (m, i) {
+      return '<button class="mh' + (year === nowY && i + 1 === nowM ? ' now' : '') + (i + 1 === curMonth ? ' cur' : '') + '" data-setmonth="' + (i + 1) + '">' + m + '</button>';
+    }).join('');
+    lanes.forEach(function (ph) {
+      h += '<div class="lane">' + ph + '</div>';
+      for (var m = 1; m <= 12; m++) {
+        var steps = d.Progress.filter(function (s) { return s.aktiv !== 'nei' && s.fase === ph && Number(s.maaned) === m; });
+        var evs = steps.map(function (s) { return '<span class="ev' + (s.spor === 'Workshop' ? ' ws' : '') + '" data-step-edit="' + esc(s.id) + '" title="' + esc(s.tittel) + '">' + esc(s.tittel) + '</span>'; });
+        if (ph === 'Felles') d.Runder.filter(function (r) { return r.dato && Number(r.dato.slice(0, 4)) === year && Number(r.dato.slice(5, 7)) === m; }).forEach(function (r) {
+          var s = byId('Serier', r.serie_id); evs.push('<span class="ev run" data-go="runde/' + esc(r.id) + '" title="' + esc(s ? s.navn : '') + '">' + esc(s ? s.navn : 'Hendelse') + ' ' + esc(fmtDate(r.dato).split(' ')[0]) + '</span>');
+        });
+        h += '<div class="cell' + (year === nowY && m === nowM ? ' now' : '') + '">' + evs.join('') + '</div>';
+      }
+    });
+    return h + '</div></div>';
+  }
+
+
+  // ---- Page: events (series list) -------------------------------------------------
+  var TYPE_NAMES = { workshop: 'Workshop', mentormote: 'Mentormøte', intervju: 'Intervju', pitch: 'Pitch', oppstart: 'Oppstart', annet: 'Annet' };
+  function pageEvents() {
+    var d = state.d, showArch = state.filters.archSeries;
+    var list = d.Serier.filter(function (s) { return showArch ? s.status === 'arkivert' : s.status !== 'arkivert'; })
+      .sort(function (a, b) { return (a.type < b.type ? -1 : a.type > b.type ? 1 : 0) || Number(a.rekkefolge || 0) - Number(b.rekkefolge || 0); });
+    var active = d.Prosjekter.filter(function (p) { return ACTIVE.indexOf(p.fase) >= 0; });
+    var tools = '<label class="check"><input type="checkbox" id="fArchSeries"' + (showArch ? ' checked' : '') + '> Vis arkiverte</label><button class="btn primary" data-act="newseries">Ny serie</button>';
+
+    var rows = list.map(function (s) {
+      var runs = d.Runder.filter(function (r) { return r.serie_id === s.id; });
+      var cur = runs.filter(function (r) { return r.arkivert !== 'ja'; }).sort(function (a, b) { return (a.dato || '') < (b.dato || '') ? 1 : -1; })[0];
+      var missing = s.obligatorisk === 'ja' ? active.filter(function (p) { return !attendedSeries(p.id, s); }).length : null;
+      return '<tr class="click" data-go="serie/' + esc(s.id) + '"><td class="strong">' + esc(s.navn) + (Number(s.versjon) > 1 ? ' <span class="ph">v' + esc(s.versjon) + '</span>' : '') + '</td><td>' + esc(TYPE_NAMES[s.type] || s.type) + '</td>' +
+        '<td>' + (cur ? esc(cur.aar) + (cur.dato ? ', ' + esc(fmtDate(cur.dato)) : '') + ' <span class="chip ' + (cur.status === 'gjennomført' ? 'c-done' : 'c-info') + '">' + esc(cur.status || 'planlagt') + '</span>' : '<span class="empty">Ingen runde</span>') + '</td>' +
+        '<td>' + (missing == null ? '–' : missing ? '<span class="chip c-prog">' + missing + ' mangler</span>' : '<span class="chip c-done">Alle har deltatt</span>') + '</td></tr>';
+    }).join('');
+    return head('Hendelser', 'Workshops, mentormøter, pitch og andre hendelser' + (guideLink('workshop') ? ' · ' + guideLink('workshop', 'Workshop-veiledning') : ''), tools) +
+      '<div class="panel tablewrap">' + (list.length ? '<table class="t"><tr><th>Serie</th><th>Type</th><th>Gjeldende runde</th><th>Aktive prosjekter som ikke har deltatt</th></tr>' + rows + '</table>' : '<div class="empty">Ingen serier.</div>') + '</div>';
+  }
+  // Has a project attended any run of this series (or of its earlier versions)?
+  function attendedSeries(pid, s) {
+    var root = seriesRoot(s);
+    return state.d.Deltakelse.some(function (x) {
+      if (x.prosjekt_id !== pid || x.status !== 'Deltatt') return false;
+      var r = byId('Runder', x.runde_id); var rs = r && byId('Serier', r.serie_id);
+      return rs && seriesRoot(rs) === root;
+    });
+  }
+
+
+  // ---- Page: one event series --------------------------------------------------------
+  function pageSeries() {
+    var d = state.d, s = byId('Serier', state.param);
+    if (!s) return head('Fant ikke serien') + '<a href="#hendelser">Tilbake</a>';
+    var runs = d.Runder.filter(function (r) { return r.serie_id === s.id; }).sort(function (a, b) { return (a.aar + a.dato) < (b.aar + b.dato) ? 1 : -1; });
+    var cur = runs.filter(function (r) { return r.arkivert !== 'ja'; }), old = runs.filter(function (r) { return r.arkivert === 'ja'; });
+    var versions = d.Serier.filter(function (x) { return x.id !== s.id && seriesRoot(x) === seriesRoot(s); });
+    var active = d.Prosjekter.filter(function (p) { return ACTIVE.indexOf(p.fase) >= 0; });
+    var related = (s.relaterte || '').split(',').map(function (x) { return byId('Serier', x.trim()); }).filter(Boolean);
+    var runRow = function (r) { return '<tr class="click" data-go="runde/' + esc(r.id) + '"><td class="strong">' + esc(r.aar) + '</td><td>' + esc(fmtDate(r.dato)) + '</td><td>' + esc(r.sted) + '</td><td><span class="chip ' + (r.status === 'gjennomført' ? 'c-done' : r.status === 'avlyst' ? 'c-na' : 'c-info') + '">' + esc(r.status || 'planlagt') + '</span></td><td>' + d.Deltakelse.filter(function (x) { return x.runde_id === r.id && x.status === 'Deltatt'; }).length + '</td></tr>'; };
+    var tools = '<button class="btn" data-act="editseries" data-id="' + esc(s.id) + '">Rediger</button>' +
+      (s.status !== 'arkivert' ? '<button class="btn" data-act="newversion" data-id="' + esc(s.id) + '">Ny versjon</button><button class="btn primary" data-act="newrun" data-id="' + esc(s.id) + '">Ny runde</button>' : '');
+
+    return '<div class="top"><div class="ptitle"><div class="short"><a href="#hendelser">Hendelser</a> / ' + esc(TYPE_NAMES[s.type] || s.type) + '</div><h1>' + esc(s.navn) + '</h1>' +
+        '<div class="sub">Versjon ' + esc(s.versjon || 1) + (s.status === 'arkivert' ? ' · <span class="chip c-na">arkivert</span>' : '') + (s.obligatorisk === 'ja' ? ' · obligatorisk' : '') + (guideLink(s.type) ? ' · ' + guideLink(s.type, 'Veiledning') : '') + (s.guide ? ' · <a href="' + esc(safeUrl(s.guide)) + '" target="_blank" rel="noopener noreferrer">Egen veiledning</a>' : '') + '</div></div>' +
+        '<div class="tools">' + tools + '</div></div>' +
+      '<section class="panel"><h2>Generell info <span class="hint">gjelder alle runder</span></h2>' + (s.beskrivelse ? '<p class="pre">' + esc(s.beskrivelse) + '</p>' : '<div class="empty">Ingen beskrivelse ennå. Klikk Rediger.</div>') +
+        (related.length ? '<p>Henger sammen med: ' + related.map(function (r) { return '<button class="plink" data-go="serie/' + esc(r.id) + '">' + esc(r.navn) + '</button>'; }).join(', ') + '</p>' : '') + '</section>' +
+      '<div class="cols">' +
+        '<section class="panel"><h2>Runder</h2>' + (cur.length ? '<div class="tablewrap"><table class="t"><tr><th>År</th><th>Dato</th><th>Sted</th><th>Status</th><th>Deltok</th></tr>' + cur.map(runRow).join('') + '</table></div>' : '<div class="empty">Ingen aktiv runde. Klikk «Ny runde».</div>') +
+          (old.length ? '<details><summary class="group-h">Arkiverte runder (' + old.length + ')</summary><div class="tablewrap"><table class="t">' + old.map(runRow).join('') + '</table></div></details>' : '') +
+          (versions.length ? '<p class="empty">Andre versjoner: ' + versions.map(function (v) { return '<button class="plink" data-go="serie/' + esc(v.id) + '">v' + esc(v.versjon) + '</button>'; }).join(', ') + '</p>' : '') + '</section>' +
+        (s.obligatorisk === 'ja' ? '<section class="panel"><h2>Aktive prosjekter <span class="hint">har de deltatt i en runde?</span></h2>' + active.map(function (p) {
+          var ok = attendedSeries(p.id, s);
+          return '<div class="task"><span></span><div class="t" data-go="prosjekt/' + esc(p.id) + '"><div class="tt">' + esc(p.kortnavn) + '</div><div class="meta"><span class="ph">' + esc(p.fase) + '</span></div></div><span class="chip ' + (ok ? 'c-done' : 'c-prog') + '">' + (ok ? 'Deltatt' : 'Mangler') + '</span></div>';
+        }).join('') + '</section>' : '') +
+      '</div>';
+  }
+
+
+  // ---- Page: one run of an event --------------------------------------------------------
+  function pageRun() {
+    var d = state.d, r = byId('Runder', state.param);
+    if (!r) return head('Fant ikke runden') + '<a href="#hendelser">Tilbake</a>';
+    var s = byId('Serier', r.serie_id);
+    var att = d.Deltakelse.filter(function (x) { return x.runde_id === r.id; });
+    var candidates = d.Prosjekter.filter(function (p) { return ACTIVE.indexOf(p.fase) >= 0 || att.some(function (x) { return x.prosjekt_id === p.id; }); });
+    var tasks = sortTasks(d.Oppgaver.filter(function (t) { return t.runde_id === r.id; }));
+    var tools = '<button class="btn" data-act="editrun" data-id="' + esc(r.id) + '">Rediger</button>' +
+      '<button class="btn" data-act="newtask" data-run="' + esc(r.id) + '">Ny oppgave</button>' +
+      (r.status !== 'gjennomført' ? '<button class="btn primary" data-act="finishrun" data-id="' + esc(r.id) + '">Merk som gjennomført</button>' : '');
+
+    return '<div class="top"><div class="ptitle"><div class="short"><a href="#hendelser">Hendelser</a> / <button class="plink" data-go="serie/' + esc(s ? s.id : '') + '">' + esc(s ? s.navn : '') + '</button></div><h1>' + esc((s ? s.navn : 'Hendelse') + ' ' + r.aar) + '</h1>' +
+        '<div class="sub">' + esc([fmtDate(r.dato), r.sted].filter(Boolean).join(' · ') || 'Ingen dato ennå') + ' · <span class="chip ' + (r.status === 'gjennomført' ? 'c-done' : 'c-info') + '">' + esc(r.status || 'planlagt') + '</span>' + (r.arkivert === 'ja' ? ' <span class="chip c-na">arkivert</span>' : '') + '</div></div>' +
+        '<div class="tools">' + tools + '</div></div>' +
+      '<div class="cols">' +
+        '<section class="panel"><h2>Deltakere <span class="hint">velg for hvert prosjekt</span></h2>' + (candidates.length ? candidates.map(function (p) {
+          var a = att.find(function (x) { return x.prosjekt_id === p.id; });
+          return '<div class="task"><span></span><div><div class="tt">' + esc(p.kortnavn) + '</div><div class="meta"><span class="ph">' + esc(p.fase) + '</span></div></div>' +
+            '<select data-attend="' + esc(p.id) + '" data-run="' + esc(r.id) + '" aria-label="Deltakelse ' + esc(p.kortnavn) + '">' + option('', a ? a.status : '', '–') + options(['Påmeldt', 'Deltatt', 'Ikke møtt'], a ? a.status : '') + '</select></div>';
+        }).join('') : '<div class="empty">Ingen aktive prosjekter.</div>') + '</section>' +
+        '<div class="cols1">' +
+          '<section class="panel"><h2>Notater for denne runden</h2>' + (r.notater ? '<p class="pre">' + esc(r.notater) + '</p>' : '<div class="empty">Ingen notater. Klikk Rediger.</div>') + '</section>' +
+          '<section class="panel"><h2>Oppgaver for runden</h2>' + taskList(tasks, { noProject: true, empty: 'Ingen oppgaver knyttet til runden.' }) + '</section>' +
+          (s && s.beskrivelse ? '<section class="panel"><h2>Generell info</h2><p class="pre">' + esc(s.beskrivelse) + '</p></section>' : '') +
+        '</div>' +
+      '</div>';
+  }
+
+  // Save one attendance choice (creates, changes or removes the row).
+  function saveAttendance(pid, rid, status) {
+    var a = state.d.Deltakelse.find(function (x) { return x.prosjekt_id === pid && x.runde_id === rid; });
+    if (!status && a) return save('Deltakelse', [], [a.id]).then(render);
+    if (!status) return;
+    save('Deltakelse', [a ? { id: a.id, status: status } : { runde_id: rid, prosjekt_id: pid, status: status }]).then(function () { toast('Lagret'); render(); });
+  }
+
+
+  // ---- Event editors -----------------------------------------------------------------------
+  function editSeries(id) {
+    var s = id ? byId('Serier', id) : { type: 'workshop', obligatorisk: 'nei', status: 'aktiv', versjon: '1' };
+    var others = state.d.Serier.filter(function (x) { return x.id !== id && x.status !== 'arkivert'; });
+    var rel = (s.relaterte || '').split(',').map(function (x) { return x.trim(); });
+    openDrawer('<h2>' + (id ? 'Rediger serie' : 'Ny serie') + '</h2>' + field('Navn', 'navn', s.navn) +
+      '<div class="grid2">' + field('Type', 'type', '', 'select', Object.keys(TYPE_NAMES).map(function (k) { return option(k, s.type, TYPE_NAMES[k]); }).join('')) + field('Rekkefølge', 'rekkefolge', s.rekkefolge, 'number') + '</div>' +
+      '<label class="check"><input type="checkbox" name="obligatorisk"' + (s.obligatorisk === 'ja' ? ' checked' : '') + '> Obligatorisk (hvert prosjekt må delta minst én gang)</label>' +
+      field('Generell info (gjelder alle runder)', 'beskrivelse', s.beskrivelse, 'textarea') +
+      field('Lenke til egen veiledning', 'guide', s.guide) +
+      (others.length ? '<div class="cl"><span class="group-h">Henger sammen med</span>' + others.map(function (o) { return '<label><input type="checkbox" name="rel_' + esc(o.id) + '"' + (rel.indexOf(o.id) >= 0 ? ' checked' : '') + '> ' + esc(o.navn) + '</label>'; }).join('') + '</div>' : '') + actions(),
+      function (form) {
+        var row = { navn: val(form, 'navn'), type: val(form, 'type'), rekkefolge: val(form, 'rekkefolge'), obligatorisk: val(form, 'obligatorisk'), beskrivelse: val(form, 'beskrivelse'), guide: val(form, 'guide'),
+          relaterte: others.filter(function (o) { return form.querySelector('[name="rel_' + o.id + '"]').checked; }).map(function (o) { return o.id; }).join(',') };
+        if (!row.navn) { toast('Skriv et navn'); return; }
+        if (id) row.id = id; else { row.status = 'aktiv'; row.versjon = '1'; }
+        save('Serier', [row]).then(function (saved) { closeDrawer(); toast('Lagret'); if (!id) location.hash = '#serie/' + saved[0].id; else render(); });
+      });
+  }
+  function newRun(sid) {
+    var s = byId('Serier', sid);
+    openDrawer('<h2>Ny runde: ' + esc(s.navn) + '</h2><p class="empty">Den generelle infoen beholdes. Tidligere runder arkiveres (de ligger fortsatt på seriesiden).</p>' +
+      '<div class="grid2">' + field('År', 'aar', today().slice(0, 4), 'number') + field('Dato', 'dato', '', 'date') + '</div>' + actions(),
+      function (form) { closeDrawer(); run('api_newRun', { serie_id: sid, aar: val(form, 'aar'), dato: val(form, 'dato') }, 'Ny runde laget').then(function (r) { if (r && r.id) location.hash = '#runde/' + r.id; }); });
+  }
+  function newVersion(sid) {
+    var s = byId('Serier', sid);
+    openDrawer('<h2>Ny versjon: ' + esc(s.navn) + '</h2><p class="empty">Bruk dette når innholdet er endret. Den gamle serien arkiveres med alle rundene sine, og den nye starter med en kopi av den generelle infoen. Deltakelse i den gamle versjonen teller fortsatt.</p>' +
+      field('Navn på den nye versjonen', 'navn', s.navn) + actions(),
+      function (form) { closeDrawer(); run('api_newVersion', { serie_id: sid, navn: val(form, 'navn') }, 'Ny versjon laget').then(function (n) { if (n && n.id) location.hash = '#serie/' + n.id; }); });
+  }
+  function editRun(rid) {
+    var r = byId('Runder', rid);
+    openDrawer('<h2>Rediger runde</h2><div class="grid2">' + field('År', 'aar', r.aar, 'number') + field('Dato', 'dato', r.dato, 'date') + field('Sted', 'sted', r.sted) +
+      field('Status', 'status', '', 'select', options(['planlagt', 'gjennomført', 'avlyst'], r.status || 'planlagt')) + '</div>' +
+      field('Notater for denne runden (årsspesifikke)', 'notater', r.notater, 'textarea') + actions(),
+      function (form) {
+        var row = { id: rid, aar: val(form, 'aar'), dato: val(form, 'dato'), sted: val(form, 'sted'), status: val(form, 'status'), notater: val(form, 'notater') };
+        save('Runder', [row]).then(function () { closeDrawer(); toast('Lagret'); if (row.status === 'gjennomført' && r.status !== 'gjennomført') load(true); else render(); });
+      });
+  }
+
+
+  // ---- Postpone (Utsett) --------------------------------------------------------------------
+  function postpone(pid) {
+    var p = byId('Prosjekter', pid);
+    var open = sortTasks(state.d.Oppgaver.filter(function (t) { return t.prosjekt_id === pid && openTask(t) && t.frist; }));
+    var moves = function (t) { var s = progressOf(t); return s ? s.flyttes_ved_forsinkelse !== 'nei' : true; };
+    openDrawer('<h2>Utsett ' + esc(p.kortnavn) + '</h2><p class="empty">Flytter de avkryssede fristene og sluttdatoen, merker prosjektet som forsinket og lagrer det i forsinkelsesloggen. Fasen endres ikke: prosjektet blir der det er til du flytter det.</p>' +
+      '<div class="grid2">' + field('Antall måneder', 'mnd', '6', 'number') + field('Årsak', 'aarsak', '') + '</div>' +
+      '<div class="cl"><span class="group-h">Frister som flyttes</span>' + (open.length ? open.map(function (t) { return '<label><input type="checkbox" name="mv_' + esc(t.id) + '"' + (moves(t) ? ' checked' : '') + '> ' + esc(t.tittel) + ' <span class="when">' + esc(fmtDate(t.frist)) + '</span></label>'; }).join('') : '<span class="empty">Ingen åpne oppgaver med frist.</span>') + '</div>' +
+      '<div class="actions"><span></span><span><button type="button" class="btn ghost" data-close>Avbryt</button> <button class="btn primary" type="submit">Utsett</button></span></div>',
+      function (form) {
+        var months = Number(val(form, 'mnd'));
+        if (!months) { toast('Skriv antall måneder'); return; }
+        var ids = open.filter(function (t) { return form.querySelector('[name="mv_' + t.id + '"]').checked; }).map(function (t) { return t.id; });
+        closeDrawer();
+        run('api_postpone', { id: pid, maaneder: months, aarsak: val(form, 'aarsak'), oppgaver: ids }, 'Utsatt ' + months + ' mnd');
+      });
+  }
+
+
+  // ---- Page: new-year review -------------------------------------------------------------------
+  function pageReview() {
+    var d = state.d, year = today().slice(0, 4), done = state.reviewed || {};
+    var list = d.Prosjekter.filter(function (p) { return ACTIVE.indexOf(p.fase) >= 0; }).sort(function (a, b) { return ACTIVE.indexOf(a.fase) - ACTIVE.indexOf(b.fase); });
+    var accepted = d.Søkere.filter(function (s) { return (s.status === 'Aktiv' || !s.status) && s.steg === 'Takket ja'; });
+    var suggest = { '1. år': '2. år', '2. år': 'Avslutning', 'Avslutning': 'Arkivert' };
+    var startDate = year + '-01-01';
+
+    var rows = list.map(function (p) {
+      var next = suggest[p.fase];
+      var openN = d.Oppgaver.filter(function (t) { return t.prosjekt_id === p.id && openTask(t) && t.fase === p.fase; }).length;
+      var others = PHASES.slice(1).filter(function (x) { return x !== next && x !== p.fase; });
+      return '<div class="rev' + (done[p.id] ? ' isdone' : '') + '"><div><b>' + esc(p.kortnavn) + '</b> <span class="ph">' + esc(p.fase) + '</span>' + (p.forsinket === 'ja' ? ' <span class="chip c-late">Forsinket</span>' : '') +
+        '<div class="empty">' + openN + ' åpne oppgaver i fasen' + (done[p.id] ? ' · ' + esc(done[p.id]) : '') + '</div></div>' +
+        '<div class="row"><button class="btn primary small" data-promote="' + esc(p.id) + '" data-to="' + esc(next) + '">' + (next === 'Arkivert' ? 'Arkiver' : 'Flytt til ' + esc(next)) + '</button>' +
+        '<button class="btn small" data-postpone="' + esc(p.id) + '">Forsinket, utsett</button>' +
+        '<button class="btn small ghost" data-keep="' + esc(p.id) + '">Ingen endring</button>' +
+        '<select data-promote-sel="' + esc(p.id) + '" aria-label="Annen fase">' + option('', '', 'Annet …') + others.map(function (o) { return option(o, ''); }).join('') + '</select></div></div>';
+    }).join('');
+
+    return head('Nyttårsgjennomgang ' + year, 'Velg neste steg for hvert prosjekt. Nye faser starter ' + fmtDate(startDate) + ', og fasens oppgaver lages med frister fra den datoen.', '<button class="btn primary" data-act="reviewdone">Ferdig med gjennomgangen</button>') +
+      (accepted.length ? '<section class="panel"><h2>Søkere som har takket ja <span class="hint">ta dem opp som prosjekter</span></h2>' + accepted.map(function (s) { return '<div class="rev"><div><b>' + esc(s.kortnavn) + '</b> <span class="ph">Søknad ' + esc(s.soknadsaar) + '</span></div><div class="row"><button class="btn small primary" data-admit="' + esc(s.id) + '">Ta opp</button></div></div>'; }).join('') + '</section>' : '') +
+      '<section class="panel"><h2>Prosjektene</h2>' + (rows || '<div class="empty">Ingen aktive prosjekter.</div>') + '</section>';
+  }
+  function shiftMonth(n) {
+    var t = today();
+    if (n === 0) { state.filters.myear = t.slice(0, 4); state.filters.mmonth = String(Number(t.slice(5, 7))); render(); return; }
+    var y = Number(state.filters.myear || t.slice(0, 4)), m = Number(state.filters.mmonth || t.slice(5, 7)) + n;
+    if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
+    state.filters.myear = String(y); state.filters.mmonth = String(m); render();
+  }
+  function promote(pid, to) {
+    var p = byId('Prosjekter', pid), year = today().slice(0, 4);
+    run('api_setPhase', { id: pid, fase: to, dato: year + '-01-01' }, p.kortnavn + ': ' + to).then(function () {
+      state.reviewed = state.reviewed || {}; state.reviewed[pid] = 'flyttet til ' + to; render();
+    });
+  }
+
+
   // ---- Clicks, forms and filters -----------------------------------------------------------------
   function setTaskStatus(id, status) {
     var t = byId('Oppgaver', id);
@@ -617,7 +947,7 @@
   }
 
   document.addEventListener('click', function (e) {
-    var el = e.target.closest('button, a, tr, [data-task]');
+    var el = e.target.closest('button, a, tr, [data-task], [data-go], [data-step-edit]');
     if (!el) return;
     var ds = el.dataset;
     if (ds.close !== undefined) { closeDrawer(); return; }
@@ -637,8 +967,20 @@
     if (ds.inTask) { var it = byId('Innboks', ds.inTask); editTask(null, { tittel: it.tekst, liste: 'Backlog' }); save('Innboks', [{ id: it.id, sortert: 'ja' }]); return; }
     if (ds.inLog) { inboxToLog(ds.inLog); return; }
     if (ds.inDone) { save('Innboks', [{ id: ds.inDone, sortert: 'ja' }]).then(render); return; }
+    if (ds.month !== undefined) { shiftMonth(Number(ds.month)); return; }
+    if (ds.setmonth) { state.filters.mmonth = ds.setmonth; render(); return; }
+    if (ds.promote) { promote(ds.promote, ds.to); return; }
+    if (ds.postpone) { postpone(ds.postpone); return; }
+    if (ds.keep) { state.reviewed = state.reviewed || {}; state.reviewed[ds.keep] = 'ingen endring'; render(); return; }
     switch (ds.act) {
-      case 'newtask': editTask(null, ds.project ? { prosjekt_id: ds.project, liste: '' } : null); break;
+      case 'newtask': editTask(null, ds.project ? { prosjekt_id: ds.project, liste: '' } : ds.run ? { runde_id: ds.run, liste: '' } : null); break;
+      case 'newseries': editSeries(null); break;
+      case 'editseries': editSeries(ds.id); break;
+      case 'newrun': newRun(ds.id); break;
+      case 'newversion': newVersion(ds.id); break;
+      case 'editrun': editRun(ds.id); break;
+      case 'finishrun': save('Runder', [{ id: ds.id, status: 'gjennomført' }]).then(function () { toast('Gjennomført. En «Notater til neste gang»-oppgave er lagt til.'); return load(true); }); break;
+      case 'reviewdone': run('api_reviewDone', null, 'Gjennomgangen er ferdig').then(function () { state.reviewed = {}; location.hash = '#oversikt'; }); break;
       case 'newproject': editProject(null); break;
       case 'editproject': editProject(ds.id); break;
       case 'phase': changePhase(ds.id); break;
@@ -678,6 +1020,10 @@
   // Filters: remember the choice and redraw.
   document.addEventListener('change', function (e) {
     var map = { fFase: 'fase', fProsjekt: 'prosjekt', fType: 'type', fDone: 'showDone', fPfase: 'pfase', fKull: 'kull', fFak: 'fak', fDelayed: 'delayed', fSyear: 'syear', fGfase: 'gfase', fGtype: 'gtype' };
+    var ds = e.target.dataset || {};
+    if (ds.attend) { saveAttendance(ds.attend, ds.run, e.target.value); return; }
+    if (ds.promoteSel) { if (e.target.value) promote(ds.promoteSel, e.target.value); return; }
+    map.fMmonth = 'mmonth'; map.fMyear = 'myear'; map.fArchSeries = 'archSeries';
     var k = map[e.target.id]; if (!k) return;
     state.filters[k] = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
     render();

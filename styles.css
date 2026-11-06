@@ -215,3 +215,23 @@ table.grid { min-width: 680px; }
 /* Right-hand column on the project page: panels stacked. */
 .cols1 { display: grid; gap: 16px; min-width: 0; align-content: start; }
 details summary { cursor: pointer; list-style: revert; }
+
+/* ---- Step 4: year timeline, review rows, long texts ---- */
+.yearbox { width: 84px; }
+.pre { white-space: pre-wrap; margin: 0; }
+.tl { display: grid; grid-template-columns: 90px repeat(12, minmax(64px, 1fr)); font-size: 11.5px; min-width: 860px; }
+.tl .mh { color: var(--muted); text-align: center; padding: 2px 0 6px; background: none; border: 0; cursor: pointer; font-size: 12px; }
+.tl .mh.now { color: var(--accent); font-weight: 700; }
+.tl .mh.cur { text-decoration: underline; text-underline-offset: 3px; }
+.tl .lane { color: var(--muted); padding: 6px 6px 6px 0; border-top: 1px solid var(--line); font-weight: 600; }
+.tl .cell { border-top: 1px solid var(--line); border-left: 1px solid var(--line); padding: 4px 3px; display: flex; flex-direction: column; gap: 3px; min-height: 34px; min-width: 0; }
+.tl .cell.now { background: var(--now); }
+.tl .ev { border-radius: 4px; padding: 1px 5px; font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--head); color: var(--head-text); cursor: pointer; opacity: .85; }
+.tl .ev.ws { background: var(--s-done-bg); color: var(--s-done); }
+.tl .ev.run { background: var(--accent); color: var(--accent-text); opacity: 1; }
+.rev { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.rev:first-of-type { border-top: 0; }
+.rev .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.rev.isdone { opacity: .55; }
+a.btn { text-decoration: none; color: var(--text); display: inline-block; }
+a.btn.primary { color: var(--accent-text); }
