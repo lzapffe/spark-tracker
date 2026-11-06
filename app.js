@@ -1,5 +1,5 @@
 /* =====================================================================
-   SPARK-tracker: the web page (steps 3–4).
+   SPARK-tracker: the web page (steps 3–5).
 
    How it works:
    - All data comes from the Google Sheet through the Apps Script web app
@@ -143,7 +143,7 @@
   var NAV = [
     ['oversikt', 'Oversikt'], ['oppgaver', 'Oppgaver'], ['prosjekter', 'Prosjekter'], ['sokere', 'Søkere'],
     ['-', 'Faser'], ['fase/soknad', 'Søknad'], ['fase/1', '1. år'], ['fase/2', '2. år'], ['fase/avslutning', 'Avslutning'],
-    ['-', 'Mer'], ['maned', 'Måned og år'], ['hendelser', 'Hendelser'], ['progress', 'Progress'], ['innboks', 'Innboks'], ['innstillinger', 'Innstillinger']
+    ['-', 'Mer'], ['maned', 'Måned og år'], ['hendelser', 'Hendelser'], ['kunnskap', 'Kunnskap'], ['status', 'Status'], ['sok', 'Søk'], ['progress', 'Progress'], ['innboks', 'Innboks'], ['innstillinger', 'Innstillinger']
   ];
   function renderNav() {
     var d = state.d;
@@ -169,7 +169,7 @@
   function render() {
     renderNav();
     var pages = { oversikt: pageOverview, oppgaver: pageTasks, prosjekter: pageProjects, prosjekt: pageProject, sokere: pageApplicants, progress: pageProgress, innboks: pageInbox, innstillinger: pageSettings,
-      fase: pagePhase, maned: pageMonth, hendelser: pageEvents, serie: pageSeries, runde: pageRun, gjennomgang: pageReview };
+      fase: pagePhase, maned: pageMonth, hendelser: pageEvents, serie: pageSeries, runde: pageRun, gjennomgang: pageReview, status: pageStatus, kunnskap: pageKnowledge, sok: pageSearch };
     ($('main').innerHTML = (pages[state.view] || pageOverview)());
     window.scrollTo(0, 0);
   }
@@ -199,7 +199,8 @@
           (inbox ? '<p class="empty"><a href="#innboks">' + inbox + ' ' + (inbox === 1 ? 'notat' : 'notater') + ' i innboksen</a> venter på å bli sortert.</p>' : '') + '</section>' +
         '<section class="panel"><h2>Prosjekter <span class="hint"><a href="#prosjekter">alle</a></span></h2>' + (active.length ? '<div class="cards">' + active.map(projectCard).join('') + '</div>' : '<div class="empty">Ingen aktive prosjekter ennå. Legg til under Prosjekter, eller ta opp en søker.</div>') + '</section>' +
       '</div>' +
-      '<section class="panel"><h2>Hele bildet <span class="hint">ett prosjekt per rad, ett spor per kolonne</span></h2>' + bigGrid(active) + '</section>';
+      '<section class="panel"><h2>Hele bildet <span class="hint">ett prosjekt per rad, ett spor per kolonne</span></h2>' + bigGrid(active) + '</section>' +
+      quietPanel();
   }
   function kpi(l, n, warn) { return '<div class="kpi"><div class="l">' + esc(l) + '</div><div class="n' + (warn ? ' warn' : '') + '">' + n + '</div></div>'; }
   function head(title, sub, tools) { return '<div class="top"><div><h1>' + title + '</h1>' + (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>' + (tools ? '<div class="tools">' + tools + '</div>' : '') + '</div>'; }
@@ -323,6 +324,7 @@
     var tools = '<button class="btn" data-act="editproject" data-id="' + esc(p.id) + '">Rediger</button>' +
       '<button class="btn" data-act="phase" data-id="' + esc(p.id) + '">Endre fase</button>' +
       '<button class="btn" data-postpone="' + esc(p.id) + '">Utsett</button>' +
+      '<button class="btn" data-export="prosjekt" data-id="' + esc(p.id) + '">Oppsummering (Doc)</button>' +
       '<button class="btn primary" data-act="newtask" data-project="' + esc(p.id) + '">Ny oppgave</button>';
 
     return '<div class="top"><div class="ptitle"><div class="short"><a href="#prosjekter">Prosjekter</a> / ' + esc(p.kortnavn) + '</div><h1>' + esc(p.tittel || p.kortnavn) + '</h1>' +
@@ -541,7 +543,7 @@
     openDrawer('<h2>Endre fase: ' + esc(p.kortnavn) + '</h2><p class="empty">Nå: ' + esc(p.fase) + '. Oppgavene for den nye fasen lages med frister regnet fra datoen under. Velg «Arkivert» når prosjektet er helt ferdig.</p>' +
       field('Ny fase', 'fase', '', 'select', options(PHASES.slice(1), next)) +
       field('Fra dato', 'dato', next === '2. år' || next === 'Avslutning' ? (Number(today().slice(0, 4)) + (today().slice(5) > '06-30' ? 1 : 0)) + '-01-01' : today(), 'date') + actions(),
-      function (form) { closeDrawer(); run('api_setPhase', { id: id, fase: val(form, 'fase'), dato: val(form, 'dato') }, 'Fasen er endret'); });
+      function (form) { closeDrawer(); run('api_setPhase', { id: id, fase: val(form, 'fase'), dato: val(form, 'dato') }, 'Fasen er endret').then(function (r) { if (r && r.summary) openDrawer('<h2>Prosjektet er arkivert</h2><p class="empty">En oppsummering er lagret i SPARK-eksport/Arkiv.</p><p><a class="btn primary" href="' + esc(safeUrl(r.summary)) + '" target="_blank" rel="noopener noreferrer">Åpne oppsummeringen</a></p><div class="actions"><span></span><button type="button" class="btn ghost" data-close>Lukk</button></div>', function () { closeDrawer(); }); }); });
   }
 
   // Applicant editor.
@@ -933,6 +935,188 @@
   }
 
 
+  // =====================================================================
+  // Step 5: Status, Kunnskap (contacts + notes), Søk, export, no-contact flags
+  // =====================================================================
+
+  // Projects with no log entry for a while (setting ingen_kontakt_dager).
+  function lastContact(pid) {
+    var dates = state.d.Logg.filter(function (l) { return l.prosjekt_id === pid; }).map(function (l) { return l.dato; }).sort();
+    return dates.length ? dates[dates.length - 1] : '';
+  }
+  function quietProjects() {
+    var days = Number(state.d.Innstillinger.ingen_kontakt_dager || 60), t = today();
+    return state.d.Prosjekter.filter(function (p) { return ACTIVE.indexOf(p.fase) >= 0; }).map(function (p) {
+      var last = lastContact(p.id) || p.fase_start || p.startdato || '';
+      return { p: p, last: last, days: last ? daysBetween(last, t) : null };
+    }).filter(function (x) { return x.days == null || x.days >= days; });
+  }
+  function quietPanel() {
+    var q = quietProjects();
+    if (!q.length) return '';
+    return '<section class="panel"><h2>Ikke hørt fra på en stund <span class="hint">ingen logg på ' + esc(state.d.Innstillinger.ingen_kontakt_dager || 60) + ' dager eller mer</span></h2>' +
+      q.map(function (x) { return '<div class="task"><span></span><div class="t" data-go="prosjekt/' + esc(x.p.id) + '"><div class="tt">' + esc(x.p.kortnavn) + '</div><div class="meta"><span class="ph">' + esc(x.p.fase) + '</span></div></div><span class="when">' + (x.last ? 'sist ' + esc(fmtDate(x.last)) : 'ingen logg') + '</span></div>'; }).join('') + '</section>';
+  }
+
+
+  // ---- Page: Status ------------------------------------------------------------
+  function pageStatus() {
+    var d = state.d, year = today().slice(0, 4);
+    var count = function (ph) { return d.Prosjekter.filter(function (p) { return p.fase === ph; }).length; };
+    var active = d.Prosjekter.filter(function (p) { return ACTIVE.indexOf(p.fase) >= 0; });
+    var apps = d.Søkere.filter(function (s) { return s.soknadsaar === year; });
+    var openApps = apps.filter(function (s) { return !s.status || s.status === 'Aktiv'; });
+
+    // Open items per track: how many active projects are overdue / in progress on each track.
+    var trackRows = TRACKS.map(function (tr) {
+      var st = active.map(function (p) { return trackStatus(p.id, tr).c; });
+      var n = function (c) { return st.filter(function (x) { return x === c; }).length; };
+      return '<tr><td class="strong">' + tr + '</td><td>' + n('done') + '</td><td>' + n('prog') + '</td><td>' + (n('miss') ? '<span class="chip c-miss">' + n('miss') + '</span>' : '0') + '</td><td>' + n('late') + '</td><td>' + n('na') + '</td></tr>';
+    }).join('');
+
+    // Across years: applicants, admitted, declined, delayed.
+    var years = Array.from(new Set(d.Søkere.map(function (s) { return s.soknadsaar; }).concat(d.Prosjekter.map(function (p) { return p.kull; })).filter(Boolean))).sort().reverse();
+    var yearRows = years.map(function (y) {
+      var a = d.Søkere.filter(function (s) { return s.soknadsaar === y; });
+      var pr = d.Prosjekter.filter(function (p) { return p.kull === y; });
+      return '<tr><td class="strong">' + esc(y) + '</td><td>' + a.length + '</td><td>' + Math.max(pr.length, a.filter(function (s) { return s.status === 'Opptatt'; }).length) + '</td><td>' + a.filter(function (s) { return s.status === 'Avslått'; }).length + '</td><td>' + a.filter(function (s) { return s.status === 'Trukket'; }).length + '</td><td>' + pr.filter(function (p) { return p.forsinket === 'ja'; }).length + '</td><td>' + pr.filter(function (p) { return p.fase === 'Arkivert'; }).length + '</td></tr>';
+    }).join('');
+
+    var tools = '<button class="btn" data-export="status">Lag statusrapport (Doc)</button><button class="btn primary" data-export="overlevering">Lag overleveringsdokument (Doc)</button>';
+    return head('Status', fmtLong(today()), tools) +
+      '<div class="kpis">' + kpi('1. år', count('1. år')) + kpi('2. år', count('2. år')) + kpi('Avslutning', count('Avslutning')) + kpi('Forsinket', active.filter(function (p) { return p.forsinket === 'ja'; }).length, active.some(function (p) { return p.forsinket === 'ja'; })) + '</div>' +
+      '<div class="cols">' +
+        '<section class="panel"><h2>Søknadsrunden ' + year + ' <span class="hint">' + apps.length + ' søkere</span></h2><div class="tablewrap"><table class="t"><tr><th>Steg</th><th>Antall</th></tr>' +
+          STEPS.map(function (st) { return '<tr><td>' + st + '</td><td>' + openApps.filter(function (s) { return (s.steg || STEPS[0]) === st; }).length + '</td></tr>'; }).join('') +
+          ['Opptatt', 'Avslått', 'Trukket'].map(function (st) { return '<tr><td>' + st + '</td><td>' + apps.filter(function (s) { return s.status === st; }).length + '</td></tr>'; }).join('') + '</table></div></section>' +
+        '<section class="panel"><h2>Spor for aktive prosjekter <span class="hint">antall prosjekter</span></h2><div class="tablewrap"><table class="t"><tr><th>Spor</th><th>Ferdig</th><th>Pågår</th><th>Forfalt</th><th>Utsatt</th><th>Ingen ennå</th></tr>' + trackRows + '</table></div></section>' +
+      '</div>' +
+      '<section class="panel"><h2>År for år <span class="hint">etter søknadsår</span></h2>' + (years.length ? '<div class="tablewrap"><table class="t"><tr><th>År</th><th>Søkere</th><th>Opptatt</th><th>Avslått</th><th>Trukket</th><th>Forsinket</th><th>Arkivert</th></tr>' + yearRows + '</table></div>' : '<div class="empty">Ingen data ennå.</div>') + '</section>' +
+      '<section class="panel"><h2>Data og filer</h2><div class="addrow">' +
+        (d.sheetUrl ? '<a class="btn" href="' + esc(safeUrl(d.sheetUrl)) + '" target="_blank" rel="noopener noreferrer">Åpne regnearket</a>' : '') +
+        (d.sheetUrl ? '<a class="btn" href="' + esc(safeUrl(d.sheetUrl.replace(/\/edit.*$/, '') + '/export?format=xlsx')) + '" target="_blank" rel="noopener noreferrer">Last ned som Excel</a>' : '') +
+        '<select id="csvTab" aria-label="Fane til CSV">' + ['Prosjekter', 'Søkere', 'Oppgaver', 'Progress', 'Kontakter', 'Kunnskap', 'Logg', 'Serier', 'Runder', 'Deltakelse', 'Dokumenter', 'Forsinkelser'].map(function (t) { return option(t, 'Prosjekter'); }).join('') + '</select>' +
+        '<button class="btn" data-act="csv">Last ned CSV</button></div>' +
+        '<p class="empty">Ukentlig sikkerhetskopi: hver søndag natt lagres en kopi av regnearket i mappen SPARK-backup (de 8 siste beholdes).</p></section>';
+  }
+
+  // CSV of one tab, downloaded in the browser.
+  function downloadCsv(tab) {
+    var rows = state.d[tab] || [];
+    var cols = rows.length ? Object.keys(rows[0]) : ['id'];
+    var q = function (v) { v = String(v == null ? '' : v); return /[";\n,]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var csv = '﻿' + [cols.join(';')].concat(rows.map(function (r) { return cols.map(function (c) { return q(r[c]); }).join(';'); })).join('\r\n');
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = 'SPARK-' + tab + '-' + today() + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+  }
+
+  // Make a Doc on the server and show its link.
+  function makeDoc(kind, id) {
+    toast('Lager dokumentet …');
+    api('api_export', { kind: kind, id: id }).then(function (r) {
+      openDrawer('<h2>Dokumentet er klart</h2><p class="empty">Lagret i mappen SPARK-eksport ved siden av regnearket.</p><p><a class="btn primary" href="' + esc(safeUrl(r.url)) + '" target="_blank" rel="noopener noreferrer">Åpne dokumentet</a></p><div class="actions"><span></span><button type="button" class="btn ghost" data-close>Lukk</button></div>', function () { closeDrawer(); });
+    }).catch(fail);
+  }
+
+
+  // ---- Page: Kunnskap (contacts, notes, guides) ---------------------------------------
+  function pageKnowledge() {
+    var d = state.d, f = state.filters, tab = f.ktab || 'kontakter', q = (f.kq || '').toLowerCase();
+    var match = function (o, keys) { return !q || keys.some(function (k) { return String(o[k] || '').toLowerCase().indexOf(q) >= 0; }); };
+    var seg = '<span class="seg">' + [['kontakter', 'Kontakter'], ['notater', 'Notater'], ['veiledninger', 'Veiledninger']].map(function (t) { return '<button data-ktab="' + t[0] + '" aria-pressed="' + (tab === t[0]) + '">' + t[1] + '</button>'; }).join('') + '</span>';
+    var tools = '<input type="text" class="search" id="fKq" placeholder="Søk i kunnskapsbanken" value="' + esc(f.kq || '') + '">' + seg +
+      (tab === 'kontakter' ? '<button class="btn primary" data-act="newcontact">Ny kontakt</button>' : tab === 'notater' ? '<button class="btn primary" data-act="newnote">Nytt notat</button>' : '');
+    var body;
+    if (tab === 'kontakter') {
+      var cs = d.Kontakter.filter(function (c) { return match(c, ['navn', 'rolle', 'enhet', 'emner', 'kjenner_via', 'notater']); }).sort(function (a, b) { return a.navn < b.navn ? -1 : 1; });
+      body = cs.length ? '<div class="panel tablewrap"><table class="t"><tr><th>Navn</th><th>Rolle</th><th>Enhet</th><th>Emner</th><th>Hvordan jeg kjenner dem</th><th>Sist kontakt</th></tr>' + cs.map(function (c) {
+        return '<tr class="click" data-contact="' + esc(c.id) + '"><td class="strong">' + esc(c.navn) + '</td><td>' + esc(c.rolle) + '</td><td>' + esc(c.enhet) + '</td><td>' + esc(c.emner) + '</td><td>' + esc(c.kjenner_via) + '</td><td>' + esc(fmtDate(c.sist_kontakt)) + '</td></tr>';
+      }).join('') + '</table></div>' : '<div class="panel empty">Ingen kontakter' + (q ? ' som passer søket' : ' ennå') + '.</div>';
+    } else if (tab === 'notater') {
+      var ns = d.Kunnskap.filter(function (k) { return match(k, ['tittel', 'emne', 'tekst', 'tagger']); }).sort(function (a, b) { return (a.emne + a.tittel) < (b.emne + b.tittel) ? -1 : 1; });
+      body = ns.length ? '<div class="cards">' + ns.map(function (k) {
+        return '<button class="pcard" type="button" data-note="' + esc(k.id) + '"><div class="h"><b>' + esc(k.tittel) + '</b>' + (k.emne ? '<span class="ph">' + esc(k.emne) + '</span>' : '') + '</div><div class="who">' + esc(String(k.tekst || '').slice(0, 160)) + (String(k.tekst || '').length > 160 ? ' …' : '') + '</div>' + (k.tagger ? '<div class="who">' + esc(k.tagger) + '</div>' : '') + '</button>';
+      }).join('') + '</div>' : '<div class="panel empty">Ingen notater' + (q ? ' som passer søket' : ' ennå') + '.</div>';
+    } else {
+      var g = {}; try { g = JSON.parse(d.Innstillinger.guider || '{}'); } catch (e) { g = {}; }
+      var names = { 'Søknad': 'Søknadsfasen', '1. år': '1. år', '2. år': '2. år', 'Avslutning': 'Avslutning', workshop: 'Workshops', mentormote: 'Mentormøter', intervju: 'Intervjuer', pitch: 'Pitch', kunnskap: 'Kunnskapsbank' };
+      body = '<div class="panel"><div class="hist">' + Object.keys(g).map(function (k) { return '<div><a href="' + esc(safeUrl(g[k])) + '" target="_blank" rel="noopener noreferrer">' + esc(names[k] || k) + '</a></div>'; }).join('') + '</div><p class="empty">Hver veiledning har overskriftene «Slik gjør du det», «E-postmaler», «Erfaringer» og «Husk til neste gang».</p></div>';
+    }
+    return head('Kunnskap', 'Kontakter, notater og veiledninger', tools) + body;
+  }
+
+  function editContact(id) {
+    var c = id ? byId('Kontakter', id) : {};
+    var projects = state.d.Prosjekter.filter(function (p) { return p.fase !== 'Arkivert'; });
+    var linked = (c.prosjekter || '').split(',');
+    openDrawer('<h2>' + (id ? esc(c.navn) : 'Ny kontakt') + '</h2>' +
+      '<div class="grid2">' + field('Navn', 'navn', c.navn) + field('Rolle', 'rolle', c.rolle) + field('Enhet', 'enhet', c.enhet) + field('E-post', 'epost', c.epost) +
+        field('Telefon', 'telefon', c.telefon) + field('Sist kontakt', 'sist_kontakt', c.sist_kontakt, 'date') + '</div>' +
+      field('Emner (komma mellom)', 'emner', c.emner) + field('Hvordan jeg kjenner dem', 'kjenner_via', c.kjenner_via) +
+      (projects.length ? '<div class="cl"><span class="group-h">Prosjekter</span>' + projects.map(function (p) { return '<label><input type="checkbox" name="pr_' + esc(p.id) + '"' + (linked.indexOf(p.id) >= 0 ? ' checked' : '') + '> ' + esc(p.kortnavn) + '</label>'; }).join('') + '</div>' : '') +
+      field('Notater (hold dem jobbrelaterte)', 'notater', c.notater, 'textarea') +
+      actions((id ? '<button type="button" class="btn danger" data-delcontact="' + esc(id) + '">Slett</button> ' : '') + '<button type="button" class="btn" data-contacttoday="1">Kontakt i dag</button>'),
+      function (form) {
+        var row = {}; ['navn', 'rolle', 'enhet', 'epost', 'telefon', 'sist_kontakt', 'emner', 'kjenner_via', 'notater'].forEach(function (k) { row[k] = val(form, k); });
+        row.prosjekter = projects.filter(function (p) { return form.querySelector('[name="pr_' + p.id + '"]').checked; }).map(function (p) { return p.id; }).join(',');
+        if (!row.navn) { toast('Skriv et navn'); return; }
+        if (id) row.id = id;
+        save('Kontakter', [row]).then(function () { closeDrawer(); toast('Lagret'); render(); });
+      });
+  }
+  function editNote(id) {
+    var k = id ? byId('Kunnskap', id) : {};
+    openDrawer('<h2>' + (id ? 'Notat' : 'Nytt notat') + '</h2>' + field('Tittel', 'tittel', k.tittel) +
+      '<div class="grid2">' + field('Emne', 'emne', k.emne) + field('Stikkord', 'tagger', k.tagger) + '</div>' +
+      field('Tekst', 'tekst', k.tekst, 'textarea') + field('Lenke', 'lenke', k.lenke) +
+      actions(id ? '<button type="button" class="btn danger" data-delnote="' + esc(id) + '">Slett</button>' : ''),
+      function (form) {
+        var row = {}; ['tittel', 'emne', 'tagger', 'tekst', 'lenke'].forEach(function (x) { row[x] = val(form, x); });
+        if (!row.tittel) { toast('Skriv en tittel'); return; }
+        if (id) row.id = id;
+        save('Kunnskap', [row]).then(function () { closeDrawer(); toast('Lagret'); render(); });
+      });
+  }
+
+
+  // ---- Page: Søk (everything) -----------------------------------------------------------------
+  function pageSearch() {
+    var d = state.d, q = (state.filters.gq || '').trim().toLowerCase();
+    var box = '<input type="text" class="search" id="fGq" placeholder="Søk i alt: prosjekter, søkere, oppgaver, kontakter, notater, logg, hendelser" value="' + esc(state.filters.gq || '') + '">';
+    if (q.length < 2) return head('Søk', '', box) + '<div class="panel empty">Skriv minst to bokstaver.</div>';
+    var has = function (o, keys) { return keys.some(function (k) { return String(o[k] || '').toLowerCase().indexOf(q) >= 0; }); };
+    var groups = [
+      ['Prosjekter', d.Prosjekter.filter(function (p) { return has(p, ['kortnavn', 'tittel', 'leder', 'enhet', 'maal', 'merknader']); }).map(function (p) { return ['prosjekt/' + p.id, p.kortnavn, p.fase]; })],
+      ['Søkere', d.Søkere.filter(function (s) { return has(s, ['kortnavn', 'tittel', 'leder', 'enhet', 'merknader']); }).map(function (s) { return ['@app:' + s.id, s.kortnavn, s.soknadsaar + ' · ' + (s.status || 'Aktiv')]; })],
+      ['Oppgaver', d.Oppgaver.filter(function (t) { return has(t, ['tittel', 'notat', 'venter_paa']); }).map(function (t) { return ['@task:' + t.id, t.tittel, (t.prosjekt_id ? shortName(t.prosjekt_id) + ' · ' : '') + t.status]; })],
+      ['Kontakter', d.Kontakter.filter(function (c) { return has(c, ['navn', 'rolle', 'enhet', 'emner', 'notater', 'kjenner_via']); }).map(function (c) { return ['@contact:' + c.id, c.navn, c.rolle]; })],
+      ['Kunnskap', d.Kunnskap.filter(function (k) { return has(k, ['tittel', 'emne', 'tekst', 'tagger']); }).map(function (k) { return ['@note:' + k.id, k.tittel, k.emne]; })],
+      ['Logg', d.Logg.filter(function (l) { return has(l, ['tekst']); }).map(function (l) { return ['prosjekt/' + l.prosjekt_id, String(l.tekst).slice(0, 90), shortName(l.prosjekt_id) + ' · ' + fmtDate(l.dato)]; })],
+      ['Hendelser', d.Serier.filter(function (s) { return has(s, ['navn', 'beskrivelse']); }).map(function (s) { return ['serie/' + s.id, s.navn, s.status]; })
+        .concat(d.Runder.filter(function (r) { return has(r, ['notater', 'sted']); }).map(function (r) { var s = byId('Serier', r.serie_id); return ['runde/' + r.id, (s ? s.navn : 'Runde') + ' ' + r.aar, String(r.notater || '').slice(0, 60)]; }))],
+      ['Progress', d.Progress.filter(function (s) { return has(s, ['tittel', 'deloppgaver', 'merknader']); }).map(function (s) { return ['@step:' + s.id, s.tittel, s.fase]; })]
+    ];
+    var total = groups.reduce(function (n, g) { return n + g[1].length; }, 0);
+    return head('Søk', total + ' treff', box) + groups.filter(function (g) { return g[1].length; }).map(function (g) {
+      return '<section class="panel"><h2>' + g[0] + ' <span class="hint">' + g[1].length + '</span></h2>' + g[1].slice(0, 30).map(function (r) {
+        var attr = r[0].charAt(0) === '@' ? 'data-hit="' + esc(r[0]) + '"' : 'data-go="' + esc(r[0]) + '"';
+        return '<div class="task"><span></span><div class="t" ' + attr + '><div class="tt">' + esc(r[1]) + '</div><div class="meta">' + esc(r[2] || '') + '</div></div><span></span></div>';
+      }).join('') + '</section>';
+    }).join('') || '<div class="panel empty">Ingen treff.</div>';
+  }
+  function openHit(h) {
+    var kind = h.slice(1, h.indexOf(':')), id = h.slice(h.indexOf(':') + 1);
+    if (kind === 'app') editApplicant(id);
+    if (kind === 'task') editTask(id);
+    if (kind === 'contact') editContact(id);
+    if (kind === 'note') editNote(id);
+    if (kind === 'step') editStep(id);
+  }
+
+
   // ---- Clicks, forms and filters -----------------------------------------------------------------
   function setTaskStatus(id, status) {
     var t = byId('Oppgaver', id);
@@ -947,7 +1131,7 @@
   }
 
   document.addEventListener('click', function (e) {
-    var el = e.target.closest('button, a, tr, [data-task], [data-go], [data-step-edit]');
+    var el = e.target.closest('button, a, tr, [data-task], [data-go], [data-step-edit], [data-hit]');
     if (!el) return;
     var ds = el.dataset;
     if (ds.close !== undefined) { closeDrawer(); return; }
@@ -968,6 +1152,14 @@
     if (ds.inLog) { inboxToLog(ds.inLog); return; }
     if (ds.inDone) { save('Innboks', [{ id: ds.inDone, sortert: 'ja' }]).then(render); return; }
     if (ds.month !== undefined) { shiftMonth(Number(ds.month)); return; }
+    if (ds.export) { makeDoc(ds.export, ds.id); return; }
+    if (ds.ktab) { state.filters.ktab = ds.ktab; render(); return; }
+    if (ds.contact) { editContact(ds.contact); return; }
+    if (ds.note) { editNote(ds.note); return; }
+    if (ds.hit) { openHit(ds.hit); return; }
+    if (ds.contacttoday) { var inp = document.querySelector('#drawerForm [name="sist_kontakt"]'); if (inp) inp.value = today(); return; }
+    if (ds.delcontact) { closeDrawer(); save('Kontakter', [], [ds.delcontact]).then(function () { toast('Slettet'); render(); }); return; }
+    if (ds.delnote) { closeDrawer(); save('Kunnskap', [], [ds.delnote]).then(function () { toast('Slettet'); render(); }); return; }
     if (ds.setmonth) { state.filters.mmonth = ds.setmonth; render(); return; }
     if (ds.promote) { promote(ds.promote, ds.to); return; }
     if (ds.postpone) { postpone(ds.postpone); return; }
@@ -975,6 +1167,9 @@
     switch (ds.act) {
       case 'newtask': editTask(null, ds.project ? { prosjekt_id: ds.project, liste: '' } : ds.run ? { runde_id: ds.run, liste: '' } : null); break;
       case 'newseries': editSeries(null); break;
+      case 'newcontact': editContact(null); break;
+      case 'newnote': editNote(null); break;
+      case 'csv': downloadCsv($('csvTab').value); break;
       case 'editseries': editSeries(ds.id); break;
       case 'newrun': newRun(ds.id); break;
       case 'newversion': newVersion(ds.id); break;
@@ -1029,7 +1224,7 @@
     render();
   });
   document.addEventListener('input', function (e) {
-    var map = { fQ: 'q', fPq: 'pq' }; var k = map[e.target.id]; if (!k) return;
+    var map = { fQ: 'q', fPq: 'pq', fKq: 'kq', fGq: 'gq' }; var k = map[e.target.id]; if (!k) return;
     state.filters[k] = e.target.value;
     clearTimeout(state.typing);
     var id = e.target.id;
