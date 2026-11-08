@@ -273,3 +273,24 @@ details summary { cursor: pointer; list-style: revert; }
 .rev.isdone { opacity: .55; }
 a.btn { text-decoration: none; color: var(--text); display: inline-block; }
 a.btn.primary { color: var(--accent-text); }
+
+/* ---- Ukentlig gjennomgang ---- */
+.wkgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.wrow { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 8px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
+.wrow[data-task], .wrow[data-go] { cursor: pointer; }
+.panel > h2 + .wrow, .grp + .wrow { border-top: 0; }
+.wrow b { font-weight: 500; color: var(--title); }
+.wrow small { display: block; color: var(--muted); font-size: 12px; }
+.wrow .acts { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px; }
+.wlink { cursor: pointer; }
+.wlink:hover { text-decoration: underline; }
+.grp { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 10px 0 2px; font-weight: 600; }
+.panel > h2 + .grp { margin-top: 0; }
+.dot.quiet { border-style: dashed; }
+.wkmore { margin-top: 6px; font-size: 13px; }
+.wkadd { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+.wkadd input[type="text"] { flex: 1 1 160px; min-width: 0; }
+.wkfinish { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.wkfinish > div { flex: 1 1 260px; min-width: 0; }
+.wkfinish textarea { width: 100%; min-height: 60px; resize: vertical; }
+@media (max-width: 900px) { .wkgrid { grid-template-columns: minmax(0, 1fr); } }

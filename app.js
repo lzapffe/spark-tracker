@@ -183,7 +183,7 @@
       innboks: d.Innboks.filter(function (i) { return i.sortert !== 'ja'; }).length,
       sokere: d.Søkere.filter(function (s) { return s.status === 'Aktiv' || !s.status; }).length
     };
-    var cur = state.view === 'prosjekt' ? 'prosjekter' : (state.view === 'serie' || state.view === 'runde') ? 'hendelser' : state.view === 'fase' ? 'fase/' + state.param : state.view;
+    var cur = state.view === 'prosjekt' ? 'prosjekter' : state.view === 'uke' ? 'oppgaver' : (state.view === 'serie' || state.view === 'runde') ? 'hendelser' : state.view === 'fase' ? 'fase/' + state.param : state.view;
     function link(n) {
       var c = counts[n[0]] ? '<span class="count">' + counts[n[0]] + '</span>' : '';
       return '<a class="nav' + (cur === n[0] ? ' on' : '') + '" href="#' + n[0] + '">' + n[1] + c + '</a>';
@@ -217,7 +217,7 @@
   function render() {
     renderNav();
     var pages = { oversikt: pageOverview, oppgaver: pageTasks, prosjekter: pageProjects, prosjekt: pageProject, sokere: pageApplicants, progress: pageProgress, innboks: pageInbox, innstillinger: pageSettings,
-      fase: pagePhase, maned: pageMonth, hendelser: pageEvents, serie: pageSeries, runde: pageRun, gjennomgang: pageReview, status: pageStatus, kunnskap: pageKnowledge, sok: pageSearch };
+      fase: pagePhase, maned: pageMonth, hendelser: pageEvents, serie: pageSeries, runde: pageRun, gjennomgang: pageReview, uke: pageWeek, status: pageStatus, kunnskap: pageKnowledge, sok: pageSearch };
     ($('main').innerHTML = (pages[state.view] || pageOverview)());
     window.scrollTo(0, 0);
   }
@@ -236,7 +236,7 @@
     var inbox = d.Innboks.filter(function (i) { return i.sortert !== 'ja'; }).length;
     var review = d.Innstillinger.gjennomgang_aapen === 'ja';
 
-    return head('Oversikt', fmtLong(t)) +
+    return head('Oversikt', fmtLong(t), '<a class="btn primary" href="#uke">Ukentlig gjennomgang</a>') +
       (review ? '<div class="banner"><div><b>Gjennomgang ved årsskiftet</b> · tid for å flytte prosjektene til neste fase.</div><a class="btn primary" href="#gjennomgang">Start gjennomgangen</a></div>' : '') +
       '<div class="kpis">' +
         kpi('Aktive prosjekter', active.length) + kpi('Søkere ' + year, applicants.length) +
@@ -355,7 +355,7 @@
       '<select id="fProsjekt">' + option('', f.prosjekt || '', 'Alle prosjekter') + projects.map(function (p) { return option(p.id, f.prosjekt || '', p.kortnavn); }).join('') + '</select>' +
       '<select id="fType">' + option('', f.type || '', 'Alle typer') + option('oppgave', f.type || '', 'Oppgave') + option('epost', f.type || '', 'E-post') + option('notater', f.type || '', 'Notater') + '</select>' +
       '<label class="check"><input type="checkbox" id="fDone"' + (f.showDone ? ' checked' : '') + '> Vis ferdige</label>' +
-      '<button class="btn primary" data-act="newtask">Ny oppgave</button>';
+      '<button class="btn" data-act="newtask">Ny oppgave</button><a class="btn primary" href="#uke">Ukentlig gjennomgang</a>';
 
     return head('Oppgaver', '', tools) +
       '<div class="cols">' +
@@ -1078,6 +1078,155 @@
   }
 
 
+  // ---- Page: Ukentlig gjennomgang ------------------------------------------------
+  // One page for wrapping up the week: what got done, what is still open from this
+  // week (or earlier), and what is coming next week. Opened from a button on
+  // Oppgaver and Oversikt (nothing opens by itself).
+  function weekStart(d) { var p = d.split('-').map(Number); var wd = (new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay() + 6) % 7; return addDays(d, -wd); }
+  function isoWeek(d) {
+    var p = d.split('-').map(Number), x = new Date(Date.UTC(p[0], p[1] - 1, p[2]));
+    x.setUTCDate(x.getUTCDate() + 3 - ((x.getUTCDay() + 6) % 7));
+    var y = new Date(Date.UTC(x.getUTCFullYear(), 0, 4));
+    return { year: x.getUTCFullYear(), week: 1 + Math.round(((x - y) / 86400000 - 3 + ((y.getUTCDay() + 6) % 7)) / 7) };
+  }
+  function weekDays() {
+    var mon = weekStart(today());
+    return { mon: mon, sun: addDays(mon, 6), nextMon: addDays(mon, 7), nextSun: addDays(mon, 13) };
+  }
+  function weekRange(a, b) {
+    var pa = a.split('-').map(Number), pb = b.split('-').map(Number);
+    var mn = ['januar', 'februar', 'mars', 'april', 'mai', 'juni', 'juli', 'august', 'september', 'oktober', 'november', 'desember'];
+    return pa[1] === pb[1] ? pa[2] + '.–' + pb[2] + '. ' + mn[pb[1] - 1] : pa[2] + '. ' + mn[pa[1] - 1] + ' – ' + pb[2] + '. ' + mn[pb[1] - 1];
+  }
+  var WEEKDAYS = ['man', 'tir', 'ons', 'tor', 'fre', 'lør', 'søn'];
+  function dayName(d) { var p = d.split('-').map(Number); return WEEKDAYS[(new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay() + 6) % 7]; }
+  // The same weekday next week (from the date, or Monday if none).
+  function sameDayNextWeek(d) { var w = weekDays(); if (!d) return w.nextMon; return addDays(w.nextMon, daysBetween(weekStart(d), d)); }
+  function taskWhere(t) {
+    if (t.prosjekt_id) return esc(shortName(t.prosjekt_id)) + (t.spor ? ' · ' + esc(t.spor) : '');
+    if (t.runde_id) { var r = byId('Runder', t.runde_id), s = r ? byId('Serier', r.serie_id) : null; return esc(s ? s.navn + ' ' + (r.aar || '') : 'Arrangement'); }
+    return 'Generelt';
+  }
+  function wkRow(dot, title, sub, acts, attrs) {
+    return '<div class="wrow"' + (attrs || '') + '><span class="dot ' + dot + '"></span><div><b>' + title + '</b><small>' + sub + '</small>' + (acts ? '<div class="acts">' + acts + '</div>' : '') + '</div></div>';
+  }
+
+  function weekData() {
+    var d = state.d, w = weekDays();
+    var inWeek = function (x, a, b) { return x && x >= a && x <= b; };
+    var done = d.Oppgaver.filter(function (t) { return t.status === 'Ferdig' && inWeek(t.ferdig_dato, w.mon, w.sun); });
+    var runsDone = d.Runder.filter(function (r) { return r.status === 'gjennomført' && inWeek(r.dato, w.mon, w.sun); });
+    var open = d.Oppgaver.filter(openTask);
+    var due = function (t) { return t.status === 'Venter på' && t.oppfolging ? t.oppfolging : t.frist; };
+    var notDone = sortTasks(open.filter(function (t) { var x = due(t); return x && x <= w.sun; }));
+    var next = open.filter(function (t) { return inWeek(due(t), w.nextMon, w.nextSun); }).sort(function (a, b) { return due(a) < due(b) ? -1 : 1; });
+    var runsNext = d.Runder.filter(function (r) { return r.status !== 'gjennomført' && r.status !== 'avlyst' && inWeek(r.dato, w.nextMon, w.nextSun); });
+    return { w: w, done: done, runsDone: runsDone, notDone: notDone, next: next, runsNext: runsNext, due: due, quiet: quietProjects() };
+  }
+
+  function pageWeek() {
+    var d = state.d, x = weekData(), w = x.w, t = today(), wk = isoWeek(w.mon), nwk = isoWeek(w.nextMon);
+    var showAll = state.filters.wkAll, CAP = 8;
+
+    // Gjort denne uka, grouped.
+    var groups = [
+      ['Prosjekter', x.done.filter(function (k) { return k.prosjekt_id; })],
+      ['Arrangementer', x.done.filter(function (k) { return !k.prosjekt_id && k.runde_id; })],
+      ['Generelt', x.done.filter(function (k) { return !k.prosjekt_id && !k.runde_id; })]
+    ];
+    var shown = 0, hidden = 0;
+    var doneHtml = groups.map(function (g) {
+      var rows = g[1].map(function (k) { return wkRow('done', esc(k.tittel), taskWhere(k), '', ' data-task="' + esc(k.id) + '"'); });
+      if (g[0] === 'Arrangementer') rows = x.runsDone.map(function (r) {
+        var s = byId('Serier', r.serie_id), n = d.Deltakelse.filter(function (a) { return a.runde_id === r.id && a.status === 'Deltatt'; }).length;
+        return wkRow('done', esc((s ? s.navn : 'Arrangement') + ' gjennomført'), n + ' prosjekter var med', '', ' data-go="runde/' + esc(r.id) + '"');
+      }).concat(rows);
+      if (!rows.length) return '';
+      if (!showAll) { var room = Math.max(0, CAP - shown); hidden += Math.max(0, rows.length - room); rows = rows.slice(0, room); }
+      shown += rows.length;
+      return rows.length ? '<div class="grp">' + g[0] + '</div>' + rows.join('') : '';
+    }).join('');
+    if (hidden) doneHtml += '<button class="plink wkmore" type="button" data-wk-all="1">Vis alle (' + hidden + ' til)</button>';
+    else if (showAll && shown > CAP) doneHtml += '<button class="plink wkmore" type="button" data-wk-all="1">Vis færre</button>';
+    var doneCount = x.done.length + x.runsDone.length;
+
+    // Ikke ferdig.
+    var notDoneHtml = x.notDone.map(function (k) {
+      var dd = x.due(k), over = dd < t ? daysBetween(dd, t) : 0;
+      var sub = taskWhere(k) + ' · ' + (k.status === 'Venter på' ? 'følg opp ' : 'frist ') + esc(fmtDate(dd)) + (over ? ' <span class="chip c-miss">' + over + (over === 1 ? ' dag' : ' dager') + ' over</span>' : '');
+      var acts = '<button class="btn small" data-wk-next="' + esc(k.id) + '">Neste uke</button><button class="btn small" data-wk-later="' + esc(k.id) + '">Utsett …</button><button class="btn small" data-done="' + esc(k.id) + '">Ferdig</button>';
+      return wkRow(over ? 'late' : '', '<span class="wlink" data-task="' + esc(k.id) + '">' + esc(k.tittel) + '</span>', sub, acts);
+    }).join('');
+
+    // Neste uke.
+    var nextHtml = x.next.map(function (k) {
+      var dd = x.due(k);
+      return wkRow('', esc(k.tittel), taskWhere(k) + ' · ' + dayName(dd) + ' ' + esc(fmtDate(dd)) + (k.status === 'Venter på' ? ' · følg opp' : ''), '', ' data-task="' + esc(k.id) + '"');
+    }).concat(x.runsNext.map(function (r) {
+      var s = byId('Serier', r.serie_id);
+      return wkRow('', esc(s ? s.navn : 'Arrangement'), 'Arrangement · ' + dayName(r.dato) + ' ' + esc(fmtDate(r.dato)) + (r.sted ? ' · ' + esc(r.sted) : ''), '', ' data-go="runde/' + esc(r.id) + '"');
+    })).join('');
+    var quietHtml = x.quiet.map(function (q) {
+      var planned = d.Oppgaver.some(function (k) { return openTask(k) && k.prosjekt_id === q.p.id && k.frist && k.frist >= w.nextMon && k.frist <= w.nextSun && /^Følg opp/.test(k.tittel); });
+      var acts = (planned ? '<span class="chip c-info">Følges opp neste uke</span>' : '<button class="btn small" data-wk-follow="' + esc(q.p.id) + '">Følg opp neste uke</button>') + '<button class="btn small" data-wk-log="' + esc(q.p.id) + '">Logg kontakt</button>';
+      return wkRow('quiet', '<span class="wlink" data-go="prosjekt/' + esc(q.p.id) + '">' + esc(q.p.kortnavn) + '</span>', q.days == null ? 'Ingen logg ennå' : 'Ingen logg på ' + q.days + ' dager', acts);
+    }).join('');
+
+    var last = d.Historikk.filter(function (h) { return h.fane === 'Uke'; }).map(function (h) { return h.rad_id; }).sort().pop();
+    var thisId = 'uke-' + wk.year + '-' + String(wk.week).padStart(2, '0');
+    var sub = 'Uke ' + wk.week + ' · ' + weekRange(w.mon, w.sun) + ' → planlegg uke ' + nwk.week + ' · ' + weekRange(w.nextMon, w.nextSun) +
+      (last === thisId ? ' · <span class="chip c-done">Ferdig med uka</span>' : '');
+
+    return head('Ukentlig gjennomgang', sub) +
+      '<div class="kpis">' + kpi('Gjort denne uka', doneCount) + kpi('Ikke ferdig', x.notDone.length, x.notDone.length > 0) + kpi('Frister neste uke', x.next.length + x.runsNext.length) + kpi('Lenge siden sist', x.quiet.length) + '</div>' +
+      '<div class="wkgrid">' +
+        '<section class="panel"><h2>Gjort denne uka <span class="hint">' + doneCount + (doneCount === 1 ? ' oppgave' : ' oppgaver') + '</span></h2>' + (doneHtml || '<div class="empty">Ingenting merket som ferdig denne uka.</div>') + '</section>' +
+        '<section class="panel"><h2>Ikke ferdig <span class="hint">frist denne uka eller før</span></h2>' + (notDoneHtml || '<div class="empty">Alt med frist denne uka er gjort.</div>') + '</section>' +
+        '<section class="panel"><h2>Neste uke <span class="hint">' + weekRange(w.nextMon, w.nextSun) + '</span></h2>' +
+          '<div class="grp">Frister</div>' + (nextHtml || '<div class="empty">Ingen frister neste uke.</div>') +
+          (quietHtml ? '<div class="grp">Lenge siden sist</div>' + quietHtml : '') +
+          '<form class="wkadd" data-form="wkadd"><input type="text" id="wkText" placeholder="Legg til oppgave for neste uke …" aria-label="Ny oppgave for neste uke"><input type="date" id="wkDate" value="' + w.nextMon + '" aria-label="Frist"><button class="btn" type="submit">Legg til</button></form>' +
+        '</section>' +
+      '</div>' +
+      '<section class="panel wkfinish"><div><h2>Notat for uka <span class="hint">valgfritt</span></h2><textarea id="wkNote" placeholder="Noe å huske fra denne uka?"></textarea></div><button class="btn primary" data-act="weekdone">Ferdig med uka</button></section>';
+  }
+
+  // "Neste uke": the same weekday next week (follow-up date for Venter på).
+  function wkMoveNext(id) {
+    var k = byId('Oppgaver', id), dd = k.status === 'Venter på' && k.oppfolging ? k.oppfolging : k.frist, to = sameDayNextWeek(dd);
+    var row = { id: id };
+    if (k.status === 'Venter på' && k.oppfolging) row.oppfolging = to; else { row.frist = to; if (!k.opprinnelig_frist && k.frist) row.opprinnelig_frist = k.frist; }
+    save('Oppgaver', [row]).then(function () { toast('Flyttet til ' + dayName(to) + ' ' + fmtDate(to)); render(); });
+  }
+  function wkPostpone(id) {
+    var k = byId('Oppgaver', id), waiting = k.status === 'Venter på' && k.oppfolging;
+    openDrawer('<h2>Utsett</h2><p class="empty">' + esc(k.tittel) + '</p>' + field(waiting ? 'Ny dato for oppfølging' : 'Ny frist', 'dato', addDays(weekDays().nextMon, 7), 'date') + actions(),
+      function (form) {
+        var to = val(form, 'dato'); if (!to) { toast('Velg en dato'); return; }
+        var row = { id: id };
+        if (waiting) row.oppfolging = to; else { row.frist = to; if (!k.opprinnelig_frist && k.frist) row.opprinnelig_frist = k.frist; }
+        save('Oppgaver', [row]).then(function () { closeDrawer(); toast('Utsatt til ' + fmtDate(to)); render(); });
+      });
+  }
+  function wkFollow(pid) {
+    var p = byId('Prosjekter', pid), to = weekDays().nextMon;
+    save('Oppgaver', [{ tittel: 'Følg opp ' + p.kortnavn, prosjekt_id: pid, fase: p.fase, type: 'oppgave', status: 'Ikke startet', frist: to, opprinnelig_frist: to, aar: today().slice(0, 4) }])
+      .then(function () { toast('Lagt til for ' + fmtDate(to)); render(); });
+  }
+  function wkLog(pid) {
+    var p = byId('Prosjekter', pid);
+    openDrawer('<h2>Logg kontakt</h2><p class="empty">' + esc(p.kortnavn) + '</p><div class="grid2">' + field('Type', 'type', '', 'select', options(['Sjekk-inn', 'E-post', 'Telefon', 'Møte', 'Mentormøte', 'Notat'], 'Sjekk-inn')) + field('Dato', 'dato', today(), 'date') + '</div>' + field('Notat', 'tekst', '', 'textarea') + actions(),
+      function (form) {
+        save('Logg', [{ prosjekt_id: pid, dato: val(form, 'dato') || today(), type: val(form, 'type'), tekst: val(form, 'tekst') }]).then(function () { closeDrawer(); toast('Logget'); render(); });
+      });
+  }
+  function wkFinish() {
+    var x = weekData(), wk = isoWeek(x.w.mon), note = ($('wkNote') && $('wkNote').value.trim()) || '';
+    var tekst = 'Gjort: ' + (x.done.length + x.runsDone.length) + '. Ikke ferdig: ' + x.notDone.length + '. Frister neste uke: ' + (x.next.length + x.runsNext.length) + '. Lenge siden sist: ' + x.quiet.length + '.' + (note ? ' Notat: ' + note : '');
+    run('api_weekDone', { aar: wk.year, uke: wk.week, tekst: tekst }, 'Ferdig med uke ' + wk.week);
+  }
+
+
   // ---- Page: Status ------------------------------------------------------------
   function pageStatus() {
     var d = state.d, year = today().slice(0, 4);
@@ -1297,6 +1446,11 @@
     if (ds.setmonth) { state.filters.mmonth = ds.setmonth; render(); return; }
     if (ds.promote) { promote(ds.promote, ds.to); return; }
     if (ds.postpone) { postpone(ds.postpone); return; }
+    if (ds.wkAll) { state.filters.wkAll = !state.filters.wkAll; render(); return; }
+    if (ds.wkNext) { wkMoveNext(ds.wkNext); return; }
+    if (ds.wkLater) { wkPostpone(ds.wkLater); return; }
+    if (ds.wkFollow) { wkFollow(ds.wkFollow); return; }
+    if (ds.wkLog) { wkLog(ds.wkLog); return; }
     if (ds.cpold) { state.filters.cpOld = state.filters.cpOld === ds.cpold ? '' : ds.cpold; render(); return; }
     if (ds.keep) { state.reviewed = state.reviewed || {}; state.reviewed[ds.keep] = 'ingen endring'; render(); return; }
     switch (ds.act) {
@@ -1319,6 +1473,7 @@
       case 'makegeneral': run('api_makeGeneralTasks', { aar: today().slice(0, 4) }).then(function (n) { toast(n ? n + ' nye generelle oppgaver' : 'Alle finnes allerede'); }); break;
       case 'forget': forget(); break;
       case 'zipall': downloadAll(); break;
+      case 'weekdone': wkFinish(); break;
     }
   });
 
@@ -1342,6 +1497,7 @@
     if (kind === 'log') { var txt = $('logText').value.trim(); if (!txt) return; save('Logg', [{ prosjekt_id: f.dataset.id, dato: today(), type: $('logType').value, tekst: txt }]).then(render); }
     if (kind === 'doc') { var u = $('docUrl').value.trim(); if (!/^https?:\/\//i.test(u)) { toast('Lenken må starte med https://'); return; } save('Dokumenter', [{ prosjekt_id: f.dataset.id, tittel: $('docTitle').value.trim(), lenke: u }]).then(render); }
     if (kind === 'inbox') { quickAdd($('inText').value); }
+    if (kind === 'wkadd') { var wt = $('wkText').value.trim(), wd = $('wkDate').value || weekDays().nextMon; if (!wt) return; save('Oppgaver', [{ tittel: wt, type: 'oppgave', status: 'Ikke startet', fase: 'Felles', frist: wd, opprinnelig_frist: wd, aar: wd.slice(0, 4) }]).then(function () { toast('Lagt til for ' + fmtDate(wd)); render(); }); }
     if (kind === 'settings') {
       api('api_saveSettings', { vises_dager_for: $('sDays').value, gjennomgang_dato: $('sReview').value, workshops_obligatoriske: $('sWs').value, mentormoter_kreves: $('sMm').value, ingen_kontakt_dager: $('sNc').value })
         .then(function (s) { state.d.Innstillinger = s; toast('Lagret'); }).catch(fail);
