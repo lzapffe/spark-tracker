@@ -474,6 +474,7 @@
         '<section class="panel"><h2>Oppgaver <span class="hint">' + open.length + ' åpne</span></h2>' + phaseTasks(open) +
           (done.length ? '<details><summary class="group-h">Ferdige (' + done.length + ')</summary>' + taskList(done, { noProject: true }) + '</details>' : '') + '</section>' +
         '<div class="cols1">' +
+          contactsPanel(p) +
           '<section class="panel"><h2>Logg</h2><div class="loglist">' +
             (logs.length ? logs.map(function (l) { return '<div class="logitem"><div class="d">' + esc(fmtDate(l.dato)) + ' · ' + esc(l.type || 'Notat') + '</div>' + esc(l.tekst) + '</div>'; }).join('') : '<div class="empty">Ingen notater ennå.</div>') +
             '</div><form class="addrow" data-form="log" data-id="' + esc(p.id) + '"><select id="logType">' + options(['Notat', 'Sjekk-inn', 'Mentormøte', 'E-post', 'Telefon', 'Møte'], 'Notat') + '</select><input type="text" id="logText" placeholder="Skriv et notat"><button class="btn" type="submit">Legg til</button></form></section>' +
@@ -485,6 +486,34 @@
         '</div>' +
       '</div>';
   }
+  // v11: contact people for a project. The project leader (leder / epost) plus extra people in
+  // Prosjekter.kontakter (JSON [{navn, epost, rolle, kopi}]). kopi = 'ja': always on copy (cc)
+  // when you e-mail the project from here. Templates are filled in with the leader's name.
+  function projContacts(p) { var a = []; try { a = JSON.parse(p.kontakter || '[]'); } catch (e) { a = []; } return Array.isArray(a) ? a : []; }
+  function projCc(p) { return projContacts(p).filter(function (c) { return c.kopi !== 'nei' && c.epost; }).map(function (c) { return c.epost; }).join(','); }
+  function contactsPanel(p) {
+    var list = projContacts(p), cc = projCc(p);
+    var gen = state.d.Maler.filter(function (m) { return m.type === 'generell'; }).sort(function (a, b) { return Number(a.rekkefolge || 0) - Number(b.rekkefolge || 0); });
+    var v = { navn: p.leder || '', prosjekt: p.tittel || p.kortnavn, beskrivelse: p.maal || '' };
+    return '<section class="panel"><h2>Kontaktpersoner</h2>' +
+      '<div class="task"><span></span><div><div class="tt">' + esc(p.leder || 'Prosjektleder ikke satt') + '</div><div class="meta">Prosjektleder' + (p.epost ? ' · ' + esc(p.epost) : '') + '</div></div></div>' +
+      list.map(function (c, i) {
+        return '<div class="task"><span></span><div><div class="tt">' + esc(c.navn || c.epost) + '</div><div class="meta">' + esc([c.rolle, c.epost].filter(Boolean).join(' · ')) + '</div></div>' +
+          '<label class="check"><input type="checkbox" data-pccc="' + esc(p.id) + '|' + i + '"' + (c.kopi !== 'nei' ? ' checked' : '') + '> Alltid på kopi</label>' +
+          '<button class="btn ghost small" data-delpc="' + esc(p.id) + '|' + i + '" aria-label="Fjern ' + esc(c.navn || c.epost) + '">✕</button></div>';
+      }).join('') +
+      '<form class="addrow" data-form="pcontact" data-id="' + esc(p.id) + '"><input type="text" id="pcName" placeholder="Navn" aria-label="Navn"><input type="text" id="pcMail" placeholder="E-post" aria-label="E-post"><input type="text" id="pcRole" placeholder="Rolle (f.eks. prosjektkoordinator)" aria-label="Rolle"><button class="btn" type="submit">Legg til</button></form>' +
+      '<span class="group-h">E-post til prosjektet <span class="hint">til ' + esc(p.epost || 'prosjektlederen') + (cc ? ', kopi til ' + esc(cc.split(',').join(', ')) : '') + '</span></span><div class="row wrap">' +
+        '<a class="btn small primary" href="' + esc(mailto(p.epost, '', '', cc)) + '">Ny e-post</a>' +
+        gen.map(function (m) { return '<a class="btn small" href="' + esc(mailto(p.epost, fillTpl(m.emne, v), fillTpl(m.tekst, v), cc)) + '">' + esc(m.navn) + ' (' + esc(m.spraak.toUpperCase()) + ')</a>'; }).join('') +
+      '</div></section>';
+  }
+  function saveContacts(pid, list) {
+    var p = byId('Prosjekter', pid), json = JSON.stringify(list);
+    p.kontakter = json; state.keepScroll = true; render();   // show at once; the sheet follows
+    return save('Prosjekter', [{ id: pid, kontakter: json }]);
+  }
+
   function phaseTasks(list) {
     if (!list.length) return '<div class="empty">Ingen åpne oppgaver.</div>';
     return PHASES.concat(['Felles', '']).map(function (ph) {
@@ -675,7 +704,8 @@
 
   // Project editor (new or existing).
   function editProject(id) {
-    var p = id ? byId('Prosjekter', id) : { fase: '1. år', forsinket: 'nei', startdato: (Number(today().slice(0, 4)) + 1) + '-01-01' };
+    var y0 = today().slice(0, 4);
+    var p = id ? byId('Prosjekter', id) : { fase: '1. år', forsinket: 'nei', kull: y0, startdato: y0 + '-01-01', sluttdato: endFrom(y0 + '-01-01') };
     var contacts = state.d.Kontakter;
     openDrawer('<h2>' + (id ? 'Rediger prosjekt' : 'Nytt prosjekt') + '</h2>' +
       '<div class="grid2">' + field('Kortnavn', 'kortnavn', p.kortnavn) + field('Kull', 'kull', '', 'select', kullOptions(p.kull)) + '</div>' +
@@ -701,6 +731,24 @@
           return run('api_setPhase', { id: saved[0].id, fase: fase, dato: row.startdato || today() }, 'Prosjektet er lagt til');
         }).then(function () { location.hash = '#prosjekter'; });
       });
+    // v11: Kull → start date 1 January that year (new projects); start date → planned end 2 years later.
+    // A date is only filled in when it is empty or still the value filled in automatically.
+    var form = $('drawerForm'), get = function (n) { return form.querySelector('[name="' + n + '"]'); };
+    var autoStart = id ? '' : get('startdato').value, autoEnd = get('sluttdato').value === endFrom(get('startdato').value) || !get('sluttdato').value ? get('sluttdato').value : null;
+    get('kull').addEventListener('change', function () {
+      if (id || !/^\d{4}$/.test(this.value)) return;
+      if (!get('startdato').value || get('startdato').value === autoStart) { autoStart = get('startdato').value = this.value + '-01-01'; get('startdato').dispatchEvent(new Event('change', { bubbles: true })); }
+    });
+    get('startdato').addEventListener('change', function () {
+      var e = get('sluttdato');
+      if (autoEnd !== null && (e.value === autoEnd || !e.value) && this.value) autoEnd = e.value = endFrom(this.value);
+    });
+  }
+  // Planned end = 2 years after the start, the day before (start 1 Jan 2026 → end 31 Dec 2027).
+  function endFrom(start) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start || '')) return '';
+    var p = start.split('-').map(Number), t = new Date(Date.UTC(p[0] + 2, p[1] - 1, p[2]) - 86400000);
+    return t.toISOString().slice(0, 10);
   }
 
   // Phase change.
@@ -2423,9 +2471,10 @@
   // Fields in {curly brackets} are filled in: {navn} {arrangement} {dato} {tid} {sted} {prosjekt} {beskrivelse}.
   var TPL_TYPES = { foredragsholder: 'Inviter foredragsholder', mentor: 'Inviter mentor', generell: 'Generell' };
   var LANGS = { no: 'Norsk', en: 'English' };
-  function mailto(to, subject, body) {
+  function mailto(to, subject, body, cc) {
     var enc = function (s) { return encodeURIComponent(String(s || '').replace(/\r?\n/g, '\r\n')); };
-    return 'mailto:' + encodeURIComponent(to || '').replace(/%40/g, '@') + '?subject=' + enc(subject) + '&body=' + enc(body);
+    var addr = function (s) { return encodeURIComponent(s || '').replace(/%40/g, '@').replace(/%2C/g, ','); };
+    return 'mailto:' + addr(to) + '?' + (cc ? 'cc=' + addr(cc) + '&' : '') + 'subject=' + enc(subject) + '&body=' + enc(body);
   }
   function copyText(text) {
     var done = function () { toast('Kopiert'); };
@@ -2599,6 +2648,7 @@
     if (ds.wf) { wfToggle(ds.wf); return; }
     if (ds.chart) { showChartInfo(el); return; }
     if (ds.bday) { stepDay(ds.bday); return; }
+    if (ds.delpc) { var dp = ds.delpc.split('|'), dl = projContacts(byId('Prosjekter', dp[0])); dl.splice(Number(dp[1]), 1); saveContacts(dp[0], dl).then(function () { toast('Fjernet'); }); return; }
     if (ds.pay) { editPayment(ds.pay); return; }
     if (ds.post) { editPost(ds.post); return; }
     if (ds.budyear) { editSalary(Number(ds.budyear), true); return; }
@@ -2662,6 +2712,13 @@
     if (kind === 'log') { var txt = $('logText').value.trim(); if (!txt) return; save('Logg', [{ prosjekt_id: f.dataset.id, dato: today(), type: $('logType').value, tekst: txt }]).then(render); }
     if (kind === 'doc') { var u = $('docUrl').value.trim(); if (!/^https?:\/\//i.test(u)) { toast('Lenken må starte med https://'); return; } save('Dokumenter', [{ prosjekt_id: f.dataset.id, tittel: $('docTitle').value.trim(), lenke: u }]).then(render); }
     if (kind === 'inbox') { quickAdd($('inText').value); }
+    if (kind === 'pcontact') {
+      var cn = $('pcName').value.trim(), cm = $('pcMail').value.trim(), cr = $('pcRole').value.trim();
+      if (!cn && !cm) { toast('Skriv navn eller e-post'); return; }
+      if (cm && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cm)) { toast('Sjekk e-postadressen'); return; }
+      var pl = projContacts(byId('Prosjekter', f.dataset.id)); pl.push({ navn: cn, epost: cm, rolle: cr, kopi: 'ja' });
+      saveContacts(f.dataset.id, pl).then(function () { toast('Lagt til'); });
+    }
     if (kind === 'expense') { addExpense(f); }
     if (kind === 'wkadd') { var wt = $('wkText').value.trim(), wd = $('wkDate').value || weekDays().nextMon; if (!wt) return; save('Oppgaver', [{ tittel: wt, type: 'oppgave', status: 'Ikke startet', fase: 'Felles', frist: wd, opprinnelig_frist: wd, aar: wd.slice(0, 4) }]).then(function () { toast('Lagt til for ' + fmtDate(wd)); render(); }); }
     if (kind === 'settings') {
@@ -2681,6 +2738,7 @@
     var map = { fFase: 'fase', fProsjekt: 'prosjekt', fType: 'type', fDone: 'showDone', fPfase: 'pfase', fKull: 'kull', fFak: 'fak', fDelayed: 'delayed', fSyear: 'syear', fGfase: 'gfase', fGtype: 'gtype' };
     var ds = e.target.dataset || {};
     if (ds.attend) { saveAttendance(ds.attend, ds.run, e.target.value); return; }
+    if (ds.pccc) { var cp = ds.pccc.split('|'), cl = projContacts(byId('Prosjekter', cp[0])); if (cl[Number(cp[1])]) { cl[Number(cp[1])].kopi = e.target.checked ? 'ja' : 'nei'; saveContacts(cp[0], cl); } return; }
     if (ds.promoteSel) { if (e.target.value) promote(ds.promoteSel, e.target.value); return; }
     map.fMmonth = 'mmonth'; map.fMyear = 'myear'; map.fArchSeries = 'archSeries';
     map.fStYear = 'stYear'; map.fBYear = 'bYear'; map.fTlArch = 'tlArch'; map.fLocked = 'showLocked';

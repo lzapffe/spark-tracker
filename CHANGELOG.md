@@ -3,6 +3,18 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v11 – 9 November 2026
+
+### Added
+- **Kontaktpersoner** on the project page: the project leader plus extra contact people (name, e-mail, role). Tick "Alltid på kopi" for the ones who should always be copied in.
+- **E-post til prosjektet** in the same panel: a new e-mail or one of the general templates, addressed to the project leader with the "always on copy" people as cc, and the leader's name and the project filled in.
+
+### Changed
+- **New project form:** choosing Kull sets the start date to 1 January that year; the start date sets the planned end to two years later (the day before: 1 Jan 2026 → 31 Dec 2027). Only empty or automatically filled dates are changed.
+
+### Back end
+- Prosjekter: new column `kontakter`. Run `setup` once to add it.
+
 ## v10 – 9 November 2026
 
 ### Changed
