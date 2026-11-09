@@ -273,7 +273,7 @@
       '<section class="panel"><h2>Alle prosjekter</h2>' + bigGrid(active) + '</section>' +
       quietPanel();
   }
-  function kpi(l, n, warn) { return '<div class="kpi"><div class="l">' + esc(l) + '</div><div class="n' + (warn ? ' warn' : '') + '">' + n + '</div></div>'; }
+  function kpi(l, n, warn) { return '<div class="kpi"><div class="l">' + esc(l) + '</div><div class="n' + (warn ? ' warn' : '') + '">' + (typeof n === 'number' ? fmtNum(n, 1) : n) + '</div></div>'; }
   function head(title, sub, tools) { return '<div class="top"><div><h1>' + title + '</h1>' + (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>' + (tools ? '<div class="tools">' + tools + '</div>' : '') + '</div>'; }
   function fmtLong(d) { var days = ['søndag', 'mandag', 'tirsdag', 'onsdag', 'torsdag', 'fredag', 'lørdag']; var p = d.split('-').map(Number); var wd = new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay(); return days[wd].charAt(0).toUpperCase() + days[wd].slice(1) + ' ' + p[2] + '. ' + ['januar', 'februar', 'mars', 'april', 'mai', 'juni', 'juli', 'august', 'september', 'oktober', 'november', 'desember'][p[1] - 1] + ' ' + p[0]; }
 
@@ -576,7 +576,7 @@
         '<label class="f">Obligatoriske workshops<input type="number" id="sWs" value="' + esc(s.workshops_obligatoriske) + '"></label>' +
         '<label class="f">Mentormøter som kreves<input type="number" id="sMm" value="' + esc(s.mentormoter_kreves) + '"></label>' +
         '<label class="f">Vis i «Lenge siden sist» etter (dager uten logg)<input type="number" id="sNc" value="' + esc(s.ingen_kontakt_dager) + '"></label>' +
-        '<label class="f">Prosjektmidler per prosjekt per år (kr)<input type="number" id="sPm" value="' + esc(s.prosjektmidler_per_aar || '400000') + '"></label>' +
+        '<label class="f">Prosjektmidler per prosjekt per år (kr)<input type="text" inputmode="numeric" class="money" id="sPm" value="' + esc(moneyVal(s.prosjektmidler_per_aar || '400000')) + '"></label>' +
         '<label class="f">Stillingsprosent i SPARK<input type="number" id="sSt" value="' + esc(s.stilling_spark || '20') + '"></label>' +
         '<label class="f">Frist for «Få refusjon» (dager etter betalt)<input type="number" id="sRf" value="' + esc(s.refusjon_dager || '14') + '"></label>' +
       '</div><div class="addrow"><button class="btn primary" type="submit">Lagre</button></div></form>' +
@@ -597,12 +597,13 @@
     var first = form.querySelector('input,select,textarea'); if (first) first.focus();
   }
   function closeDrawer() { $('drawer').hidden = true; $('drawerBg').hidden = true; $('drawer').innerHTML = ''; }
-  function val(form, name) { var el = form.querySelector('[name="' + name + '"]'); return el ? (el.type === 'checkbox' ? (el.checked ? 'ja' : 'nei') : el.value.trim()) : undefined; }
+  function val(form, name) { var el = form.querySelector('[name="' + name + '"]'); return el ? (el.type === 'checkbox' ? (el.checked ? 'ja' : 'nei') : el.classList.contains('money') ? rawMoney(el.value) : el.value.trim()) : undefined; }
   function field(label, name, value, type, opts) {
     type = type || 'text';
     var input;
     if (type === 'select') input = '<select name="' + name + '">' + opts + '</select>';
     else if (type === 'textarea') input = '<textarea name="' + name + '">' + esc(value) + '</textarea>';
+    else if (type === 'money') input = moneyInput(name, value);
     else input = '<input type="' + type + '" name="' + name + '" value="' + esc(value) + '">';
     return '<label class="f">' + label + input + '</label>';
   }
@@ -1515,7 +1516,19 @@
   function monthsBetween(a, b) { return daysBetween(a, b) / 30.44; }
   function addMonthsC(d, n) { var p = d.split('-').map(Number), tot = p[0] * 12 + p[1] - 1 + n, y = Math.floor(tot / 12), m = tot % 12 + 1; var dim = new Date(Date.UTC(y, m, 0)).getUTCDate(); return y + '-' + String(m).padStart(2, '0') + '-' + String(Math.min(p[2], dim)).padStart(2, '0'); }
   function num(v) { var n = Number(String(v == null ? '' : v).replace(/\s/g, '').replace(',', '.')); return isNaN(n) ? 0 : n; }
-  function kr(n) { return Math.round(n).toLocaleString('nb-NO') + ' kr'; }
+  // Numbers with a space between thousands (10 000, 1 250 000) and a decimal comma.
+  // The space is a non-breaking one, so a number never wraps over two lines.
+  function fmtNum(n, dec) {
+    n = Number(n) || 0;
+    var f = Math.pow(10, dec || 0), r = Math.round(Math.abs(n) * f) / f;
+    var parts = String(r).split('.');
+    return (n < 0 && r ? '−' : '') + parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0') + (parts[1] ? ',' + parts[1] : '');
+  }
+  function kr(n) { return fmtNum(Math.round(n)) + ' kr'; }
+  // Amount fields are text boxes (a number box can't show spaces): shown as 10 000, saved as 10000.
+  function moneyVal(v) { return v === '' || v == null ? '' : fmtNum(num(v)); }
+  function moneyInput(name, value, attrs) { return '<input type="text" inputmode="numeric" class="money" name="' + name + '" value="' + esc(moneyVal(value)) + '"' + (attrs || '') + '>'; }
+  function rawMoney(text) { return String(text || '').replace(/[\s\u00a0]/g, '').replace(',', '.'); }
   function segBtns(list, cur, attr) { return '<span class="seg">' + list.map(function (z) { return '<button type="button" ' + attr + '="' + z[0] + '" aria-pressed="' + (cur === z[0]) + '">' + z[1] + '</button>'; }).join('') + '</span>'; }
 
 
@@ -1928,7 +1941,7 @@
   // fmt formats a value; info(i) can give a longer text for the info line.
   function vbars(id, cats, series, opts) {
     opts = opts || {};
-    var fmtV = opts.fmt || function (v) { return String(v); };
+    var fmtV = opts.fmt || function (v) { return fmtNum(v, 1); };
     var max = Math.max.apply(null, [opts.max || 0].concat(series.map(function (s) { return Math.max.apply(null, s.vals.concat([0])); })));
     if (!max) return '<div class="empty">Ingen data ennå.</div>';
     var nice = opts.max || niceMax(max), ticks = [0, nice / 2, nice];
@@ -2086,7 +2099,7 @@
     var pct = pctOf(l) / 100;
     return work.map(function (w, i) { return w * HOURS_DAY * pct + (extra ? extra[i] : 0) * HOURS_DAY; });
   }
-  function hrs(h) { return (Math.round(h * 10) / 10).toLocaleString('nb-NO') + ' t'; }
+  function hrs(h) { return fmtNum(h, 1) + ' t'; }
   function dayList(text) { var a = []; try { a = JSON.parse(text || '[]'); } catch (e) { a = []; } var out = []; for (var i = 0; i < 12; i++) out.push(num(a[i])); return out; }
   function sum(list) { return list.reduce(function (n, v) { return n + v; }, 0); }
   function spentOn(postId) { return sum(state.d.Utgifter.filter(function (u) { return u.post_id === postId; }).map(function (u) { return num(u.beloep); })); }
@@ -2256,10 +2269,10 @@
     var have = budgetPosts(Y), lastPosts = budgetPosts(Y - 1);
     var html = '<h2>Budsjett ' + Y + (withPosts ? '' : ': lønn') + '</h2>' +
       (withPosts ? '<span class="group-h">Lønn</span>' : '') +
-      '<div class="grid2">' + field('Stillingsprosent i SPARK', 'stilling', pct, 'number') + field('Årslønn ved 100 % (kr)', 'aarslonn', salary, 'number') +
-        field('Timesats (kr, tom = årslønn / ' + HOURS_YEAR + ' t)', 'timesats', ownRate, 'number') + '</div>' +
-      '<span class="group-h">Arbeidsdager per måned (hele dager du jobber, plan) <button type="button" class="btn small" id="spreadBtn">Fyll inn arbeidsdager for ' + Y + '</button></span>' +
-      '<p class="empty">Hverdager minus helligdager. Trekk fra ferie og fri selv. SPARK-timene regnes ut som arbeidsdager × 7,5 t × stillingsprosent.</p>' +
+      '<div class="grid2">' + field('Stillingsprosent i SPARK', 'stilling', pct, 'number') + field('Årslønn ved 100 % (kr)', 'aarslonn', salary, 'money') +
+        field('Timesats (kr, tom = årslønn / ' + HOURS_YEAR + ' t)', 'timesats', ownRate, 'money') + '</div>' +
+      '<span class="group-h">Arbeidsdager per måned (hele dager du jobber, plan)</span>' +
+      '<p class="empty">' + (l && l.arbeidsdager_plan ? 'Det du lagret sist.' : 'Hverdager minus helligdager i ' + Y + '.') + ' Trekk fra ferie og fri selv. SPARK-timene regnes ut som arbeidsdager × 7,5 t × stillingsprosent.</p>' +
       '<div class="daygrid">' + MONTHS.map(function (m, i) { return '<label class="f">' + m + '<input type="number" min="0" max="23" name="d' + i + '" value="' + plan[i] + '"></label>'; }).join('') + '</div>' +
       '<p class="empty" id="rateHint"></p>' +
       (l && l.arbeidsdager_plan ? '<label class="check"><input type="checkbox" name="resetnow"> Sett også «nå»-dagene lik planen (og ekstra dager til 0)</label>' : '');
@@ -2276,15 +2289,15 @@
         return { s: x, post: mine, value: mine ? mine.planlagt : prev ? prev.planlagt : '', on: !!(mine || prev || runs), runs: runs };
       });
       html += '<span class="group-h">Arrangementer <span class="hint">omtrentlig beløp per arrangement</span></span><div class="cl">' + (series.length ? series.map(function (x) {
-        return '<label class="postcopy"><input type="checkbox" name="se_' + esc(x.s.id) + '"' + (x.on ? ' checked' : '') + (x.post ? ' disabled' : '') + '> <span>' + esc(x.s.navn) + (x.runs ? ' <small>(' + x.runs + ' i ' + Y + ')</small>' : '') + (x.post ? ' <small>(finnes)</small>' : '') + '</span><input type="number" name="sev_' + esc(x.s.id) + '" value="' + esc(x.value) + '" placeholder="kr" aria-label="Planlagt ' + esc(x.s.navn) + '"></label>';
+        return '<label class="postcopy"><input type="checkbox" name="se_' + esc(x.s.id) + '"' + (x.on ? ' checked' : '') + (x.post ? ' disabled' : '') + '> <span>' + esc(x.s.navn) + (x.runs ? ' <small>(' + x.runs + ' i ' + Y + ')</small>' : '') + (x.post ? ' <small>(finnes)</small>' : '') + '</span>' + moneyInput('sev_' + esc(x.s.id), x.value, ' placeholder="kr" aria-label="Planlagt ' + esc(x.s.navn) + '"') + '</label>';
       }).join('') : '<p class="empty">Ingen aktive arrangementer. Lag dem under Arrangementer.</p>') + '</div>';
       // Other posts: this year's (amount can be changed), last year's to copy, and three empty lines.
       others = have.filter(function (p) { return postCat(p) === 'Annet'; }).map(function (p) { return { post: p, name: p.navn, value: p.planlagt, on: true }; })
         .concat(lastPosts.filter(function (p) { return postCat(p) === 'Annet' && !have.some(function (h) { return h.navn === p.navn; }); }).map(function (p) { return { copy: p, name: p.navn, value: p.planlagt, on: true }; }));
       html += '<span class="group-h">Annet <span class="hint">andre utgifter i året</span></span><div class="cl">' + others.map(function (o, k) {
-        return '<label class="postcopy"><input type="checkbox" name="an_' + k + '"' + (o.on ? ' checked' : '') + (o.post ? ' disabled' : '') + '> <span>' + esc(o.name) + (o.copy ? ' <small>(fra ' + (Y - 1) + ')</small>' : '') + '</span><input type="number" name="anv_' + k + '" value="' + esc(o.value) + '" placeholder="kr" aria-label="Planlagt ' + esc(o.name) + '"></label>';
+        return '<label class="postcopy"><input type="checkbox" name="an_' + k + '"' + (o.on ? ' checked' : '') + (o.post ? ' disabled' : '') + '> <span>' + esc(o.name) + (o.copy ? ' <small>(fra ' + (Y - 1) + ')</small>' : '') + '</span>' + moneyInput('anv_' + k, o.value, ' placeholder="kr" aria-label="Planlagt ' + esc(o.name) + '"') + '</label>';
       }).join('') + [0, 1, 2].map(function (k) {
-        return '<div class="postnew"><input type="text" name="nyn_' + k + '" placeholder="Ny post (f.eks. materiell)" aria-label="Ny post"><input type="number" name="nyv_' + k + '" placeholder="kr" aria-label="Planlagt beløp"></div>';
+        return '<div class="postnew"><input type="text" name="nyn_' + k + '" placeholder="Ny post (f.eks. materiell)" aria-label="Ny post"><input type="text" inputmode="numeric" class="money" name="nyv_' + k + '" placeholder="kr" aria-label="Planlagt beløp"></div>';
       }).join('') + '</div>';
     }
 
@@ -2321,11 +2334,6 @@
       $('rateHint').textContent = 'Timesats: ' + kr(s2 / HOURS_YEAR) + (own ? ' (du bruker ' + kr(own) + ')' : '') + ' · ' + dsum + ' arbeidsdager × 7,5 t × ' + Math.round(p2 * 100) + ' % = ' + hrs(h) + ' SPARK = ' + kr(h * r) + ' i lønn.';
     };
     $('drawerForm').addEventListener('input', upd); upd();
-    $('spreadBtn').addEventListener('click', function () {
-      var f = $('drawerForm'), dl = workdaysIn(Y);
-      for (var i = 0; i < 12; i++) f.querySelector('[name="d' + i + '"]').value = dl[i];
-      upd();
-    });
   }
 
   // A post: Arrangementer (tied to an event series, a rough planned amount) or Annet.
@@ -2336,7 +2344,7 @@
     openDrawer('<h2>' + (id ? esc(p.navn) : 'Ny post ' + esc(Y)) + '</h2>' + field('Navn (tom = arrangementets navn)', 'navn', p.navn) +
       '<div class="grid2">' + field('Kategori', 'kategori', '', 'select', POST_CATS.map(function (c) { return option(c, id ? postCat(p) : 'Arrangementer', c); }).join('')) +
         field('Arrangement', 'serie_id', '', 'select', option('', p.serie_id || '', '– Ikke et arrangement') + series.map(function (s) { return option(s.id, p.serie_id || '', s.navn); }).join('')) +
-        field('Planlagt, omtrent (kr)', 'planlagt', p.planlagt, 'number') + field('År', 'aar', p.aar, 'number') + '</div>' +
+        field('Planlagt, omtrent (kr)', 'planlagt', p.planlagt, 'money') + field('År', 'aar', p.aar, 'number') + '</div>' +
       field('Merknader', 'merknader', p.merknader, 'textarea') +
       (exp.length ? '<span class="group-h">Utgifter på posten (' + kr(sum(exp.map(function (u) { return num(u.beloep); }))) + ')</span><div class="hist">' + exp.map(function (u) { return '<div>' + esc(fmtDate(u.dato)) + ' · ' + esc(u.hva) + ' · ' + kr(num(u.beloep)) + (waitingRefund(u) ? ' · venter på refusjon' : '') + '</div>'; }).join('') + '</div>' : '') +
       actions(id ? '<button type="button" class="btn danger" data-delpost="' + esc(id) + '">Slett</button>' : ''),
@@ -2360,12 +2368,12 @@
         var ref = u.utlegg !== 'ja' ? '' : u.refundert_dato ? ' · refundert ' + esc(fmtDate(u.refundert_dato)) : ' · <span class="chip refund">venter på refusjon</span>';
         return '<div class="task"><span></span><div class="t" data-expense="' + esc(u.id) + '"><div class="tt">' + esc(u.hva || 'Utgift') + '</div><div class="meta">' + esc(post ? post.navn : 'Uten post') + ' · betalt ' + esc(fmtDate(u.dato)) + ref + (u.kvittering ? ' · <a href="' + esc(safeUrl(u.kvittering)) + '" target="_blank" rel="noopener noreferrer">kvittering</a>' : '') + '</div></div><span class="when">' + kr(num(u.beloep)) + '</span></div>';
       }).join('') : '<div class="empty">Ingen utgifter ennå (f.eks. servering, reise, honorar).</div>') +
-      '<form class="expadd" data-form="expense" data-run="' + esc(r.id) + '"><input type="number" id="exAmt" placeholder="Beløp" aria-label="Beløp"><input type="text" id="exWhat" placeholder="Hva (f.eks. servering)" aria-label="Hva">' +
+      '<form class="expadd" data-form="expense" data-run="' + esc(r.id) + '"><input type="text" inputmode="numeric" class="money" id="exAmt" placeholder="Beløp" aria-label="Beløp"><input type="text" id="exWhat" placeholder="Hva (f.eks. servering)" aria-label="Hva">' +
         '<select id="exPost" aria-label="Post">' + postOpts + '</select><input type="date" id="exDate" value="' + today() + '" aria-label="Betalt dato"><input type="text" id="exLink" placeholder="Lenke til kvittering (valgfritt)" aria-label="Kvittering">' +
         '<label class="check"><input type="checkbox" id="exOwn"> Lagt ut selv (må refunderes)</label><button class="btn" type="submit">Legg til</button></form></section>';
   }
   function addExpense(form) {
-    var r = byId('Runder', form.dataset.run), amt = $('exAmt').value.trim(), what = $('exWhat').value.trim(), post = $('exPost').value, link = $('exLink').value.trim();
+    var r = byId('Runder', form.dataset.run), amt = rawMoney($('exAmt').value), what = $('exWhat').value.trim(), post = $('exPost').value, link = $('exLink').value.trim();
     var date = $('exDate').value || today(), own = $('exOwn').checked ? 'ja' : '';
     if (!amt) { toast('Skriv beløpet'); return; }
     if (link && !/^https?:\/\//i.test(link)) { toast('Lenken må starte med https://'); return; }
@@ -2384,7 +2392,7 @@
     }).join('');
     var task = u.oppgave_id && byId('Oppgaver', u.oppgave_id);
     openDrawer('<h2>' + (id ? 'Utgift' : 'Ny utgift ' + esc(u.aar)) + '</h2>' + (r ? '<p class="empty">' + esc(seriesName(r.serie_id) + ' ' + r.aar) + '</p>' : '') +
-      '<div class="grid2">' + field('Beløp (kr)', 'beloep', u.beloep, 'number') + field('Betalt dato', 'dato', u.dato, 'date') + '</div>' +
+      '<div class="grid2">' + field('Beløp (kr)', 'beloep', u.beloep, 'money') + field('Betalt dato', 'dato', u.dato, 'date') + '</div>' +
       field('Hva', 'hva', u.hva) + field('Post', 'post_id', '', 'select', postOpts) +
       '<label class="check"><input type="checkbox" name="utlegg"' + (u.utlegg === 'ja' ? ' checked' : '') + '> Lagt ut selv (må refunderes). Lager oppgaven «Få refusjon».</label>' +
       field('Refundert dato (fylles inn når «Få refusjon» er ferdig)', 'refundert_dato', u.refundert_dato, 'date') +
@@ -2657,9 +2665,15 @@
     if (kind === 'expense') { addExpense(f); }
     if (kind === 'wkadd') { var wt = $('wkText').value.trim(), wd = $('wkDate').value || weekDays().nextMon; if (!wt) return; save('Oppgaver', [{ tittel: wt, type: 'oppgave', status: 'Ikke startet', fase: 'Felles', frist: wd, opprinnelig_frist: wd, aar: wd.slice(0, 4) }]).then(function () { toast('Lagt til for ' + fmtDate(wd)); render(); }); }
     if (kind === 'settings') {
-      api('api_saveSettings', { vises_dager_for: $('sDays').value, gjennomgang_dato: $('sReview').value, workshops_obligatoriske: $('sWs').value, mentormoter_kreves: $('sMm').value, ingen_kontakt_dager: $('sNc').value, prosjektmidler_per_aar: $('sPm').value, stilling_spark: $('sSt').value, refusjon_dager: $('sRf').value })
+      api('api_saveSettings', { vises_dager_for: $('sDays').value, gjennomgang_dato: $('sReview').value, workshops_obligatoriske: $('sWs').value, mentormoter_kreves: $('sMm').value, ingen_kontakt_dager: $('sNc').value, prosjektmidler_per_aar: rawMoney($('sPm').value), stilling_spark: $('sSt').value, refusjon_dager: $('sRf').value })
         .then(function (s) { state.d.Innstillinger = s; toast('Lagret'); }).catch(fail);
     }
+  });
+
+  // Amount fields: show the spaces again when you leave the field (10000 → 10 000).
+  document.addEventListener('focusout', function (e) {
+    var el = e.target;
+    if (el && el.classList && el.classList.contains('money') && el.value.trim() !== '') el.value = moneyVal(rawMoney(el.value));
   });
 
   // Filters: remember the choice and redraw.

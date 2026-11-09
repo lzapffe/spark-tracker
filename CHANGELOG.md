@@ -3,6 +3,14 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v10 – 9 November 2026
+
+### Changed
+- **Numbers with spaces:** amounts, hours and chart/KPI numbers are shown as 10 000 instead of 10000 (`fmtNum`; a non-breaking space, so a number never wraps). Amount fields are text boxes that show the spaces and save the plain number; the "Få refusjon" task title too (back end `krText_`).
+
+### Removed
+- The button "Fyll inn arbeidsdager" in the salary form. The month boxes already open with the workdays (weekdays minus public holidays) for a new year, or with what you saved last; changes you don't save are dropped when you close the form.
+
 ## v9 – 9 November 2026
 
 ### Changed
