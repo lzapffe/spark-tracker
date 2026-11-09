@@ -10,17 +10,23 @@ All notable changes to SPARK-tracker, newest first. Dates are when the version w
 - **Oppstartsmøte and Workshop 1** are two separate activities (new sheets; `migrateV12` adds Oppstartsmøte to an existing sheet).
 - **Årsplan** shows month names (Slutten av januar) instead of month numbers, and the step form has a month drop-down.
 - The postpone button on a project is now **Utsett prosjektet**.
+- **Salary: extra days count like normal workdays** (× 7.5 h × stillingsprosent), not as a whole 7.5 h day. Wording: "ekstra dager" instead of "ekstra SPARK-dager".
 
 ### Added
 - **Task lists with order:** a third part `etter: A, B` in the activity's task list locks the task until A and B (same year) are done.
 - **E-mail templates linked to an activity:** "Knyttet til aktivitet" in the template form. The activity year's panel (**Til denne aktiviteten**) shows its own templates first, then the general ones, and has "+ E-postmal for <activity>".
 - **Se flyten i Arbeidsflyt** on an activity year: its tasks as a flow.
 - New activities: Ny utlysning, Første søknadsrunde, Intervjuer, Sluttrapporter (processes).
+- **Milepæler (goals), separate from tasks.** Each goal has a month: either per project in its 1st or 2nd year or in Avslutning (e.g. "Mentor på plass", end of March, 1. år; reached when the project's tasks with Gjelder "Mentor" are done), or for the program each year (e.g. "Utlysningen er ute", June; reached when the tasks from its Årsplan steps and/or its activity are done). Turn off "automatisk" to tick by hand only; any goal can be ticked by hand. Shown on the project page (per year, "x av y"), in **Årsplan** as a year view January–December ("3 av 5 prosjekter"; tap for the list and the tick buttons; ← → for other years; + Milepæl), and on **Oversikt** when this year's goal month has passed. A first list of 17 goals (Claude's draft from the year plan, approved by Linn).
+- **Delmål in an activity's task list:** a heading with its own deadline, and the tasks below it. Reached when its tasks are done, or ticked by hand ("Kryss av selv"). The activity year shows the tasks grouped under each delmål with "x av y ferdig". A task's form has a Delmål field on activity years.
+- **Task list editor:** the activity's task list is now a list with fields (name, ± days, "Etter" with one or more tasks ticked (all must be done first), delmål headings, + Delmål / + Oppgave / ↑ ↓ ✕). "Vis som tekst" shows the text form (`# Delmål | dager | manuelt`, `Oppgave | dager | etter: A, B`).
+- Finding mentors ("Finn forslag til mentorer", "Finn mentor til prosjektet") is now in **1. år**; mentor meetings stay in 2. år.
 
 ### Back end
-- New columns: `Serier.art`, `Runder.sluttdato`, `Maler.serie_id`. Run `setup`, then `migrateV12` once.
+- New columns: `Serier.art`, `Runder.sluttdato`, `Maler.serie_id`. Run `setup`, then `migrateV12` once.- New columns: `Serier.art`, `Runder.sluttdato`, `Maler.serie_id`. Run `setup`, then `migrateV12` once.
 - `makeRunTasks_` reads `etter:` and fills `laases_opp_av` with the task IDs.
 - `seriesTrack_` knows the new types (Oppstart, Utlysning, Søknad, Rapport).
+- New tabs `Milepaeler` (the goals) and `Milepaelstatus` (hand ticks), new columns `Oppgaver.delmaal` and `Runder.delmaal_ferdig`. `makeRunTasks_` reads `#` lines. `seedMilestones_` makes the first 17 goals. `migrateV12` also moves the two mentor steps to 1. år and fills in the goals' activity links.
 
 ## v11 – 9 November 2026
 

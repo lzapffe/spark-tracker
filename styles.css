@@ -469,3 +469,46 @@ table.t tr.refund td { background: color-mix(in srgb, var(--t-intervju) 9%, tran
   .pl-axis { margin-left: 150px; } .pl-lane { grid-template-columns: 150px minmax(0, 1fr); }
   .pltl { min-width: 640px; }
 }
+
+/* v12: delmål (groups in an activity's task list) and the task list editor */
+.dm { border-top: 1px solid var(--line); padding-top: 6px; margin-top: 6px; }
+.dm:first-child { border-top: 0; margin-top: 0; }
+.dm-h { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-bottom: 2px; }
+.dm-n { font-weight: 600; color: var(--title); }
+.dm-m { color: var(--muted); font-size: 12.5px; }
+.tl-gline { margin-top: 6px; }
+.tl-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.tled { display: grid; gap: 6px; margin-top: 4px; }
+.tl-row { display: grid; grid-template-columns: 18px minmax(0, 1fr) 84px minmax(0, 1fr) auto; gap: 6px; align-items: center; }
+.tl-row.tl-g { background: var(--head); border-radius: var(--r-s); padding: 6px; margin-top: 6px; }
+.tl-row.tl-g .tl-addin { grid-column: 2 / -1; justify-self: start; }
+.tl-row input[type=text], .tl-row input[type=number], .tl-row select { width: 100%; min-width: 0; }
+.tl-ic { text-align: center; color: var(--muted); }
+.tl-man { display: flex; gap: 4px; align-items: center; font-size: 12.5px; color: var(--text); white-space: nowrap; }
+.tl-btns { display: flex; gap: 2px; }
+@media (max-width: 640px) {
+  .tl-row { grid-template-columns: 18px minmax(0, 1fr) 76px; }
+  .tl-row .tl-after, .tl-row .tl-man { grid-column: 2 / 3; }
+  .tl-row .tl-btns { grid-column: 3 / 4; justify-content: end; }
+}
+
+/* v12: Milepæler */
+.ms-ic { text-align: center; }
+.ms-r { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: end; }
+.mgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.mcell { background: var(--card2, var(--head)); border-radius: var(--r-s); padding: 8px 10px; min-width: 0; display: grid; gap: 6px; align-content: start; }
+.mcell.now { outline: 2px solid var(--accent); }
+.mcell h3 { font-size: 13px; margin: 0; }
+.msi { display: grid; gap: 2px; justify-items: start; text-align: left; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: var(--r-s); padding: 6px 8px; font: inherit; font-size: 13px; cursor: pointer; }
+.msi small { color: var(--muted); font-size: 11.5px; }
+.msi.none { opacity: .65; }
+.msi-n { font-weight: 600; color: var(--title); }
+@media (max-width: 1000px) { .mgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .mgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 420px) { .mgrid { grid-template-columns: minmax(0, 1fr); } }
+.tl-after { position: relative; min-width: 0; }
+.tl-after summary { list-style: none; cursor: pointer; border: 1px solid var(--line); border-radius: var(--r-s); padding: 6px 10px; background: var(--card); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-after summary::-webkit-details-marker { display: none; }
+.tl-after[open] summary { border-color: var(--accent); }
+.tl-pick { display: grid; gap: 4px; padding: 8px 10px; margin-top: 4px; border: 1px solid var(--line); border-radius: var(--r-s); background: var(--card); max-height: 220px; overflow-y: auto; font-size: 13px; }
+.tl-pick label { display: flex; gap: 6px; align-items: center; }
