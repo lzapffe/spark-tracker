@@ -3,6 +3,25 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v12 – 9 November 2026
+
+### Changed
+- **Arrangementer is now Aktiviteter.** Each activity has an **art**: *arrangement* (one day, e.g. a workshop) or *prosess* (a period, e.g. Ny utlysning, Første søknadsrunde). The list page shows the two in separate sections. A process year has a start and an end date (Fra / Til) and no "Hvem var med?".
+- **Oppstartsmøte and Workshop 1** are two separate activities (new sheets; `migrateV12` adds Oppstartsmøte to an existing sheet).
+- **Årsplan** shows month names (Slutten av januar) instead of month numbers, and the step form has a month drop-down.
+- The postpone button on a project is now **Utsett prosjektet**.
+
+### Added
+- **Task lists with order:** a third part `etter: A, B` in the activity's task list locks the task until A and B (same year) are done.
+- **E-mail templates linked to an activity:** "Knyttet til aktivitet" in the template form. The activity year's panel (**Til denne aktiviteten**) shows its own templates first, then the general ones, and has "+ E-postmal for <activity>".
+- **Se flyten i Arbeidsflyt** on an activity year: its tasks as a flow.
+- New activities: Ny utlysning, Første søknadsrunde, Intervjuer, Sluttrapporter (processes).
+
+### Back end
+- New columns: `Serier.art`, `Runder.sluttdato`, `Maler.serie_id`. Run `setup`, then `migrateV12` once.
+- `makeRunTasks_` reads `etter:` and fills `laases_opp_av` with the task IDs.
+- `seriesTrack_` knows the new types (Oppstart, Utlysning, Søknad, Rapport).
+
 ## v11 – 9 November 2026
 
 ### Added
