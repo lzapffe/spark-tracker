@@ -3,6 +3,27 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v9 – 9 November 2026
+
+### Changed
+- **Salary in Budsjett:** the month numbers are now whole workdays, not SPARK days. SPARK hours = workdays × 7.5 h × stillingsprosent (20 %), plus 7.5 h per extra whole SPARK day. Cost = hours × hourly rate (yearly salary at 100 % / 1950 h, or your own rate). "Fyll inn arbeidsdager" fills in Mon–Fri minus Norwegian public holidays; holidays (ferie) are taken out by hand. Each month tile has − / + for workdays and for extra SPARK days.
+- **Gjennomgang ved årsskiftet → Budsjett for <year>:** one form for the whole year: salary, the year's project money (shown, worked out by itself), a rough planned amount for each active event series, and other posts (this year's, last year's to copy, and three empty lines for new ones).
+
+- **Hendelser is now called Arrangementer** and is in the top menu. **Progress is now called Årsplan** in the app (the sheet tab keeps the name Progress).
+- **Kull** in the project form is a drop-down: 2013 to four years from now, this year to begin with.
+
+### Added
+- **Task list for an event series** (Rediger on the series): one task per line, "title | days before (−) or after (+) the date". Every new year of the event gets these tasks; their deadlines follow the event date. "Lag oppgaver fra listen" on an event year adds any that are missing.
+- **Til dette arrangementet** on an event year: invite a speaker, invite a mentor (mentor meetings), the general e-mail templates filled in with the event, guides, the budget post and the task list in one place.
+- **Slett året** in the event-year form (asks first; done tasks and expenses are kept).
+
+### Removed
+- Hint texts: "forfalt, oppfølging, denne uka" (Haster), the one beside "Budsjett for <year>", "frist nå eller forfalt" and "uten frist, alltid her" (Oppgaver), "opptatt, avslått, trukket" (Søkere), "uten frist", "synlige nå" and "f.eks. workshops" (phase pages), "frist denne måneden, og generelle som pleier å komme nå" (month view).
+
+### Back end
+- Budsjett: new columns `arbeidsdager_plan`, `arbeidsdager`, `ekstra`, `timesats` (`dager`, `dager_plan`, `dagsats` are no longer used). Serier: `oppgavemal`. Oppgaver: `mal_dager`. Run `setup` once to add them.
+- New calls `api_runTasks`, `api_deleteRun`; `api_newRun` makes the year's tasks; saving an event year moves the deadlines of its list tasks.
+
 ## v8 – 8 November 2026
 
 ### Added

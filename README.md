@@ -42,7 +42,7 @@ See [docs/workflow.md](docs/workflow.md) for the full list, limits and warnings.
 
 | I want to ... | Do this |
 |---|---|
-| Change the year plan (which tasks come when) | In the app: **Mer → Progress**. No code. |
+| Change the year plan (which tasks come when) | In the app: **Mer → Årsplan** (sheet tab: Progress). No code. |
 | Make tasks wait for other tasks | **Mer → Arbeidsflyt**, or "Låses opp av" in a task form. |
 | Edit the e-mail templates | **Mer → E-postmaler → Rediger**. |
 | Change a rule (days before a deadline a task shows, required workshops ...) | **Mer → Innstillinger**. |

@@ -1,8 +1,8 @@
 /* SPARK-tracker service worker: caches the page files so the app opens fast
    and can be installed. Your data is never cached (it comes by POST from
    Apps Script). Bump CACHE on every release so devices get the new files. */
-var CACHE = 'spark-v8';
-var FILES = ['./', 'index.html', 'styles.css?v=8', 'app.js?v=8', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
+var CACHE = 'spark-v9';
+var FILES = ['./', 'index.html', 'styles.css?v=9', 'app.js?v=9', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 
 // Install: store the page files.
 self.addEventListener('install', function (e) {
