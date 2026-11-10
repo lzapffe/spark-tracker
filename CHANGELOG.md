@@ -3,6 +3,25 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v13 – 9 November 2026
+
+### Added
+- **Shared task lists per type** ("Felles oppgaver: Alle mentormøter", "Alle pitcher" …): a button on the activity page. Every new year of every activity of that type gets these tasks first, marked **felles**, then the activity's own. A title in both lists is made once.
+- **Agenda variants** on the activity page and the activity year: one variant per size (e.g. "Opptil 10" and "11–14 prosjekter"), chosen by a yearly number (prosjekter, søkere or one you type; set per activity with "Agendaen velges etter antall"). Each variant is a table (time, length, what) with a coloured time bar (Innhold, Pitch, Pause, Diskusjon). The year page shows the variant that fits this year's number first (typed on the year, else the projects signed up or the applicants that year); the buttons show the others, and "Bruk denne i <år>" picks one by hand. All variants are kept.
+- **Experiences (Erfaringer)** with **Skriv erfaring** on the activity page and the year page: the experience, why, and what it is pinned to (an agenda row, a task, a delmål, a file, an e-mail template, or the activity in general). It is shown next to that thing ("Erfaring 2025: … why"), newest first, two at a time. Ticking "Endre agendaen også" / "Endre oppgavelisten også" changes the minutes or text of the agenda row, or the days or name of the task in the list, and the change is saved with the experience. ✕ hides one; "Alle erfaringer" on the activity page lists them all and can show hidden ones again.
+- **Dokumenter og e-postmaler** panel: **faste filer** (follow the activity every year), **årets filer** (one year), and the activity's e-mail templates plus the ones shared by its type (chip "felles for …"), each with "Åpne i e-post". The template form has "Eller felles for en type".
+- **Delmål board** on an activity year: one column per delmål with a progress bar, "x/y", the days before or after the date for each task, 🔒 "etter «…»", the "felles" chip and experiences.
+
+### Changed
+- **No hint text next to panel headings** (Linn's rule for SPARK). Text inside the panels and empty-state text stay. Navigation links in headings (alle, alle milepæler, årsoversikt) stay. Counts that were in the hints (e.g. "x av y ferdig", "+3 mnd totalt") are hidden too.
+- The year page order is now Agenda, Oppgaver, Dokumenter og e-postmaler, then Hvem var med, Notater, Til denne aktiviteten (invites, general templates, guides, budget), Utgifter and Generell info. The activity's own templates moved from "Til denne aktiviteten" to the new documents panel; "Se flyten i Arbeidsflyt" is now "Rediger som arbeidsflyt" above the board.
+
+### Back end
+- New tabs `Typemaler` (`type`, `oppgavemal`), `Agendaer` (`serie_id`, `navn`, `fra`, `til`, `rader` JSON `[{id, min, hva, art}]`, `merknad`, `rekkefolge`) and `Erfaringer` (`serie_id`, `runde_id`, `aar`, `tekst`, `hvorfor`, `fest_til`, `endring`, `skjult`, `opprettet`), all in `EDITABLE_TABS`.
+- New columns: `Serier.agenda_faktor`, `Runder.antall`, `Runder.variant`, `Dokumenter.serie_id`, `Dokumenter.runde_id`, `Maler.serie_type`, `Oppgaver.felles`. Run `setup` once.
+- `makeRunTasks_` reads the type's shared list first and marks those tasks `felles` = ja.
+- `api_getData` reads a tab that does not exist yet as empty, so the page works before `setup` has been run.
+
 ## v12 – 9 November 2026
 
 ### Changed

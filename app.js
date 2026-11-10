@@ -88,7 +88,7 @@
     if (!quiet) $('main').innerHTML = '<div class="loading">Henter data …</div>';
     return api('api_getData').then(function (d) {
       // Tabs added in v8 (empty until setup() has been run after the update).
-      ['Budsjett', 'Utgifter', 'Maler', 'Fasehistorikk'].forEach(function (k) { d[k] = d[k] || []; });
+      ['Budsjett', 'Utgifter', 'Maler', 'Fasehistorikk', 'Typemaler', 'Agendaer', 'Erfaringer'].forEach(function (k) { d[k] = d[k] || []; });
       state.d = d;
       $('connect').hidden = true; $('shell').hidden = false; $('fab').hidden = false;
       render();
@@ -659,7 +659,7 @@
     var step = progressOf(t);
     // v12: a task on an activity year can belong to one of the activity's delmål.
     var tRun = t.runde_id && byId('Runder', t.runde_id), tSer = tRun && byId('Serier', tRun.serie_id);
-    var groupNames = tSer ? parseTaskList(tSer.oppgavemal).filter(function (x) { return x.g; }).map(function (x) { return x.name; }) : [];
+    var groupNames = tSer ? fullTaskList(tSer).filter(function (x) { return x.g; }).map(function (x) { return x.name; }).filter(function (n, i, a) { return a.indexOf(n) === i; }) : [];
     if (t.delmaal && groupNames.indexOf(t.delmaal) < 0) groupNames.push(t.delmaal);
     openDrawer('<h2>' + (id ? 'Oppgave' : 'Ny oppgave') + '</h2>' +
       field('Tittel', 'tittel', t.tittel) +
@@ -1015,19 +1015,18 @@
     var active = d.Prosjekter.filter(function (p) { return ACTIVE.indexOf(p.fase) >= 0; });
     var related = (s.relaterte || '').split(',').map(function (x) { return byId('Serier', x.trim()); }).filter(Boolean);
     var runRow = function (r) { return '<tr class="click" data-go="runde/' + esc(r.id) + '"><td class="strong">' + esc(r.aar) + '</td><td>' + esc(fmtDate(r.dato)) + '</td><td>' + esc(r.sted) + '</td><td><span class="chip ' + (r.status === 'gjennomført' ? 'c-done' : r.status === 'avlyst' ? 'c-na' : 'c-info') + '">' + esc(r.status || 'planlagt') + '</span></td><td>' + d.Deltakelse.filter(function (x) { return x.runde_id === r.id && x.status === 'Deltatt'; }).length + '</td></tr>'; };
-    var tools = '<button class="btn" data-act="editseries" data-id="' + esc(s.id) + '">Rediger</button>' +
+    var tools = '<button class="btn" data-expnew="' + esc(s.id) + '|">Skriv erfaring</button><button class="btn" data-act="editseries" data-id="' + esc(s.id) + '">Rediger</button>' +
       (s.status !== 'arkivert' ? '<button class="btn" data-act="newversion" data-id="' + esc(s.id) + '">Ny versjon</button><button class="btn primary" data-act="newrun" data-id="' + esc(s.id) + '">Nytt år</button>' : '');
 
     return '<div class="top"><div class="ptitle"><div class="short"><a href="#hendelser">Aktiviteter</a> / ' + esc(TYPE_NAMES[s.type] || s.type) + '</div><h1>' + esc(s.navn) + '</h1>' +
         '<div class="sub">Versjon ' + esc(s.versjon || 1) + (s.status === 'arkivert' ? ' · <span class="chip c-na">arkivert</span>' : '') + (s.obligatorisk === 'ja' ? ' · obligatorisk' : '') + (guideLink(s.type) ? ' · ' + guideLink(s.type, 'Veiledning') : '') + (s.guide ? ' · <a href="' + esc(safeUrl(s.guide)) + '" target="_blank" rel="noopener noreferrer">Egen veiledning</a>' : '') + '</div></div>' +
         '<div class="tools">' + tools + '</div></div>' +
-      '<section class="panel"><h2>Generell info <span class="hint">gjelder alle år</span></h2>' + (s.beskrivelse ? '<p class="pre">' + esc(s.beskrivelse) + '</p>' : '<div class="empty">Ingen beskrivelse ennå. Klikk Rediger.</div>') +
-        (s.oppgavemal ? '<span class="group-h">Oppgaver hvert år</span><div class="hist">' + parseTaskList(s.oppgavemal).map(function (x) {
-          var when = x.days !== '' ? ' · ' + daysText(x.days) : '';
-          if (x.g) return '<div class="dm-n tl-gline">🎯 ' + esc(x.name) + when + (x.manual ? ' · krysses av selv' : '') + '</div>';
-          return '<div>' + esc(x.name) + when + (x.after ? ' · 🔒 etter ' + esc(x.after) : '') + '</div>';
-        }).join('') + '</div>' : '<p class="empty">Ingen oppgaveliste. Klikk Rediger for å lage en, så får hvert nytt år de samme oppgavene.</p>') +
-        (related.length ? '<p>Knyttet til: ' + related.map(function (r) { return '<button class="plink" data-go="serie/' + esc(r.id) + '">' + esc(r.navn) + '</button>'; }).join(', ') + '</p>' : '') + '</section>' +
+      '<section class="panel"><h2>Generell info</h2>' + (s.beskrivelse ? '<p class="pre">' + esc(s.beskrivelse) + '</p>' : '<div class="empty">Ingen beskrivelse ennå. Klikk Rediger.</div>') +
+        expHtml(s, '') +
+        '<span class="group-h">Oppgaver hvert år</span>' + taskListPreview(s) +
+        '<div class="row wrap"><button class="btn small" data-act="editseries" data-id="' + esc(s.id) + '">Oppgaveliste og info</button><button class="btn small" data-typelist="' + esc(s.type) + '">Felles oppgaver: ' + esc(typeAll(s.type)) + '</button></div>' +
+        (related.length ? '<p>Knyttet til: ' + related.map(function (r) { return '<button class="plink" data-go="serie/' + esc(r.id) + '">' + esc(r.navn) + '</button>'; }).join(', ') + '</p>' : '') + allExpDetails(s) + '</section>' +
+      agendaPanel(s, cur[0] || null) +
       '<div class="cols">' +
         '<section class="panel"><h2>År</h2>' + (cur.length ? '<div class="tablewrap"><table class="t"><tr><th>År</th><th>Dato</th><th>Sted</th><th>Status</th><th>Deltok</th></tr>' + cur.map(runRow).join('') + '</table></div>' : '<div class="empty">Ikke planlagt i år ennå. Klikk «Nytt år».</div>') +
           (old.length ? '<details><summary class="group-h">Tidligere år (' + old.length + ')</summary><div class="tablewrap"><table class="t">' + old.map(runRow).join('') + '</table></div></details>' : '') +
@@ -1036,7 +1035,7 @@
           var ok = attendedSeries(p.id, s);
           return '<div class="task"><span></span><div class="t" data-go="prosjekt/' + esc(p.id) + '"><div class="tt">' + esc(p.kortnavn) + '</div><div class="meta"><span class="ph">' + esc(p.fase) + '</span></div></div><span class="chip ' + (ok ? 'c-done' : 'c-prog') + '">' + (ok ? 'Vært med' : 'Mangler') + '</span></div>';
         }).join('') + '</section>' : '') +
-      '</div>';
+      '</div>' + docsPanel(s, null);
   }
 
 
@@ -1048,13 +1047,20 @@
     var att = d.Deltakelse.filter(function (x) { return x.runde_id === r.id; });
     var candidates = d.Prosjekter.filter(function (p) { return ACTIVE.indexOf(p.fase) >= 0 || att.some(function (x) { return x.prosjekt_id === p.id; }); });
     var tasks = sortTasks(d.Oppgaver.filter(function (t) { return t.runde_id === r.id; }));
-    var tools = '<button class="btn" data-act="editrun" data-id="' + esc(r.id) + '">Rediger</button>' +
+    var hasList = !!(s && (s.oppgavemal || typeListText(s.type)));
+    var tools = (s ? '<button class="btn" data-expnew="' + esc(s.id + '|' + r.id) + '">Skriv erfaring</button>' : '') + '<button class="btn" data-act="editrun" data-id="' + esc(r.id) + '">Rediger</button>' +
       '<button class="btn" data-act="newtask" data-run="' + esc(r.id) + '">Ny oppgave</button>' +
       (r.status !== 'gjennomført' ? '<button class="btn primary" data-act="finishrun" data-id="' + esc(r.id) + '">Merk som gjennomført</button>' : '');
 
     return '<div class="top"><div class="ptitle"><div class="short"><a href="#hendelser">Aktiviteter</a> / <button class="plink" data-go="serie/' + esc(s ? s.id : '') + '">' + esc(s ? s.navn : '') + '</button></div><h1>' + esc((s ? s.navn : 'Hendelse') + ' ' + r.aar) + '</h1>' +
         '<div class="sub">' + esc([fmtDate(r.dato) + (r.sluttdato ? ' – ' + fmtDate(r.sluttdato) : ''), r.tid ? 'kl. ' + r.tid : '', r.sted].filter(Boolean).join(' · ') || 'Ingen dato ennå') + ' · <span class="chip ' + (r.status === 'gjennomført' ? 'c-done' : 'c-info') + '">' + esc(r.status || 'planlagt') + '</span>' + (r.arkivert === 'ja' ? ' <span class="chip c-na">arkivert</span>' : '') + '</div></div>' +
         '<div class="tools">' + tools + '</div></div>' +
+      (s && (artOf(s) !== 'prosess' || agendasOf(s).length) ? agendaPanel(s, r) : '') +
+      '<section class="panel"><h2>Oppgaver for ' + esc(r.aar) + '</h2><div class="agbar"><span></span><div class="row wrap">' +
+        (hasList ? '<button class="btn small" data-act="runtasks" data-id="' + esc(r.id) + '">Lag oppgaver fra listen</button>' : '') +
+        '<button class="btn small" data-act="wfrun" data-id="' + esc(r.id) + '">Rediger som arbeidsflyt</button><button class="btn small" data-act="newtask" data-run="' + esc(r.id) + '">+ Oppgave</button></div></div>' +
+        runTasksGrouped(r, s, tasks, hasList ? 'Ingen oppgaver ennå. Trykk «Lag oppgaver fra listen».' : 'Ingen oppgaver. Legg inn en oppgaveliste på aktiviteten (Oppgaveliste og info), så får hvert år de samme oppgavene.') + '</section>' +
+      (s ? docsPanel(s, r) : '') +
       '<div class="cols">' +
         (artOf(s) === 'prosess' ? '' : '<section class="panel"><h2>Hvem var med?</h2>' + (candidates.length ? candidates.map(function (p) {
           var a = att.find(function (x) { return x.prosjekt_id === p.id; });
@@ -1064,9 +1070,8 @@
         '<div class="cols1">' +
           '<section class="panel"><h2>Notater for dette året</h2>' + (r.notater ? '<p class="pre">' + esc(r.notater) + '</p>' : '<div class="empty">Ingen notater. Klikk Rediger.</div>') + '</section>' +
           runToolsPanel(r, s, att) +
-          '<section class="panel"><h2>Oppgaver for dette året' + (s && s.oppgavemal ? ' <button class="btn small" data-act="runtasks" data-id="' + esc(r.id) + '">Lag oppgaver fra listen</button>' : '') + '</h2>' + runTasksGrouped(r, s, tasks, s && s.oppgavemal ? 'Ingen oppgaver ennå. Trykk «Lag oppgaver fra listen».' : 'Ingen oppgaver. Legg inn en oppgaveliste på aktiviteten (Rediger), så får hvert år de samme oppgavene.') + '</section>' +
           expensePanel(r) +
-          (s && s.beskrivelse ? '<section class="panel"><h2>Generell info</h2><p class="pre">' + esc(s.beskrivelse) + '</p></section>' : '') +
+          (s ? '<section class="panel"><h2>Generell info</h2>' + (s.beskrivelse ? '<p class="pre">' + esc(s.beskrivelse) + '</p>' : '<div class="empty">Ingen generell info ennå.</div>') + expHtml(s, '') + '</section>' : '') +
         '</div>' +
       '</div>';
   }
@@ -1075,8 +1080,7 @@
   function runToolsPanel(r, s, att) {
     var d = state.d, v = { arrangement: s ? s.navn : '', dato: '', tid: r.tid || '', sted: r.sted || '' };
     var byOrder = function (a, b) { return Number(a.rekkefolge || 0) - Number(b.rekkefolge || 0); };
-    var own = d.Maler.filter(function (m) { return s && m.serie_id && seriesRootId(m.serie_id) === seriesRoot(s); }).sort(byOrder);
-    var gen = d.Maler.filter(function (m) { return m.type === 'generell' && !m.serie_id; }).sort(byOrder);
+    var gen = d.Maler.filter(function (m) { return m.type === 'generell' && !m.serie_id && !m.serie_type; }).sort(byOrder);
     var mailBtn = function (m) {
       var vv = Object.assign({}, v, { dato: longDate(r.dato, m.spraak) });
       return '<a class="btn small" href="' + esc(mailto('', fillTpl(m.emne, vv), fillTpl(m.tekst, vv))) + '">' + esc(m.navn) + ' (' + esc(m.spraak.toUpperCase()) + ')</a>';
@@ -1087,7 +1091,6 @@
     var post = budgetPosts(r.aar).find(function (p) { return p.serie_id === r.serie_id; });
     var guides = [guideLink(s && s.type, 'Veiledning'), s && s.guide ? '<a href="' + esc(safeUrl(s.guide)) + '" target="_blank" rel="noopener noreferrer">Egen veiledning</a>' : ''].filter(Boolean);
     return '<section class="panel"><h2>Til denne aktiviteten</h2>' +
-      (own.length ? '<span class="group-h">E-postmaler for ' + esc(s.navn) + '</span><div class="row wrap">' + own.map(mailBtn).join('') + '</div>' : '') +
       '<span class="group-h">E-post</span><div class="row wrap">' +
         '<button class="btn small primary" data-invite="foredragsholder" data-id="' + esc(r.id) + '">Inviter foredragsholder</button>' +
         mentorFor.map(function (p) { return '<button class="btn small" data-invite="mentor" data-id="' + esc(p.id) + '">Inviter mentor: ' + esc(p.kortnavn) + '</button>'; }).join('') +
@@ -1096,8 +1099,6 @@
         (guides.length ? guides.join(' ') : '') +
         '<a class="btn small" href="#budsjett">Budsjett' + (post ? ': ' + kr(num(post.planlagt)) + ' planlagt, ' + kr(spentOn(post.id)) + ' brukt' : ' (ingen post ennå)') + '</a>' +
         '<button class="btn small" data-act="editseries" data-id="' + esc(s ? s.id : '') + '">Oppgaveliste og info</button>' +
-        '<button class="btn small" data-tedit="" data-tserie="' + esc(s ? s.id : '') + '">+ E-postmal for ' + esc(s ? s.navn : 'aktiviteten') + '</button>' +
-        '<button class="btn small" data-act="wfrun" data-id="' + esc(r.id) + '">Se flyten i Arbeidsflyt</button>' +
       '</div></section>';
   }
 
@@ -1214,33 +1215,375 @@
   function runGroups(r, s) {
     var ticks = {}; try { ticks = JSON.parse(r.delmaal_ferdig || '{}') || {}; } catch (e) { ticks = {}; }
     var tasks = state.d.Oppgaver.filter(function (t) { return t.runde_id === r.id; });
-    return parseTaskList(s && s.oppgavemal).filter(function (x) { return x.g; }).map(function (g) {
+    var seenG = {};
+    return fullTaskList(s).filter(function (x) { if (!x.g || seenG[x.name]) return false; seenG[x.name] = 1; return true; }).map(function (g) {
       var mine = sortTasks(tasks.filter(function (t) { return t.delmaal === g.name; }));
       var done = mine.filter(function (t) { return !openTask(t); });
       var due = r.dato && g.days !== '' ? addDays(r.dato, Number(g.days)) : '';
       var reached = ticks[g.name] || (!g.manual && mine.length && done.length === mine.length ? (done.map(function (t) { return t.ferdig_dato || ''; }).sort().pop() || today()) : '');
-      return { name: g.name, manual: g.manual, due: due, tasks: mine, done: done.length, reached: reached, ticked: !!ticks[g.name], late: !reached && due && due < today() };
+      return { name: g.name, manual: g.manual, days: g.days, shared: !!g.shared, due: due, tasks: mine, done: done.length, reached: reached, ticked: !!ticks[g.name], late: !reached && due && due < today() };
     });
   }
+  // v13: a board with one column per delmål (progress bar, x of y done, compact task rows).
   function runTasksGrouped(r, s, tasks, empty) {
     var groups = runGroups(r, s);
-    if (!groups.length) return taskList(tasks, { noProject: true, empty: empty });
+    if (!groups.length) return tasks.length ? '<div class="board"><div class="dmc">' + tasks.map(function (t) { return boardTask(t, s); }).join('') + '</div></div>' : '<div class="empty">' + esc(empty) + '</div>';
     var used = [];
-    var html = groups.map(function (g) {
+    var col = function (g) {
       used = used.concat(g.tasks);
+      var pct = g.tasks.length ? Math.round(g.done / g.tasks.length * 100) : (g.reached ? 100 : 0);
       var chipHtml = g.reached ? '<span class="chip c-done">Nådd' + (g.reached.length === 10 ? ' ' + esc(fmtDate(g.reached)) : '') + '</span>' : g.late ? '<span class="chip c-late">Ikke nådd</span>' : '';
       var btn = g.manual || g.ticked ? '<button type="button" class="btn small ghost" data-dmtick="' + esc(r.id) + '|' + esc(g.name) + '">' + (g.ticked ? 'Angre' : 'Merk som nådd') + '</button>' : '';
-      return '<div class="dm"><div class="dm-h"><span class="dm-n">🎯 ' + esc(g.name) + '</span><span class="dm-m">' + (g.due ? 'frist ' + esc(fmtDate(g.due)) + ' · ' : '') + g.done + ' av ' + g.tasks.length + ' ferdig</span>' + chipHtml + btn + '</div>' +
-        taskList(g.tasks, { noProject: true, empty: g.manual ? 'Ingen oppgaver. Kryss av når det er på plass.' : 'Ingen oppgaver under dette delmålet.' }) + '</div>';
-    }).join('');
+      return '<div class="dmc"><div class="dmc-h"><span class="dm-n">🎯 ' + esc(g.name) + (g.shared ? ' <span class="chip c-info sh">felles</span>' : '') + '</span><span class="dm-m">' + g.done + '/' + g.tasks.length + '</span></div>' +
+        '<div class="dm-m">' + (g.days !== '' ? esc(daysText(g.days)) + (g.due ? ' (' + esc(fmtDate(g.due)) + ')' : '') : '') + '</div>' +
+        '<div class="pbar" aria-hidden="true"><i style="width:' + pct + '%"></i></div>' + (chipHtml || btn ? '<div class="row wrap">' + chipHtml + btn + '</div>' : '') +
+        expHtml(s, 'delmaal:' + g.name) +
+        (g.tasks.length ? g.tasks.map(function (t) { return boardTask(t, s); }).join('') : '<div class="empty">' + (g.manual ? 'Ingen oppgaver. Kryss av når det er på plass.' : 'Ingen oppgaver under dette delmålet.') + '</div>') + '</div>';
+    };
+    var html = groups.map(col).join('');
     var rest = tasks.filter(function (t) { return used.indexOf(t) < 0; });
-    return html + (rest.length ? '<div class="dm"><div class="dm-h"><span class="dm-n">Andre oppgaver</span></div>' + taskList(rest, { noProject: true }) + '</div>' : '');
+    var all = tasks.length, done = tasks.filter(function (t) { return !openTask(t); }).length;
+    return '<div class="dm-m board-sum">' + done + ' av ' + all + ' ferdig' + (tasks.some(function (t) { return t.felles === 'ja'; }) ? ' · <span class="chip c-info sh">felles</span> = fra «' + esc(typeAll(s.type)) + '»' : '') + '</div>' +
+      '<div class="board">' + html + (rest.length ? '<div class="dmc"><div class="dmc-h"><span class="dm-n">Andre oppgaver</span><span class="dm-m">' + rest.filter(function (t) { return !openTask(t); }).length + '/' + rest.length + '</span></div>' + rest.map(function (t) { return boardTask(t, s); }).join('') + '</div>' : '') + '</div>';
   }
   function tickGroup(arg) {
     var i = arg.indexOf('|'), r = byId('Runder', arg.slice(0, i)), name = arg.slice(i + 1), ticks = {};
     try { ticks = JSON.parse(r.delmaal_ferdig || '{}') || {}; } catch (e) { ticks = {}; }
     if (ticks[name]) delete ticks[name]; else ticks[name] = today();
     save('Runder', [{ id: r.id, delmaal_ferdig: JSON.stringify(ticks) }]).then(function () { toast('Lagret'); render(); });
+  }
+
+
+  // ---- v13: shared lists per type, agenda variants, documents and experiences ------------------
+  // Everything below is stored against the activity's first version (seriesRoot), so a new
+  // version of an activity keeps its agendas, files and experiences.
+  var TYPE_ALL = { workshop: 'Alle workshoper', mentormote: 'Alle mentormøter', intervju: 'Alle intervjuer', pitch: 'Alle pitcher', oppstart: 'Alle oppstartsmøter',
+    annet: 'Alle andre arrangementer', utlysning: 'Alle utlysninger', soknadsrunde: 'Alle søknadsrunder', sluttrapport: 'All rapportering', prosess: 'Alle andre prosesser' };
+  var FACTORS = { prosjekter: 'prosjekter', sokere: 'søkere', eget: '' };
+  var AG_ART = { innhold: 'Innhold', pitch: 'Pitch / presentasjon', pause: 'Pause / mat', diskusjon: 'Diskusjon / panel' };
+  function typeAll(type) { return TYPE_ALL[type] || 'Alle av typen ' + (TYPE_NAMES[type] || type); }
+  function newKey() { return 'r' + Math.random().toString(36).slice(2, 9); }
+  function sameAct(serieId, s) { return !!(serieId && s && seriesRootId(serieId) === seriesRoot(s)); }
+
+  // The shared task list for a type (Typemaler row) and the full list a year gets (shared first).
+  function typeListRow(type) { return (state.d.Typemaler || []).find(function (m) { return m.type === type; }) || null; }
+  function typeListText(type) { var m = typeListRow(type); return m ? m.oppgavemal || '' : ''; }
+  function fullTaskList(s) {
+    var shared = parseTaskList(s ? typeListText(s.type) : '').map(function (x) { x.shared = true; return x; });
+    return shared.concat(parseTaskList(s && s.oppgavemal));
+  }
+  function editTypeList(type) {
+    var m = typeListRow(type);
+    openDrawer('<h2>Felles oppgaver: ' + esc(typeAll(type)) + '</h2>' +
+      '<p class="empty">Hvert nytt år av alle aktiviteter av typen ' + esc(TYPE_NAMES[type] || type) + ' får disse oppgavene først, merket «felles», og deretter aktivitetens egne. En oppgave med samme navn i begge listene lages bare én gang.</p>' +
+      '<div class="f"><span class="tl-head">Oppgaver <button type="button" class="btn small ghost" id="tlTxt">Vis som tekst</button></span><div id="tlEd" class="tled"></div>' +
+        '<textarea name="oppgavemal" class="tall" hidden aria-label="Oppgaveliste som tekst">' + esc(m ? m.oppgavemal : '') + '</textarea></div>' + actions(),
+      function (form) {
+        var row = { type: type, oppgavemal: form.querySelector('[name="oppgavemal"]').value };
+        if (m) row.id = m.id;
+        save('Typemaler', [row]).then(function () { closeDrawer(); toast('Lagret. Gjelder nye år; trykk «Lag oppgaver fra listen» på et år for å legge til det som mangler.'); render(); });
+      });
+    initTaskListEditor();
+  }
+  // Preview of the yearly task list (series page): shared lines get a "felles" chip.
+  function taskListPreview(s) {
+    var list = fullTaskList(s);
+    if (!list.length) return '<p class="empty">Ingen oppgaveliste. Klikk «Oppgaveliste og info» for å lage en, så får hvert nytt år de samme oppgavene.</p>';
+    return '<div class="hist">' + list.map(function (x) {
+      var when = x.days !== '' ? ' · ' + daysText(x.days) : '', fl = x.shared ? ' <span class="chip c-info sh">felles</span>' : '';
+      if (x.g) return '<div class="dm-n tl-gline">🎯 ' + esc(x.name) + fl + when + (x.manual ? ' · krysses av selv' : '') + '</div>';
+      return '<div>' + esc(x.name) + fl + when + (x.after ? ' · 🔒 etter ' + esc(x.after) : '') + '</div>';
+    }).join('') + '</div>';
+  }
+
+  // ---- Agenda variants (Agendaer) ----
+  function agendasOf(s) {
+    return (state.d.Agendaer || []).filter(function (a) { return sameAct(a.serie_id, s); })
+      .sort(function (a, b) { return Number(a.rekkefolge || 0) - Number(b.rekkefolge || 0) || Number(a.fra || 0) - Number(b.fra || 0); });
+  }
+  function agRows(a) { try { return JSON.parse(a.rader || '[]') || []; } catch (e) { return []; } }
+  function factorOf(s) { return s && FACTORS[s.agenda_faktor] !== undefined ? s.agenda_faktor : 'prosjekter'; }
+  // This year's number: typed on the year, else the projects signed up (prosjekter) or the applicants that year (søkere).
+  function runCount(r, s) {
+    if (!r) return null;
+    if (String(r.antall || '') !== '') return Number(r.antall);
+    var f = factorOf(s);
+    if (f === 'prosjekter') { var n = state.d.Deltakelse.filter(function (x) { return x.runde_id === r.id && (x.status === 'Påmeldt' || x.status === 'Deltatt'); }).length; return n || null; }
+    if (f === 'sokere') { var m = state.d.Søkere.filter(function (x) { return x.soknadsaar === r.aar; }).length; return m || null; }
+    return null;
+  }
+  function fits(a, n) { return n != null && (a.fra === '' || a.fra == null || n >= Number(a.fra)) && (a.til === '' || a.til == null || n <= Number(a.til)); }
+  function pickedVariant(list, r, s) {
+    if (!r || !list.length) return null;
+    var chosen = r.variant && list.find(function (a) { return a.id === r.variant; });
+    if (chosen) return chosen;
+    var n = runCount(r, s);
+    return list.find(function (a) { return fits(a, n); }) || null;
+  }
+  function variantLabel(a, s) {
+    if (a.navn) return a.navn;
+    var w = FACTORS[factorOf(s)] || '';
+    var range = a.fra !== '' && a.til !== '' ? a.fra + '–' + a.til : a.fra !== '' ? 'Fra ' + a.fra : a.til !== '' ? 'Opptil ' + a.til : 'Standard';
+    return range + (w ? ' ' + w : '');
+  }
+  function hhmm(start, add) {
+    var p = String(start || '09:00').split(':').map(Number), t = (p[0] || 0) * 60 + (p[1] || 0) + add;
+    return String(Math.floor(t / 60) % 24).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0');
+  }
+  // The agenda panel: one button per variant, a coloured time bar and the table.
+  // On a year page (r) the variant that fits this year is shown first.
+  function agendaPanel(s, r) {
+    var list = agendasOf(s), picked = pickedVariant(list, r, s), key = seriesRoot(s) + '|' + (r ? r.id : '');
+    var sel = (state.filters.agVar || {})[key];
+    var a = list.find(function (x) { return x.id === sel; }) || picked || list[0];
+    var n = runCount(r, s), w = FACTORS[factorOf(s)];
+    var add = '<button class="btn small" data-agedit="" data-agserie="' + esc(s.id) + '">+ Variant</button>';
+    if (!a) return '<section class="panel"><h2>Agenda</h2><div class="empty">Ingen agenda ennå. Lag en variant for hver størrelse du trenger (for eksempel opptil 10 og 11–14 ' + esc(w || 'deltakere') + '), så velges den som passer hvert år.</div><div class="row wrap">' + add + '</div></section>';
+    var rows = agRows(a), total = rows.reduce(function (sum, x) { return sum + (Number(x.min) || 0); }, 0), at = 0;
+    var start = r && r.tid ? r.tid : '09:00';
+    var seg = list.length > 1 ? '<span class="seg">' + list.map(function (x) {
+      return '<button type="button" data-agvar="' + esc(key + '|' + x.id) + '" aria-pressed="' + (x === a) + '">' + esc(variantLabel(x, s)) + '</button>';
+    }).join('') + '</span>' : '<b>' + esc(variantLabel(a, s)) + '</b>';
+    var note = '';
+    if (r) {
+      if (picked && picked === a) note = '<span class="chip c-done">Brukes i ' + esc(r.aar) + (n != null && !r.variant ? ': ' + n + ' ' + esc(w || '') : r.variant ? ' (valgt)' : '') + '</span>';
+      else if (!picked) note = '<span class="chip c-na">' + (n == null ? 'Skriv inn antallet på året (Rediger) for å velge variant' : 'Ingen variant passer ' + n + ' ' + esc(w || '')) + '</span>';
+      if (a !== picked) note += ' <button class="btn small" data-aguse="' + esc(r.id + '|' + a.id) + '">Bruk denne i ' + esc(r.aar) + '</button>';
+      if (r.variant) note += ' <button class="btn small ghost" data-aguse="' + esc(r.id + '|') + '">Velg etter antall</button>';
+    }
+    var bar = total ? '<div class="agbars" aria-hidden="true">' + rows.map(function (x) { return '<i class="ag-' + esc(x.art || 'innhold') + '" style="width:' + ((Number(x.min) || 0) / total * 100) + '%" title="' + esc(x.hva) + '"></i>'; }).join('') + '</div>' : '';
+    var table = rows.length ? '<div class="tablewrap"><table class="t ag"><tr><th>Tid</th><th>Varighet</th><th>Hva</th></tr>' + rows.map(function (x) {
+      var from = hhmm(start, at); at += Number(x.min) || 0;
+      return '<tr class="' + (x.art === 'pause' ? 'brk' : '') + '"><td class="agt"><i class="agdot ag-' + esc(x.art || 'innhold') + '"></i>' + from + '</td><td class="agd">' + esc(x.min || 0) + ' min</td><td>' + esc(x.hva) + expHtml(s, 'agenda:' + x.id) + '</td></tr>';
+    }).join('') + '<tr class="agend"><td class="agt">' + hhmm(start, at) + '</td><td class="agd"></td><td>Slutt</td></tr></table></div>' : '<div class="empty">Ingen rader i denne varianten ennå. Klikk «Rediger variant».</div>';
+    return '<section class="panel"><h2>Agenda</h2><div class="agbar"><div class="row wrap">' + seg + '</div><div class="row wrap">' + note + '</div></div>' + bar + table +
+      (a.merknad ? '<p class="pre ag-note">' + esc(a.merknad) + '</p>' : '') +
+      '<div class="row wrap"><button class="btn small" data-agedit="' + esc(a.id) + '" data-agserie="' + esc(s.id) + '">Rediger variant</button>' + add + '</div></section>';
+  }
+  function editAgenda(id, sid) {
+    var s = byId('Serier', sid), a = id ? byId('Agendaer', id) : { fra: '', til: '', rader: '[]' }, list = agendasOf(s);
+    var rows = agRows(a).map(function (x) { return Object.assign({}, x); }), w = FACTORS[factorOf(s)] || 'antall';
+    openDrawer('<h2>' + (id ? 'Rediger agendavariant' : 'Ny agendavariant') + '</h2>' +
+      '<div class="grid2">' + field('Fra (' + esc(w) + ')', 'fra', a.fra, 'number') + field('Til (' + esc(w) + ')', 'til', a.til, 'number') + '</div>' +
+      field('Eget navn (valgfritt, ellers «' + esc(variantLabel({ navn: '', fra: a.fra || '', til: a.til || '' }, s)) + '»)', 'navn', a.navn) +
+      (!id && list.length ? field('Start med en kopi av', 'kopi', '', 'select', option('', '', 'Ingen (tom)') + list.map(function (x) { return option(x.id, '', variantLabel(x, s)); }).join('')) : '') +
+      '<div class="f"><span class="tl-head">Rader <span class="empty">varighet i minutter; klokkeslettene regnes fra årets starttid</span></span><div id="agEd" class="tled"></div></div>' +
+      field('Merknad', 'merknad', a.merknad, 'textarea') +
+      '<p class="empty">Varianten brukes de årene antallet er mellom Fra og Til (tomt = ingen grense). Antallet skrives på året (Rediger), ellers telles påmeldte prosjekter eller årets søkere.</p>' +
+      actions(id ? '<button type="button" class="btn danger" data-delag="' + esc(id) + '">Slett variant</button>' : ''),
+      function (form) {
+        var copy = val(form, 'kopi');
+        if (copy && !rows.length) rows = agRows(byId('Agendaer', copy)).map(function (x) { return Object.assign({}, x, { id: newKey() }); });
+        var row = { serie_id: seriesRoot(s), navn: val(form, 'navn'), fra: val(form, 'fra'), til: val(form, 'til'), merknad: val(form, 'merknad'),
+          rader: JSON.stringify(rows.filter(function (x) { return String(x.hva || '').trim() || Number(x.min); })) };
+        if (id) row.id = id; else row.rekkefolge = String(list.length * 10 + 10);
+        save('Agendaer', [row]).then(function () { closeDrawer(); toast('Lagret'); render(); });
+      });
+    var box = $('agEd');
+    var draw = function () {
+      box.innerHTML = (rows.length ? rows.map(function (x, i) {
+        return '<div class="tl-row ag-row"><i class="agdot ag-' + esc(x.art || 'innhold') + '"></i>' +
+          '<input type="text" data-i="' + i + '" data-k="hva" value="' + esc(x.hva) + '" placeholder="Hva skjer" aria-label="Hva skjer">' +
+          '<input type="number" data-i="' + i + '" data-k="min" value="' + esc(x.min) + '" placeholder="min" aria-label="Minutter">' +
+          '<select data-i="' + i + '" data-k="art" aria-label="Slag">' + Object.keys(AG_ART).map(function (k) { return option(k, x.art || 'innhold', AG_ART[k]); }).join('') + '</select>' +
+          '<span class="tl-btns"><button type="button" class="btn small ghost" data-ag="up|' + i + '" aria-label="Flytt opp">↑</button><button type="button" class="btn small ghost" data-ag="down|' + i + '" aria-label="Flytt ned">↓</button><button type="button" class="btn small ghost" data-ag="del|' + i + '" aria-label="Slett">✕</button></span></div>';
+      }).join('') : '<div class="empty">Ingen rader ennå.</div>') + '<div class="row wrap"><button type="button" class="btn small" data-ag="add|">+ Rad</button></div>';
+    };
+    box.addEventListener('input', function (e) { var el = e.target, i = Number(el.dataset.i); if (el.dataset.k && rows[i]) rows[i][el.dataset.k] = el.value; if (el.dataset.k === 'art') draw(); });
+    box.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-ag]'); if (!b) return;
+      e.stopPropagation();
+      var p = b.dataset.ag.split('|'), i = Number(p[1]);
+      if (p[0] === 'add') rows.push({ id: newKey(), min: '', hva: '', art: 'innhold' });
+      if (p[0] === 'del') rows.splice(i, 1);
+      if (p[0] === 'up' && i > 0) rows.splice(i - 1, 0, rows.splice(i, 1)[0]);
+      if (p[0] === 'down' && i < rows.length - 1) rows.splice(i + 1, 0, rows.splice(i, 1)[0]);
+      draw();
+      if (p[0] === 'add') { var all = box.querySelectorAll('input[data-k="hva"]'); all[all.length - 1].focus(); }
+    });
+    draw();
+  }
+
+  // ---- Experiences (Erfaringer), shown next to what they are about ----
+  function expsFor(s, key) {
+    return (state.d.Erfaringer || []).filter(function (x) { return sameAct(x.serie_id, s) && (x.fest_til || '') === key && x.skjult !== 'ja'; })
+      .sort(function (a, b) { return (b.aar + b.opprettet) < (a.aar + a.opprettet) ? -1 : 1; });
+  }
+  function expOne(x) {
+    return '<span class="exp"><b>Erfaring ' + esc(x.aar) + ':</b> ' + esc(x.tekst) + (x.hvorfor ? ' <em>' + esc(x.hvorfor) + '</em>' : '') +
+      (x.endring ? '<small>Endret: ' + esc(x.endring) + '</small>' : '') +
+      '<button type="button" class="exp-x" data-exphide="' + esc(x.id) + '" aria-label="Skjul erfaringen" title="Skjul">✕</button></span>';
+  }
+  function expHtml(s, key) {
+    var l = expsFor(s, key);
+    if (!l.length) return '';
+    return l.slice(0, 2).map(expOne).join('') + (l.length > 2 ? '<details class="expmore"><summary>' + (l.length - 2) + ' flere erfaringer</summary>' + l.slice(2).map(expOne).join('') + '</details>' : '');
+  }
+  // What an experience can be pinned to: [value, label] pairs.
+  function expTargets(s, r) {
+    var out = [['', 'Generelt om ' + (s.navn || 'aktiviteten')]];
+    agendasOf(s).forEach(function (a) { agRows(a).forEach(function (x) { if (x.hva) out.push(['agenda:' + x.id, 'Agenda (' + variantLabel(a, s) + '): ' + x.hva]); }); });
+    var seen = {};
+    fullTaskList(s).forEach(function (x) {
+      var k = (x.g ? 'delmaal:' : 'oppgave:') + x.name;
+      if (seen[k] || !x.name) return; seen[k] = 1;
+      out.push([k, (x.g ? 'Delmål: ' : 'Oppgave: ') + x.name]);
+    });
+    if (r) state.d.Oppgaver.filter(function (t) { return t.runde_id === r.id && !seen['oppgave:' + t.tittel]; }).forEach(function (t) { seen['oppgave:' + t.tittel] = 1; out.push(['oppgave:' + t.tittel, 'Oppgave: ' + t.tittel]); });
+    docsOf(s, r).forEach(function (x) { out.push(['dok:' + x.id, 'Dokument: ' + x.tittel]); });
+    templatesOf(s).forEach(function (m) { out.push(['mal:' + m.id, 'E-postmal: ' + m.navn + ' (' + (m.spraak || '').toUpperCase() + ')']); });
+    return out;
+  }
+  // "Skriv erfaring": the text, why, what it is pinned to, and an optional change to the
+  // agenda row or task list line it is pinned to (the change is saved with the experience).
+  function writeExperience(sid, rid, pin) {
+    var s = byId('Serier', sid), r = rid ? byId('Runder', rid) : null;
+    var targets = expTargets(s, r);
+    openDrawer('<h2>Skriv erfaring</h2>' +
+      field('Erfaring', 'tekst', '', 'textarea') + field('Hvorfor / mer om det', 'hvorfor', '') +
+      '<div class="grid2">' + field('Fest til', 'fest_til', '', 'select', targets.map(function (t) { return option(t[0], pin || '', t[1]); }).join('')) +
+        field('År', 'aar', r ? r.aar : today().slice(0, 4), 'number') + '</div>' +
+      '<div id="expChange"></div>' + actions(),
+      function (form) {
+        var key = val(form, 'fest_til'), ch = expChangeFrom(form, s, key);
+        var row = { serie_id: seriesRoot(s), runde_id: rid || '', aar: val(form, 'aar'), tekst: val(form, 'tekst'), hvorfor: val(form, 'hvorfor'), fest_til: key, endring: ch ? ch.text : '', skjult: 'nei', opprettet: today() };
+        if (!row.tekst) { toast('Skriv erfaringen'); return; }
+        var after = ch ? ch.apply() : Promise.resolve();
+        after.then(function () { return save('Erfaringer', [row]); }).then(function () { closeDrawer(); toast(ch ? 'Lagret, og ' + ch.text : 'Lagret'); render(); });
+      });
+    var sel = document.querySelector('#drawerForm [name="fest_til"]');
+    var drawChange = function () { $('expChange').innerHTML = expChangeFields(s, sel.value); };
+    sel.addEventListener('change', drawChange);
+    drawChange();
+  }
+  // Finds the agenda row or task list line a key points to.
+  function expTarget(s, key) {
+    if (key.indexOf('agenda:') === 0) {
+      var rid = key.slice(7), hit = null;
+      agendasOf(s).forEach(function (a) { var rows = agRows(a); rows.forEach(function (x, i) { if (x.id === rid) hit = { kind: 'agenda', a: a, rows: rows, i: i, row: x }; }); });
+      return hit;
+    }
+    if (key.indexOf('oppgave:') === 0 || key.indexOf('delmaal:') === 0) {
+      var g = key.indexOf('delmaal:') === 0, name = key.slice(8);
+      var lists = [{ shared: false, rows: parseTaskList(s.oppgavemal) }, { shared: true, rows: parseTaskList(typeListText(s.type)) }];
+      for (var j = 0; j < lists.length; j++) {
+        var i = lists[j].rows.findIndex(function (x) { return x.g === g && x.name === name; });
+        if (i >= 0) return { kind: 'list', shared: lists[j].shared, rows: lists[j].rows, i: i, row: lists[j].rows[i] };
+      }
+    }
+    return null;
+  }
+  function expChangeFields(s, key) {
+    var t = expTarget(s, key);
+    if (!t) return key.indexOf('mal:') === 0 || key.indexOf('dok:') === 0 ? '<p class="empty">Selve malen eller dokumentet endrer du der det ligger. Erfaringen vises ved siden av det.</p>' : '';
+    if (t.kind === 'agenda') return '<div class="expch"><label class="check"><input type="checkbox" name="ch_on"> Endre agendaen også</label><div class="grid2">' +
+      field('Minutter (nå ' + esc(t.row.min || 0) + ')', 'ch_min', t.row.min, 'number') + field('Tekst', 'ch_hva', t.row.hva) + '</div></div>';
+    return '<div class="expch"><label class="check"><input type="checkbox" name="ch_on"> Endre ' + (t.shared ? 'den felles oppgavelisten (' + esc(typeAll(s.type)) + ')' : 'oppgavelisten') + ' også</label><div class="grid2">' +
+      field('Dager før (−) / etter (+) datoen (nå ' + esc(t.row.days === '' ? 'ingen' : t.row.days) + ')', 'ch_days', t.row.days, 'number') + field('Navn', 'ch_name', t.row.name) + '</div>' +
+      '<p class="empty">Gjelder nye år. Oppgaver som alt er laget, endres ikke.</p></div>';
+  }
+  // Returns {text, apply()} for the change ticked in the form, or null.
+  function expChangeFrom(form, s, key) {
+    var on = form.querySelector('[name="ch_on"]');
+    if (!on || !on.checked) return null;
+    var t = expTarget(s, key); if (!t) return null;
+    var parts = [];
+    if (t.kind === 'agenda') {
+      var min = val(form, 'ch_min'), hva = val(form, 'ch_hva');
+      if (min !== String(t.row.min || '')) parts.push((t.row.min || 0) + ' → ' + min + ' min');
+      if (hva && hva !== t.row.hva) parts.push('«' + t.row.hva + '» → «' + hva + '»');
+      if (!parts.length) return null;
+      var rows = t.rows.slice(); rows[t.i] = Object.assign({}, t.row, { min: min, hva: hva || t.row.hva });
+      return { text: 'agendaen endret (' + variantLabel(t.a, s) + ': ' + parts.join(', ') + ')', apply: function () { return save('Agendaer', [{ id: t.a.id, rader: JSON.stringify(rows) }]); } };
+    }
+    var days = val(form, 'ch_days'), name = val(form, 'ch_name'), old = t.row.name;
+    if (days !== t.row.days) parts.push((t.row.days === '' ? 'ingen frist' : daysText(t.row.days)) + ' → ' + (days === '' ? 'ingen frist' : daysText(days)));
+    if (name && name !== old) parts.push('«' + old + '» → «' + name + '»');
+    if (!parts.length) return null;
+    t.rows[t.i] = Object.assign({}, t.row, { days: days === '' ? '' : String(Number(days)), name: name || old });
+    if (name && name !== old) t.rows.forEach(function (x) { x.after = String(x.after || '').split(',').map(function (n) { return n.trim() === old ? name : n.trim(); }).filter(Boolean).join(', '); });
+    var text = taskListText(t.rows), label = (t.row.g ? 'delmålet ' : 'oppgaven ') + '«' + old + '»: ' + parts.join(', ');
+    if (t.shared) { var m = typeListRow(s.type); return { text: 'den felles listen endret (' + label + ')', apply: function () { return save('Typemaler', [{ id: m.id, oppgavemal: text }]); } }; }
+    return { text: 'oppgavelisten endret (' + label + ')', apply: function () { return save('Serier', [{ id: s.id, oppgavemal: text }]); } };
+  }
+
+  // All experiences for an activity (series page), with what each is pinned to; hidden ones can be shown again.
+  function allExpDetails(s) {
+    var l = (state.d.Erfaringer || []).filter(function (x) { return sameAct(x.serie_id, s); }).sort(function (a, b) { return (b.aar + b.opprettet) < (a.aar + a.opprettet) ? -1 : 1; });
+    if (!l.length) return '';
+    var names = {}; expTargets(s, null).forEach(function (t) { names[t[0]] = t[1]; });
+    return '<details class="expall"><summary class="group-h">Alle erfaringer (' + l.length + ')</summary><div class="hist">' + l.map(function (x) {
+      var where = names[x.fest_til || ''] || (x.fest_til ? x.fest_til.replace(/^\w+:/, '') : 'Generelt');
+      return '<div><b>' + esc(x.aar) + '</b> · ' + esc(where) + ': ' + esc(x.tekst) + (x.hvorfor ? ' (' + esc(x.hvorfor) + ')' : '') + (x.endring ? ' · endret: ' + esc(x.endring) : '') +
+        (x.skjult === 'ja' ? ' <button type="button" class="btn small ghost" data-expshow="' + esc(x.id) + '">Vis igjen</button>' : '') + '</div>';
+    }).join('') + '</div></details>';
+  }
+
+  // ---- Documents and e-mail templates for an activity ----
+  // Faste filer: Dokumenter.serie_id (every year). Årets filer: Dokumenter.runde_id (one year).
+  function docsOf(s, r) {
+    return (state.d.Dokumenter || []).filter(function (x) { return (!x.runde_id && sameAct(x.serie_id, s)) || (r && x.runde_id === r.id); });
+  }
+  // The activity's own templates and the ones shared by its type.
+  function templatesOf(s) {
+    var byOrder = function (a, b) { return Number(a.rekkefolge || 0) - Number(b.rekkefolge || 0); };
+    return state.d.Maler.filter(function (m) { return sameAct(m.serie_id, s) || (m.serie_type && m.serie_type === s.type); }).sort(byOrder);
+  }
+  function docRow(s, x) {
+    return '<div class="drow"><div><b>' + esc(x.tittel || x.lenke) + '</b>' + (x.type ? '<small>' + esc(x.type) + '</small>' : '') + '</div>' +
+      '<span class="row wrap"><a class="btn small" href="' + esc(safeUrl(x.lenke)) + '" target="_blank" rel="noopener noreferrer">Åpne</a><button class="btn small ghost" data-docedit="' + esc(x.id) + '" aria-label="Rediger ' + esc(x.tittel) + '">Rediger</button></span>' +
+      expHtml(s, 'dok:' + x.id) + '</div>';
+  }
+  function docsPanel(s, r) {
+    var docs = docsOf(s, r), fixed = docs.filter(function (x) { return !x.runde_id; }), yearly = docs.filter(function (x) { return x.runde_id; });
+    var v = { arrangement: s.navn, dato: '', tid: r ? r.tid || '' : '', sted: r ? r.sted || '' : '' };
+    var tpls = templatesOf(s);
+    var tplRow = function (m) {
+      var vv = Object.assign({}, v, { dato: r ? longDate(r.dato, m.spraak) : '' });
+      return '<div class="drow"><div><b>' + esc(m.navn) + '</b> <span class="chip c-na">' + esc((m.spraak || 'no').toUpperCase()) + '</span>' + (m.serie_type ? ' <span class="chip c-info">felles for ' + esc(typeAll(m.serie_type).replace(/^Alle? /, '').toLowerCase()) + '</span>' : '') +
+        '<small>' + esc(TPL_TYPES[m.type] || '') + '</small></div>' +
+        '<span class="row wrap"><a class="btn small" href="' + esc(mailto('', fillTpl(m.emne, vv), fillTpl(m.tekst, vv))) + '">Åpne i e-post</a><button class="btn small ghost" data-tedit="' + esc(m.id) + '" aria-label="Rediger ' + esc(m.navn) + '">Rediger</button></span>' +
+        expHtml(s, 'mal:' + m.id) + '</div>';
+    };
+    var addDoc = '<button class="btn small" data-docnew="' + esc(s.id + '|' + (r ? r.id : '')) + '">+ Fil</button>';
+    return '<section class="panel"><h2>Dokumenter og e-postmaler</h2><div class="cols2">' +
+      '<div><span class="group-h">Faste filer</span>' + (fixed.length ? fixed.map(function (x) { return docRow(s, x); }).join('') : '<div class="empty">Ingen faste filer. Faste filer følger aktiviteten hvert år, for eksempel et påmeldingsskjema.</div>') +
+        (r ? '<span class="group-h">Årets filer (' + esc(r.aar) + ')</span>' + (yearly.length ? yearly.map(function (x) { return docRow(s, x); }).join('') : '<div class="empty">Ingen filer for ' + esc(r.aar) + ' ennå, for eksempel årets kjøreplan.</div>') : '') +
+        '<div class="row wrap">' + addDoc + '</div></div>' +
+      '<div><span class="group-h">E-postmaler</span>' + (tpls.length ? tpls.map(tplRow).join('') : '<div class="empty">Ingen e-postmaler for denne aktiviteten ennå.</div>') +
+        '<div class="row wrap"><button class="btn small" data-tedit="" data-tserie="' + esc(s.id) + '">+ E-postmal</button><a class="btn small ghost" href="#maler">Alle e-postmaler</a></div></div>' +
+      '</div></section>';
+  }
+  function editDoc(id, ctx) {
+    var x = id ? byId('Dokumenter', id) : { serie_id: '', runde_id: '' }, p = String(ctx || '').split('|');
+    var sid = id ? x.serie_id : p[0], rid = id ? x.runde_id : p[1], r = rid ? byId('Runder', rid) : null, s = byId('Serier', sid) || (r && byId('Serier', r.serie_id));
+    if (!s) return;
+    var kinds = ['Google Docs', 'Google Sheets', 'Google Forms', 'PDF', 'Nettside', 'Annet'];
+    openDrawer('<h2>' + (id ? 'Rediger fil' : 'Ny fil: ' + esc(s.navn)) + '</h2>' + field('Tittel', 'tittel', x.tittel) + field('Lenke', 'lenke', x.lenke, 'url') +
+      '<div class="grid2">' + field('Slag', 'type', '', 'select', options(kinds.indexOf(x.type || '') < 0 && x.type ? kinds.concat([x.type]) : kinds, x.type || 'Google Docs')) +
+        (r ? field('Gjelder', 'hvor', '', 'select', option('fast', id && !x.runde_id ? 'fast' : 'aar', 'Hvert år (fast fil)') + option('aar', id && !x.runde_id ? 'fast' : 'aar', 'Bare ' + r.aar)) : '') + '</div>' +
+      actions(id ? '<button type="button" class="btn danger" data-delsdoc="' + esc(id) + '">Slett</button>' : ''),
+      function (form) {
+        var u = val(form, 'lenke');
+        if (!/^https?:\/\//i.test(u)) { toast('Lenken må starte med https://'); return; }
+        var yearOnly = r && val(form, 'hvor') === 'aar';
+        var row = { tittel: val(form, 'tittel'), lenke: u, type: val(form, 'type'), serie_id: seriesRoot(s), runde_id: yearOnly ? r.id : '' };
+        if (id) row.id = id;
+        save('Dokumenter', [row]).then(function () { closeDrawer(); toast('Lagret'); render(); });
+      });
+  }
+
+  // ---- The delmål board on a year page: one column per delmål ----
+  function boardTask(t, s) {
+    var locked = isLocked(t), done = t.status === 'Ferdig', ring = done ? 'done' : (t.status === 'Pågående' || t.status === 'Venter på') ? 'started' : '';
+    var when = t.mal_dager !== '' && t.mal_dager != null ? daysText(t.mal_dager) + (t.frist ? ' (' + fmtDate(t.frist) + ')' : '') : t.frist ? fmtDate(t.frist) : '';
+    var meta = [];
+    if (when) meta.push('<span class="' + (isLate(t) ? 'late' : '') + '">' + esc(when) + '</span>');
+    if (locked) meta.push('etter ' + blockers(t).map(function (b) { return '«' + esc(b.tittel) + '»'; }).join(' og '));
+    return '<div class="bt' + (locked ? ' locked' : '') + (done ? ' isdone' : '') + '">' +
+      (locked ? '<span class="lock" aria-label="Låst" title="Låst">🔒</span>' : '<button class="ring ' + ring + '" data-done="' + esc(t.id) + '" aria-label="Merk som ferdig" title="Ferdig"></button>') +
+      '<div class="t" data-task="' + esc(t.id) + '"><span class="tt">' + esc(t.tittel) + '</span>' + (t.felles === 'ja' ? ' <span class="chip c-info sh">felles</span>' : '') +
+      (meta.length ? '<small>' + meta.join(' · ') + '</small>' : '') + '</div>' + expHtml(s, 'oppgave:' + t.tittel) + '</div>';
   }
 
 
@@ -1394,16 +1737,17 @@
       '<optgroup label="Prosess">' + PROCESS_TYPES.map(function (k) { return option(k, s.type, TYPE_NAMES[k]); }).join('') + '</optgroup>';
     openDrawer('<h2>' + (id ? 'Rediger aktivitet' : 'Ny aktivitet') + '</h2>' + field('Navn', 'navn', s.navn) +
       '<div class="grid2">' + field('Art', 'art', '', 'select', option('arrangement', artOf(s), 'Arrangement (en dag)') + option('prosess', artOf(s), 'Prosess (en periode)')) +
-        field('Type', 'type', '', 'select', typeOpts) + field('Rekkefølge', 'rekkefolge', s.rekkefolge, 'number') + '</div>' +
+        field('Type', 'type', '', 'select', typeOpts) + field('Rekkefølge', 'rekkefolge', s.rekkefolge, 'number') +
+        field('Agendaen velges etter antall', 'agenda_faktor', '', 'select', option('prosjekter', factorOf(s), 'prosjekter') + option('sokere', factorOf(s), 'søkere') + option('eget', factorOf(s), 'eget (skrives på året)')) + '</div>' +
       '<label class="check"><input type="checkbox" name="obligatorisk"' + (s.obligatorisk === 'ja' ? ' checked' : '') + '> Obligatorisk (alle prosjekter må være med minst én gang)</label>' +
       field('Generell info (gjelder alle år)', 'beskrivelse', s.beskrivelse, 'textarea') +
       field('Lenke til egen veiledning', 'guide', s.guide) +
       '<div class="f"><span class="tl-head">Oppgaver hvert år <button type="button" class="btn small ghost" id="tlTxt">Vis som tekst</button></span><div id="tlEd" class="tled"></div>' +
         '<textarea name="oppgavemal" class="tall" hidden aria-label="Oppgaveliste som tekst" placeholder="# Program klart | -14&#10;Finn foredragsholder | -45&#10;Lag program | -20 | etter: Finn foredragsholder&#10;# Rom og servering klart | -7&#10;Book rom | -30">' + esc(s.oppgavemal || '') + '</textarea></div>' +
-      '<p class="empty">Hvert nytt år av aktiviteten får disse oppgavene. Dagene er før (−) eller etter (+) datoen (for en prosess: startdatoen), og fristene flyttes hvis datoen endres. Tomt: ingen frist. 🎯 Delmål samler oppgavene under seg og er nådd når de er ferdige (eller når du krysser av, hvis «Kryss av selv» er valgt). «Etter» betyr at oppgaven er låst til den andre er ferdig. Som tekst: «# » foran et delmål, «| etter: A, B» for flere.</p>' +
+      '<p class="empty">Oppgaver som er felles for alle aktiviteter av samme type (for eksempel alle mentormøter) legges inn med «Felles oppgaver» på aktivitetssiden, og kommer først. Hvert nytt år av aktiviteten får disse oppgavene. Dagene er før (−) eller etter (+) datoen (for en prosess: startdatoen), og fristene flyttes hvis datoen endres. Tomt: ingen frist. 🎯 Delmål samler oppgavene under seg og er nådd når de er ferdige (eller når du krysser av, hvis «Kryss av selv» er valgt). «Etter» betyr at oppgaven er låst til den andre er ferdig. Som tekst: «# » foran et delmål, «| etter: A, B» for flere.</p>' +
       (others.length ? '<div class="cl"><span class="group-h">Knyttet til</span>' + others.map(function (o) { return '<label><input type="checkbox" name="rel_' + esc(o.id) + '"' + (rel.indexOf(o.id) >= 0 ? ' checked' : '') + '> ' + esc(o.navn) + '</label>'; }).join('') + '</div>' : '') + actions(),
       function (form) {
-        var row = { navn: val(form, 'navn'), art: val(form, 'art'), type: val(form, 'type'), rekkefolge: val(form, 'rekkefolge'), obligatorisk: val(form, 'obligatorisk'), beskrivelse: val(form, 'beskrivelse'), guide: val(form, 'guide'), oppgavemal: form.querySelector('[name="oppgavemal"]').value,
+        var row = { navn: val(form, 'navn'), art: val(form, 'art'), type: val(form, 'type'), rekkefolge: val(form, 'rekkefolge'), agenda_faktor: val(form, 'agenda_faktor'), obligatorisk: val(form, 'obligatorisk'), beskrivelse: val(form, 'beskrivelse'), guide: val(form, 'guide'), oppgavemal: form.querySelector('[name="oppgavemal"]').value,
           relaterte: others.filter(function (o) { return form.querySelector('[name="rel_' + o.id + '"]').checked; }).map(function (o) { return o.id; }).join(',') };
         if (!row.navn) { toast('Skriv et navn'); return; }
         if (id) row.id = id; else { row.status = 'aktiv'; row.versjon = '1'; }
@@ -1435,13 +1779,17 @@
   }
   function editRun(rid) {
     var r = byId('Runder', rid);
-    var proc = artOf(byId('Serier', r.serie_id)) === 'prosess';
+    var rs = byId('Serier', r.serie_id), proc = artOf(rs) === 'prosess';
+    var ags = rs ? agendasOf(rs) : [], auto = runCount(Object.assign({}, r, { antall: '' }), rs);
     openDrawer('<h2>Rediger året</h2><div class="grid2">' + field('År', 'aar', r.aar, 'number') + field(proc ? 'Fra (startdato)' : 'Dato', 'dato', r.dato, 'date') +
       (proc ? field('Til (sluttdato)', 'sluttdato', r.sluttdato, 'date') : field('Klokkeslett', 'tid', r.tid, 'time')) + field('Sted', 'sted', r.sted) +
-      field('Status', 'status', '', 'select', options(['planlagt', 'gjennomført', 'avlyst'], r.status || 'planlagt')) + '</div>' +
+      field('Status', 'status', '', 'select', options(['planlagt', 'gjennomført', 'avlyst'], r.status || 'planlagt')) +
+      (ags.length ? field('Antall ' + esc(FACTORS[factorOf(rs)] || '(velger agenda)') + (auto != null ? ' (tomt = ' + auto + ' talt)' : ''), 'antall', r.antall, 'number') +
+        field('Agendavariant', 'variant', '', 'select', option('', r.variant || '', 'Velg etter antall') + ags.map(function (a) { return option(a.id, r.variant || '', variantLabel(a, rs)); }).join('')) : '') + '</div>' +
       field('Notater for dette året', 'notater', r.notater, 'textarea') + actions('<button type="button" class="btn danger" data-act="delrun" data-id="' + esc(rid) + '">Slett året</button>'),
       function (form) {
         var row = { id: rid, aar: val(form, 'aar'), dato: val(form, 'dato'), sluttdato: proc ? val(form, 'sluttdato') : r.sluttdato || '', tid: proc ? r.tid || '' : val(form, 'tid'), sted: val(form, 'sted'), status: val(form, 'status'), notater: val(form, 'notater') };
+        if (ags.length) { row.antall = val(form, 'antall'); row.variant = val(form, 'variant'); }
         save('Runder', [row]).then(function () { closeDrawer(); toast('Lagret'); if ((row.status === 'gjennomført' && r.status !== 'gjennomført') || row.dato !== (r.dato || '')) load(true); else render(); });
       });
   }
@@ -1719,7 +2067,7 @@
       '<section class="panel"><h2>Data og filer</h2><div class="addrow">' +
         (d.sheetUrl ? '<a class="btn" href="' + esc(safeUrl(d.sheetUrl)) + '" target="_blank" rel="noopener noreferrer">Åpne regnearket</a>' : '') +
         (d.sheetUrl ? '<a class="btn" href="' + esc(safeUrl(d.sheetUrl.replace(/\/edit.*$/, '') + '/export?format=xlsx')) + '" target="_blank" rel="noopener noreferrer">Last ned som Excel</a>' : '') +
-        '<select id="csvTab" aria-label="Fane til CSV">' + ['Prosjekter', 'Søkere', 'Oppgaver', 'Progress', 'Kontakter', 'Kunnskap', 'Logg', 'Serier', 'Runder', 'Deltakelse', 'Dokumenter', 'Forsinkelser', 'Budsjett', 'Utgifter', 'Maler'].map(function (t) { return option(t, 'Prosjekter'); }).join('') + '</select>' +
+        '<select id="csvTab" aria-label="Fane til CSV">' + ['Prosjekter', 'Søkere', 'Oppgaver', 'Progress', 'Kontakter', 'Kunnskap', 'Logg', 'Serier', 'Runder', 'Deltakelse', 'Dokumenter', 'Forsinkelser', 'Budsjett', 'Utgifter', 'Maler', 'Typemaler', 'Agendaer', 'Erfaringer'].map(function (t) { return option(t, 'Prosjekter'); }).join('') + '</select>' +
         '<button class="btn" data-act="csv">Last ned CSV</button></div>' +
         '<p class="empty">Ukentlig sikkerhetskopi: hver søndag natt lagres en kopi av regnearket, veiledningene og eksportene i mappen SPARK-backup (de 8 siste beholdes). «Last ned alt» ligger under Innstillinger.</p></section>';
   }
@@ -2831,13 +3179,15 @@
     openDrawer('<h2>' + (id ? 'Rediger mal' : 'Ny mal') + '</h2>' + field('Navn', 'navn', m.navn) +
       '<div class="grid2">' + field('Type', 'type', '', 'select', Object.keys(TPL_TYPES).map(function (k) { return option(k, m.type, TPL_TYPES[k]); }).join('')) +
         field('Språk', 'spraak', '', 'select', Object.keys(LANGS).map(function (k) { return option(k, m.spraak, LANGS[k]); }).join('')) +
-        field('Knyttet til aktivitet (vises på aktiviteten)', 'serie_id', '', 'select', option('', m.serie_id || '', '– Ingen (vises overalt)') + acts.map(function (x) { return option(x.id, m.serie_id || '', x.navn); }).join('')) + '</div>' +
+        field('Knyttet til aktivitet (vises på aktiviteten)', 'serie_id', '', 'select', option('', m.serie_id || '', '– Ingen (vises overalt)') + acts.map(function (x) { return option(x.id, m.serie_id || '', x.navn); }).join('')) +
+        field('Eller felles for en type', 'serie_type', '', 'select', option('', m.serie_type || '', '– Ingen') + Object.keys(TYPE_NAMES).map(function (k) { return option(k, m.serie_type || '', typeAll(k)); }).join('')) + '</div>' +
       field('Emne', 'emne', m.emne) + '<label class="f">Tekst<textarea name="tekst" class="tall">' + esc(m.tekst) + '</textarea></label>' +
       '<p class="empty">Felt som fylles ut: {navn} {arrangement} {dato} {tid} {sted} {prosjekt} {beskrivelse}</p>' +
       actions(id ? '<button type="button" class="btn danger" data-deltpl="' + esc(id) + '">Slett</button>' : ''),
       function (form) {
-        var row = { navn: val(form, 'navn'), type: val(form, 'type'), spraak: val(form, 'spraak'), serie_id: val(form, 'serie_id'), emne: val(form, 'emne'), tekst: form.querySelector('[name="tekst"]').value };
+        var row = { navn: val(form, 'navn'), type: val(form, 'type'), spraak: val(form, 'spraak'), serie_id: val(form, 'serie_id'), serie_type: val(form, 'serie_type'), emne: val(form, 'emne'), tekst: form.querySelector('[name="tekst"]').value };
         if (!row.navn) { toast('Skriv et navn'); return; }
+        if (row.serie_id && row.serie_type) { toast('Velg enten en aktivitet eller en type, ikke begge'); return; }
         if (id) row.id = id; else row.rekkefolge = String(Math.max.apply(null, [0].concat(state.d.Maler.map(function (x) { return Number(x.rekkefolge) || 0; }))) + 10);
         save('Maler', [row]).then(function () { closeDrawer(); toast('Lagret'); render(); });
       });
@@ -2977,6 +3327,18 @@
     if (ds.tuse) { var tm = byId('Maler', ds.tuse); invite(tm.type, '', tm.id); return; }
     if (ds.tedit !== undefined) { editTemplate(ds.tedit || null, ds.tserie); return; }
     if (ds.invite) { invite(ds.invite, ds.id); return; }
+    // v13
+    if (ds.agvar) { var av = ds.agvar.split('|'); state.filters.agVar = state.filters.agVar || {}; state.filters.agVar[av[0] + '|' + av[1]] = av[2]; state.keepScroll = true; render(); return; }
+    if (ds.aguse !== undefined) { var au = ds.aguse.split('|'); save('Runder', [{ id: au[0], variant: au[1] || '' }]).then(function () { toast(au[1] ? 'Brukes i år' : 'Velges etter antall'); state.filters.agVar = {}; state.keepScroll = true; render(); }); return; }
+    if (ds.agedit !== undefined) { editAgenda(ds.agedit || null, ds.agserie); return; }
+    if (ds.delag) { if (!window.confirm('Slette denne agendavarianten?')) return; closeDrawer(); save('Agendaer', [], [ds.delag]).then(function () { toast('Slettet'); render(); }); return; }
+    if (ds.expnew) { var en = ds.expnew.split('|'); writeExperience(en[0], en[1] || '', ''); return; }
+    if (ds.exphide) { save('Erfaringer', [{ id: ds.exphide, skjult: 'ja' }]).then(function () { toast('Skjult. Den ligger fortsatt under «Alle erfaringer» på aktivitetssiden.'); state.keepScroll = true; render(); }); return; }
+    if (ds.expshow) { save('Erfaringer', [{ id: ds.expshow, skjult: 'nei' }]).then(function () { toast('Vises igjen'); state.keepScroll = true; render(); }); return; }
+    if (ds.typelist) { editTypeList(ds.typelist); return; }
+    if (ds.docnew) { editDoc(null, ds.docnew); return; }
+    if (ds.docedit) { editDoc(ds.docedit); return; }
+    if (ds.delsdoc) { if (!window.confirm('Slette lenken til filen? Selve filen slettes ikke.')) return; closeDrawer(); save('Dokumenter', [], [ds.delsdoc]).then(function () { toast('Slettet'); render(); }); return; }
     // v12
     if (ds.dmtick) { tickGroup(ds.dmtick); return; }
     if (ds.mstick) { msToggle(ds.mstick); return; }

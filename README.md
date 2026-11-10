@@ -1,6 +1,6 @@
 # SPARK-tracker
 
-A small web app for following the projects in SPARK, the University of Oslo's programme for social innovation: applicants, projects and their phases, tasks, events (workshops, mentor meetings, pitch), contacts, a budget and e-mail templates. It is made for one person (the programme coordinator) and works on a PC and an Android phone.
+A small web app for following the projects in SPARK, the University of Oslo's programme for social innovation: applicants, projects and their phases, tasks, activities (workshops, mentor meetings, pitch, with agenda variants, files and experiences), contacts, a budget and e-mail templates. It is made for one person (the programme coordinator) and works on a PC and an Android phone.
 
 The app's screens are in Norwegian. This documentation is in English; Norwegian words are only used for names you see in the app (for example **Oppgaver** = tasks, **Arbeidsflyt** = workflow).
 
