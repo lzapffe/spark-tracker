@@ -3,6 +3,24 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v14 – 10 November 2026
+
+### Added
+- **Alternatives (◆, purple chip).** When a project does something else instead of an activity, it counts as taken part, but is shown differently:
+  - **Alternativ til** in the activity form (Rediger): tick the activities this one replaces, e.g. "Eget mentormøte" as an alternative to Mentormøte 2. Projects marked Deltatt there count as having taken part in Mentormøte 2.
+  - **Alternativ** in "Hvem var med?" on an activity year: choose the activity year that was done instead from a list, or write it yourself (or both). "endre" changes it, "Fjern alternativet" removes it.
+  - Shown as "◆ Vært med (alternativ: …)" in "Har de aktive prosjektene vært med?", and as "◆ 1 alternativ" under the Workshops and Mentormøter counts on the project page. Both count towards the required number.
+- **Milestone reached through an alternative:** "Via alternativ" next to "Merk som nådd": choose an activity year or write what was done. It counts as reached and shows "◆ Nådd (alternativ)" with the text; the year view in Årsplan shows "(◆ 1)".
+
+- **E-post page** (Mer → E-post, was E-postmaler) with two tabs:
+  - **Maler:** all templates in one place (general, invitations, per type and per activity), with search and a filter for general, invitations, a type or an activity.
+  - **Mottakere:** a recipient list to copy into Outlook, as `Navn <epost>; …`. Main choices: all active projects, 1st-year, 2nd-year, all applicants this year. **Flere valg:** year group, faculty, application round, applicant status, an activity year (påmeldt or deltatt), project people by role, and contacts and people by tag. When the chosen projects have contact persons, a notice asks whether to add them in To, in Kopi, or ignore them. Kopier buttons, a list of people without e-mail, and Nullstill.
+- **Personer** on the project page (was the contacts panel): name, organisation, e-mail, role (Prosjektmedarbeider, Prosjektkoordinator, Samarbeidspartner, Annet), tags and **Kontaktperson** (included when you e-mail the project leader). Tap a person to edit.
+- **Tags** on people and on Kontakter, from a fixed list with suggestions (Innstillinger → Tagger); a new tag typed in a form is added to the list.
+
+### Back end
+- New columns: `Serier.alternativ_til`, `Deltakelse.alternativ` and `via_runde_id` (status `Alternativ`), `Milepaelstatus.alternativ` and `via_runde_id`, `Kontakter.tagger`. New setting `tagger`. Run `setup` once.
+
 ## v13 – 9 November 2026
 
 ### Added
