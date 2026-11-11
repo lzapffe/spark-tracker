@@ -480,7 +480,7 @@ table.t tr.refund td { background: color-mix(in srgb, var(--t-intervju) 9%, tran
 .tl-gline { margin-top: 6px; }
 .tl-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .tled { display: grid; gap: 6px; margin-top: 4px; }
-.tl-row { display: grid; grid-template-columns: 18px minmax(0, 1fr) 84px minmax(0, 1fr) auto; gap: 6px; align-items: center; }
+.tl-row { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto minmax(0, 1fr) auto; gap: 6px; align-items: center; }
 .tl-row.tl-g { background: var(--head); border-radius: var(--r-s); padding: 6px; margin-top: 6px; }
 .tl-row.tl-g .tl-addin { grid-column: 2 / -1; justify-self: start; }
 .tl-row input[type=text], .tl-row input[type=number], .tl-row select { width: 100%; min-width: 0; }
@@ -488,7 +488,7 @@ table.t tr.refund td { background: color-mix(in srgb, var(--t-intervju) 9%, tran
 .tl-man { display: flex; gap: 4px; align-items: center; font-size: 12.5px; color: var(--text); white-space: nowrap; }
 .tl-btns { display: flex; gap: 2px; }
 @media (max-width: 640px) {
-  .tl-row { grid-template-columns: 18px minmax(0, 1fr) 76px; }
+  .tl-row { grid-template-columns: 18px minmax(0, 1fr) auto; }
   .tl-row .tl-after, .tl-row .tl-man { grid-column: 2 / 3; }
   .tl-row .tl-btns { grid-column: 3 / 4; justify-content: end; }
 }
@@ -578,3 +578,12 @@ table.ag tr.agend td { color: var(--muted); font-weight: 400; }
 .rcp-out { display: block; width: 100%; min-height: 90px; margin-top: 4px; font: inherit; font-size: 13px; resize: vertical; }
 .rcp-more { margin: 10px 0; }
 .rcp-more > summary { cursor: pointer; color: var(--title); font-weight: 500; padding: 4px 0; }
+
+/* v15: deadlines (Frister) */
+.dl-row { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+.dl-row .tl-btns { display: flex; gap: 6px; justify-content: flex-end; }
+.dl-note { display: block; color: var(--muted); font-size: 12px; }
+.dl-line { padding: 3px 0; }
+.tl-when { display: flex; gap: 4px; align-items: center; }
+.tl-row .tl-when input[type=number] { width: 76px; flex: none; }
+.tl-row .tl-when select.tl-from { width: auto; max-width: 150px; }

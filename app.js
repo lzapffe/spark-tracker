@@ -1109,6 +1109,7 @@
         '<div class="row wrap"><button class="btn small" data-act="editseries" data-id="' + esc(s.id) + '">Oppgaveliste og info</button><button class="btn small" data-typelist="' + esc(s.type) + '">Felles oppgaver: ' + esc(typeAll(s.type)) + '</button></div>' +
         (related.length ? '<p>Knyttet til: ' + related.map(function (r) { return '<button class="plink" data-go="serie/' + esc(r.id) + '">' + esc(r.navn) + '</button>'; }).join(', ') + '</p>' : '') +
         (ids(s.alternativ_til).length ? '<p><span class="chip c-alt">◆ Alternativ til</span> ' + ids(s.alternativ_til).map(function (id) { var a = byId('Serier', id); return a ? '<button class="plink" data-go="serie/' + esc(a.id) + '">' + esc(a.navn) + '</button>' : ''; }).filter(Boolean).join(', ') + '. Å være med her teller som å ha vært med der.</p>' : '') + allExpDetails(s) + '</section>' +
+      seriesDeadlinesPanel(s, cur[0] || null) +
       agendaPanel(s, cur[0] || null) +
       '<div class="cols">' +
         '<section class="panel"><h2>År</h2>' + (cur.length ? '<div class="tablewrap"><table class="t"><tr><th>År</th><th>Dato</th><th>Sted</th><th>Status</th><th>Deltok</th></tr>' + cur.map(runRow).join('') + '</table></div>' : '<div class="empty">Ikke planlagt i år ennå. Klikk «Nytt år».</div>') +
@@ -1139,6 +1140,7 @@
         '<div class="sub">' + esc([fmtDate(r.dato) + (r.sluttdato ? ' – ' + fmtDate(r.sluttdato) : ''), r.tid ? 'kl. ' + r.tid : '', r.sted].filter(Boolean).join(' · ') || 'Ingen dato ennå') + ' · <span class="chip ' + (r.status === 'gjennomført' ? 'c-done' : 'c-info') + '">' + esc(r.status || 'planlagt') + '</span>' + (r.arkivert === 'ja' ? ' <span class="chip c-na">arkivert</span>' : '') + '</div></div>' +
         '<div class="tools">' + tools + '</div></div>' +
       (s && (artOf(s) !== 'prosess' || agendasOf(s).length) ? agendaPanel(s, r) : '') +
+      (s ? runDeadlinesPanel(r, s) : '') +
       '<section class="panel"><h2>Oppgaver for ' + esc(r.aar) + '</h2><div class="agbar"><span></span><div class="row wrap">' +
         (hasList ? '<button class="btn small" data-act="runtasks" data-id="' + esc(r.id) + '">Lag oppgaver fra listen</button>' : '') +
         '<button class="btn small" data-act="wfrun" data-id="' + esc(r.id) + '">Rediger som arbeidsflyt</button><button class="btn small" data-act="newtask" data-run="' + esc(r.id) + '">+ Oppgave</button></div></div>' +
@@ -1206,25 +1208,39 @@
       var g = l.charAt(0) === '#', parts = (g ? l.slice(1) : l).split('|').map(function (x) { return x.trim(); }), rest = parts.slice(1);
       var days = rest[0] !== undefined && rest[0] !== '' && !isNaN(Number(rest[0])) ? String(Number(rest[0])) : '';
       var after = rest.filter(function (x) { return /^etter\s*:/i.test(x); }).map(function (x) { return x.replace(/^etter\s*:\s*/i, ''); })[0] || '';
-      return { g: g, name: parts[0], days: days, after: after, manual: rest.some(function (x) { return /^manuelt$/i.test(x); }) };
+      var from = rest.filter(function (x) { return /^fra\s*:/i.test(x); }).map(function (x) { return x.replace(/^fra\s*:\s*/i, ''); })[0] || '';   // v15
+      return { g: g, name: parts[0], days: days, after: after, from: from, manual: rest.some(function (x) { return /^manuelt$/i.test(x); }) };
     });
   }
   function taskListText(rows) {
     return rows.filter(function (r) { return r.name.trim(); }).map(function (r) {
       var parts = [(r.g ? '# ' : '') + r.name.trim()];
-      if (r.days !== '' || (r.g ? r.manual : r.after)) parts.push(r.days);
+      if (r.days !== '' || (r.g ? r.manual : r.after) || r.from) parts.push(r.days);
       if (r.g && r.manual) parts.push('manuelt');
       if (!r.g && r.after) parts.push('etter: ' + r.after);
+      if (r.from) parts.push('fra: ' + r.from);   // v15: counted from a named deadline
       return parts.join(' | ');
     }).join('\n');
   }
-  function daysText(n) { n = Number(n); return n < 0 ? -n + ' dager før' : n === 0 ? 'samme dag' : n + ' dager etter'; }
+  function daysText(n, from) {
+    n = Number(n) || 0;
+    if (from) return n < 0 ? -n + ' dager før ' + from : n === 0 ? 'på ' + from : n + ' dager etter ' + from;   // v15
+    return n < 0 ? -n + ' dager før' : n === 0 ? 'samme dag' : n + ' dager etter';
+  }
 
   // The task list editor in the activity form: one row per delmål or task, synced to the hidden text box.
-  function initTaskListEditor() {
+  function initTaskListEditor(dlNames) {
     var box = $('tlEd'), ta = document.querySelector('#drawerForm [name="oppgavemal"]'), toggle = $('tlTxt');
     if (!box || !ta) return;
     var rows = parseTaskList(ta.value);
+    dlNames = dlNames || [];
+    // v15: count from the date or from a named deadline (shown when the activity has deadlines).
+    var fromSel = function (r, i) {
+      var list = dlNames.slice();
+      if (r.from && list.indexOf(r.from) < 0) list.push(r.from);
+      if (!list.length) return '';
+      return '<select class="tl-from" data-i="' + i + '" data-k="from" aria-label="Regnes fra">' + option('', r.from, 'fra datoen') + list.map(function (n) { return option(n, r.from, 'fra ' + n); }).join('') + '</select>';
+    };
     var sync = function () { ta.value = taskListText(rows); };
     var names = function (skip) { return rows.filter(function (r, i) { return !r.g && i !== skip && r.name.trim(); }).map(function (r) { return r.name.trim(); }); };
     // "Etter": tick one or more tasks that must be done first (stored as "A, B").
@@ -1243,7 +1259,7 @@
     var draw = function () {
       box.innerHTML = (rows.length ? rows.map(function (r, i) {
         var btns = '<span class="tl-btns"><button type="button" class="btn small ghost" data-tl="up|' + i + '" aria-label="Flytt opp">↑</button><button type="button" class="btn small ghost" data-tl="down|' + i + '" aria-label="Flytt ned">↓</button><button type="button" class="btn small ghost" data-tl="del|' + i + '" aria-label="Slett">✕</button></span>';
-        var days = '<input type="number" class="tl-days" data-i="' + i + '" data-k="days" value="' + esc(r.days) + '" placeholder="± dager" aria-label="Dager før (−) eller etter (+) datoen">';
+        var days = '<span class="tl-when"><input type="number" class="tl-days" data-i="' + i + '" data-k="days" value="' + esc(r.days) + '" placeholder="± dager" aria-label="Dager før (−) eller etter (+) datoen">' + fromSel(r, i) + '</span>';
         if (r.g) return '<div class="tl-row tl-g"><span class="tl-ic">🎯</span><input type="text" class="tl-name" data-i="' + i + '" data-k="name" value="' + esc(r.name) + '" placeholder="Delmål, f.eks. Program klart" aria-label="Delmål">' + days +
           '<label class="tl-man"><input type="checkbox" data-i="' + i + '" data-k="manual"' + (r.manual ? ' checked' : '') + '> Kryss av selv</label>' + btns +
           '<button type="button" class="btn small tl-addin" data-tl="addin|' + i + '">+ Oppgave under</button></div>';
@@ -1275,7 +1291,7 @@
     box.addEventListener('click', function (e) {
       var b = e.target.closest('[data-tl]'); if (!b) return;
       e.stopPropagation();
-      var p = b.dataset.tl.split('|'), i = Number(p[1]), blank = { name: '', days: '', after: '', manual: false };
+      var p = b.dataset.tl.split('|'), i = Number(p[1]), blank = { name: '', days: '', after: '', from: '', manual: false };
       if (p[0] === 'addg') rows.push(Object.assign({}, blank, { g: true }));
       if (p[0] === 'addt') rows.push(Object.assign({}, blank, { g: false }));
       if (p[0] === 'addin') { var j = i + 1; while (j < rows.length && !rows[j].g) j++; rows.splice(j, 0, Object.assign({}, blank, { g: false })); }
@@ -1305,9 +1321,10 @@
     return fullTaskList(s).filter(function (x) { if (!x.g || seenG[x.name]) return false; seenG[x.name] = 1; return true; }).map(function (g) {
       var mine = sortTasks(tasks.filter(function (t) { return t.delmaal === g.name; }));
       var done = mine.filter(function (t) { return !openTask(t); });
-      var due = r.dato && g.days !== '' ? addDays(r.dato, Number(g.days)) : '';
+      var base = g.from ? dlDateByName(r, s, g.from) : r.dato;   // v15
+      var due = base && (g.days !== '' || g.from) ? addDays(base, Number(g.days) || 0) : '';
       var reached = ticks[g.name] || (!g.manual && mine.length && done.length === mine.length ? (done.map(function (t) { return t.ferdig_dato || ''; }).sort().pop() || today()) : '');
-      return { name: g.name, manual: g.manual, days: g.days, shared: !!g.shared, due: due, tasks: mine, done: done.length, reached: reached, ticked: !!ticks[g.name], late: !reached && due && due < today() };
+      return { name: g.name, manual: g.manual, days: g.days, from: g.from, shared: !!g.shared, due: due, tasks: mine, done: done.length, reached: reached, ticked: !!ticks[g.name], late: !reached && due && due < today() };
     });
   }
   // v13: a board with one column per delmål (progress bar, x of y done, compact task rows).
@@ -1321,7 +1338,7 @@
       var chipHtml = g.reached ? '<span class="chip c-done">Nådd' + (g.reached.length === 10 ? ' ' + esc(fmtDate(g.reached)) : '') + '</span>' : g.late ? '<span class="chip c-late">Ikke nådd</span>' : '';
       var btn = g.manual || g.ticked ? '<button type="button" class="btn small ghost" data-dmtick="' + esc(r.id) + '|' + esc(g.name) + '">' + (g.ticked ? 'Angre' : 'Merk som nådd') + '</button>' : '';
       return '<div class="dmc"><div class="dmc-h"><span class="dm-n">🎯 ' + esc(g.name) + (g.shared ? ' <span class="chip c-info sh">felles</span>' : '') + '</span><span class="dm-m">' + g.done + '/' + g.tasks.length + '</span></div>' +
-        '<div class="dm-m">' + (g.days !== '' ? esc(daysText(g.days)) + (g.due ? ' (' + esc(fmtDate(g.due)) + ')' : '') : '') + '</div>' +
+        '<div class="dm-m">' + (g.days !== '' || g.from ? esc(daysText(g.days, g.from)) + (g.due ? ' (' + esc(fmtDate(g.due)) + ')' : '') : '') + '</div>' +
         '<div class="pbar" aria-hidden="true"><i style="width:' + pct + '%"></i></div>' + (chipHtml || btn ? '<div class="row wrap">' + chipHtml + btn + '</div>' : '') +
         expHtml(s, 'delmaal:' + g.name) +
         (g.tasks.length ? g.tasks.map(function (t) { return boardTask(t, s); }).join('') : '<div class="empty">' + (g.manual ? 'Ingen oppgaver. Kryss av når det er på plass.' : 'Ingen oppgaver under dette delmålet.') + '</div>') + '</div>';
@@ -1376,10 +1393,186 @@
     var list = fullTaskList(s);
     if (!list.length) return '<p class="empty">Ingen oppgaveliste. Klikk «Oppgaveliste og info» for å lage en, så får hvert nytt år de samme oppgavene.</p>';
     return '<div class="hist">' + list.map(function (x) {
-      var when = x.days !== '' ? ' · ' + daysText(x.days) : '', fl = x.shared ? ' <span class="chip c-info sh">felles</span>' : '';
+      var when = x.days !== '' || x.from ? ' · ' + daysText(x.days, x.from) : '', fl = x.shared ? ' <span class="chip c-info sh">felles</span>' : '';
       if (x.g) return '<div class="dm-n tl-gline">🎯 ' + esc(x.name) + fl + when + (x.manual ? ' · krysses av selv' : '') + '</div>';
       return '<div>' + esc(x.name) + fl + when + (x.after ? ' · 🔒 etter ' + esc(x.after) : '') + '</div>';
     }).join('') + '</div>';
+  }
+
+  // ---- v15: named deadlines (Frister) -----------------------------------------------------------
+  // Serier.frister = [{id, navn, for, notat, hvordan, dager, ukedag, fast, fra}], Runder.frister = {id: date}
+  // set by hand for one year. Same rules as deadlines_() in Kode.gs:
+  //   fast = 'MM-DD' every year; for/etter = dager days before/after fra;
+  //   ukedag_for/ukedag_etter = the first ukedag (1 = Monday) before/after fra.
+  //   fra = 'dato' (the date or start), 'slutt' (a process's end) or another deadline's id.
+  var DL_FOR = { prosjekter: 'Prosjektene', sokere: 'Søkerne', mentorer: 'Mentorene', meg: 'Meg', andre: 'Andre' };
+  var DL_HOW = { fast: 'Fast dato hvert år', 'for': 'Dager før', etter: 'Dager etter', ukedag_for: 'Ukedagen før', ukedag_etter: 'Ukedagen etter' };
+  var DL_DAYS = ['mandag', 'tirsdag', 'onsdag', 'torsdag', 'fredag', 'lørdag', 'søndag'];
+  function deadlineList(s) { try { var l = JSON.parse((s && s.frister) || '[]'); return Array.isArray(l) ? l : []; } catch (e) { return []; } }
+  function ownDeadlines(r) { try { return JSON.parse((r && r.frister) || '{}') || {}; } catch (e) { return {}; } }
+  function weekday(d) { var p = d.split('-').map(Number); return (new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay() + 6) % 7 + 1; }
+  function deadlineDate(f, r, refDate) {
+    if (f.hvordan === 'fast') return /^\d{2}-\d{2}$/.test(f.fast || '') && /^\d{4}$/.test(String(r.aar)) ? r.aar + '-' + f.fast : '';
+    var ref = refDate(f.fra || 'dato');
+    if (!ref) return '';
+    var n = Number(f.dager) || 0;
+    if (f.hvordan === 'for') return addDays(ref, -n);
+    if (f.hvordan === 'etter') return addDays(ref, n);
+    var want = Number(f.ukedag) || 1, step = f.hvordan === 'ukedag_for' ? -1 : 1, d = ref;
+    for (var i = 0; i < 7; i++) { d = addDays(d, step); if (weekday(d) === want) return d; }
+    return '';
+  }
+  // {id: date} for one year; own = false gives the standard dates (ignoring dates changed by hand).
+  function runDeadlineDates(r, s, useOwn) {
+    var list = deadlineList(s), by = {}, out = {}, own = useOwn === false ? {} : ownDeadlines(r);
+    list.forEach(function (f) { by[f.id] = f; });
+    var calc = function (id, depth) {
+      if (out[id] !== undefined) return out[id];
+      if (depth > 20 || !by[id]) return '';
+      out[id] = own[id] || deadlineDate(by[id], r, function (ref) { return ref === 'dato' ? r.dato || '' : ref === 'slutt' ? r.sluttdato || r.dato || '' : calc(ref, depth + 1); });
+      return out[id];
+    };
+    list.forEach(function (f) { calc(f.id, 0); });
+    return out;
+  }
+  function dlNameOf(s, id) { var f = id && deadlineList(s).find(function (x) { return x.id === id; }); return f ? f.navn : ''; }
+  function dlDateByName(r, s, name) {
+    var f = deadlineList(s).find(function (x) { return String(x.navn || '').trim().toLowerCase() === String(name).trim().toLowerCase(); });
+    return f ? runDeadlineDates(r, s)[f.id] || '' : '';
+  }
+  function refName(s, fra) { return fra === 'slutt' ? 'sluttdatoen' : !fra || fra === 'dato' ? (artOf(s) === 'prosess' ? 'startdatoen' : 'datoen') : (dlNameOf(s, fra) || '(slettet frist)'); }
+  function ruleText(f, s) {
+    if (f.hvordan === 'fast') { var m = String(f.fast || '').split('-'); return m.length === 2 ? 'fast ' + Number(m[1]) + '. ' + MONTHS[Number(m[0]) - 1] : 'fast dato mangler'; }
+    var ref = refName(s, f.fra);
+    if (f.hvordan === 'for' || f.hvordan === 'etter') return (Number(f.dager) || 0) === 0 ? 'samme dag som ' + ref : (Number(f.dager) || 0) + ' dager ' + (f.hvordan === 'for' ? 'før ' : 'etter ') + ref;
+    return DL_DAYS[(Number(f.ukedag) || 1) - 1] + 'en ' + (f.hvordan === 'ukedag_for' ? 'før ' : 'etter ') + ref;
+  }
+  function dlStatus(dt) {
+    if (!dt) return '<span class="chip c-na">ingen dato</span>';
+    var n = Math.round((Date.parse(dt) - Date.parse(today())) / 864e5);
+    return n < 0 ? '<span class="chip c-done">✓ passert</span>' : n === 0 ? '<span class="chip c-late">i dag</span>' : '<span class="chip ' + (n <= 14 ? 'c-prog' : 'c-info') + '">om ' + n + (n === 1 ? ' dag' : ' dager') + '</span>';
+  }
+  function dlForChip(f) { return f['for'] ? '<span class="chip c-info">' + esc(DL_FOR[f['for']] || f['for']) + '</span>' : ''; }
+  // The year page: every deadline this year, sorted by date.
+  function runDeadlinesPanel(r, s) {
+    var list = deadlineList(s);
+    if (!list.length) return '';
+    var dates = runDeadlineDates(r, s), std = runDeadlineDates(r, s, false), own = ownDeadlines(r);
+    var rows = list.slice().sort(function (a, b) { return (dates[a.id] || '9999') < (dates[b.id] || '9999') ? -1 : 1; });
+    return '<section class="panel"><h2>Frister ' + esc(r.aar) + '</h2><div class="tablewrap"><table class="t"><tr><th>Dato</th><th>Frist</th><th>For</th><th>Regel</th><th></th><th></th></tr>' + rows.map(function (f) {
+      var changed = own[f.id] ? ' <span class="chip c-alt">endret i år</span>' : dates[f.id] !== std[f.id] ? ' <span class="chip c-alt">flyttet</span>' : '';
+      return '<tr><td class="strong">' + esc(fmtDate(dates[f.id]) || '–') + '</td><td>' + esc(f.navn) + changed + (f.notat ? '<small class="dl-note">' + esc(f.notat) + '</small>' : '') + '</td><td>' + dlForChip(f) + '</td>' +
+        '<td>' + esc(ruleText(f, s)) + (own[f.id] && std[f.id] ? '<small class="dl-note">standard: ' + esc(fmtDate(std[f.id])) + '</small>' : '') + '</td><td>' + dlStatus(dates[f.id]) + '</td>' +
+        '<td><button type="button" class="btn small ghost" data-dlset="' + esc(r.id) + '|' + esc(f.id) + '" aria-label="Endre datoen for ' + esc(f.navn) + ' i ' + esc(r.aar) + '">Endre</button></td></tr>';
+    }).join('') + '</table></div><div class="row wrap"><button type="button" class="btn small" data-dledit="' + esc(s.id) + '">Rediger fristene</button></div></section>';
+  }
+  // The activity page: the rules, with this year's dates when there is a current year.
+  function seriesDeadlinesPanel(s, r) {
+    var list = deadlineList(s), dates = r ? runDeadlineDates(r, s) : {};
+    return '<section class="panel"><h2>Frister</h2>' + (list.length ? '<div class="hist">' + list.map(function (f) {
+      return '<div class="dl-line"><b>' + esc(f.navn) + '</b> ' + dlForChip(f) + ' · ' + esc(ruleText(f, s)) + (r && dates[f.id] ? ' · ' + esc(r.aar) + ': ' + esc(fmtDate(dates[f.id])) : '') + (f.notat ? ' · <span class="dm-m">' + esc(f.notat) + '</span>' : '') + '</div>';
+    }).join('') + '</div>' : '<div class="empty">Ingen frister ennå. Legg inn frister som påmeldingsfrist eller innleveringsfrist, så kan oppgavene regnes fra dem.</div>') +
+      '<div class="row wrap"><button type="button" class="btn small" data-dledit="' + esc(s.id) + '">' + (list.length ? 'Rediger fristene' : '+ Legg til frister') + '</button></div></section>';
+  }
+  // Editor for an activity's deadlines (one row per deadline).
+  function editDeadlines(sid) {
+    var s = byId('Serier', sid), rows = deadlineList(s).map(function (f) { return Object.assign({}, f); }), oldNames = {};
+    rows.forEach(function (f) { oldNames[f.id] = f.navn; });
+    var proc = artOf(s) === 'prosess';
+    openDrawer('<h2>Frister: ' + esc(s.navn) + '</h2>' +
+      '<p class="empty">Hver frist er enten en fast dato hvert år, eller regnes fra datoen' + (proc ? ' (start eller slutt)' : '') + ' eller fra en annen frist. Hvis datoen eller fristen den regnes fra flyttes, flyttes denne også. Du kan endre en frist for ett år på årssiden. Oppgaver kan regnes fra en frist («fra …» i oppgavelisten).</p>' +
+      '<div id="dlEd" class="tled"></div>' + actions(),
+      function () {
+        var clean = rows.filter(function (f) { return String(f.navn || '').trim(); }).map(function (f) { f.navn = f.navn.trim(); return f; });
+        var names = clean.map(function (f) { return f.navn.toLowerCase(); });
+        if (names.some(function (n, i) { return names.indexOf(n) !== i; })) { toast('To frister har samme navn'); return; }
+        // A renamed deadline keeps the tasks that count from it ("fra: …" in the task list).
+        var text = s.oppgavemal || '';
+        clean.forEach(function (f) {
+          var old = oldNames[f.id];
+          if (old && old !== f.navn) text = text.split('\n').map(function (l) { return l.replace(/(\|\s*fra\s*:\s*)(.+)$/i, function (m, a, b) { return b.trim() === old ? a + f.navn : m; }); }).join('\n');
+        });
+        var row = { id: sid, frister: JSON.stringify(clean) };
+        if (text !== (s.oppgavemal || '')) row.oppgavemal = text;
+        save('Serier', [row]).then(function () { closeDrawer(); toast('Lagret. Åpne oppgaver flyttes etter de nye fristene.'); load(true); });
+      });
+    var box = $('dlEd');
+    var refOpts = function (f) {
+      var o = option('dato', f.fra || 'dato', proc ? 'startdatoen' : 'datoen') + (proc ? option('slutt', f.fra, 'sluttdatoen') : '');
+      return o + rows.filter(function (x) { return x.id !== f.id && String(x.navn || '').trim(); }).map(function (x) { return option(x.id, f.fra, x.navn); }).join('');
+    };
+    var draw = function () {
+      box.innerHTML = (rows.length ? rows.map(function (f, i) {
+        var how = f.hvordan || 'for', when;
+        if (how === 'fast') {
+          var m = String(f.fast || '').split('-');
+          when = '<label class="f">Dag og måned<input type="text" data-i="' + i + '" data-k="fast" value="' + esc(m.length === 2 ? Number(m[1]) + '.' + Number(m[0]) : '') + '" placeholder="15.3" inputmode="decimal"></label>';
+        } else {
+          when = (how === 'for' || how === 'etter' ? '<label class="f">Dager<input type="number" min="0" data-i="' + i + '" data-k="dager" value="' + esc(f.dager || '') + '" placeholder="0"></label>'
+            : '<label class="f">Ukedag<select data-i="' + i + '" data-k="ukedag">' + DL_DAYS.map(function (w, j) { return option(String(j + 1), String(f.ukedag || '1'), w); }).join('') + '</select></label>') +
+            '<label class="f">' + (how.indexOf('for') >= 0 && how !== 'etter' ? 'Før' : 'Etter') + '<select data-i="' + i + '" data-k="fra">' + refOpts(f) + '</select></label>';
+        }
+        return '<div class="dl-row"><div class="grid2">' +
+          '<label class="f">Navn<input type="text" data-i="' + i + '" data-k="navn" value="' + esc(f.navn || '') + '" placeholder="F.eks. Påmeldingsfrist"></label>' +
+          '<label class="f">For hvem<select data-i="' + i + '" data-k="for">' + option('', f['for'] || '', '–') + Object.keys(DL_FOR).map(function (k) { return option(k, f['for'] || '', DL_FOR[k]); }).join('') + '</select></label>' +
+          '<label class="f">Når<select data-i="' + i + '" data-k="hvordan" data-redraw="1">' + Object.keys(DL_HOW).map(function (k) { return option(k, how, DL_HOW[k]); }).join('') + '</select></label>' + when +
+          '<label class="f">Notat<input type="text" data-i="' + i + '" data-k="notat" value="' + esc(f.notat || '') + '" placeholder="Valgfritt"></label></div>' +
+          '<span class="tl-btns"><button type="button" class="btn small ghost" data-dl="up|' + i + '" aria-label="Flytt opp">↑</button><button type="button" class="btn small ghost" data-dl="down|' + i + '" aria-label="Flytt ned">↓</button><button type="button" class="btn small ghost" data-dl="del|' + i + '" aria-label="Slett fristen">✕ Slett</button></span></div>';
+      }).join('') : '<div class="empty">Ingen frister ennå.</div>') +
+        '<div class="row wrap"><button type="button" class="btn small" data-dl="add|">+ Frist</button></div>';
+    };
+    var read = function (el) {
+      var i = Number(el.dataset.i), k = el.dataset.k, f = rows[i];
+      if (!k || !f) return;
+      if (k === 'fast') {
+        var m = el.value.trim().match(/^(\d{1,2})[.\/-](\d{1,2})$/);
+        f.fast = m && Number(m[2]) >= 1 && Number(m[2]) <= 12 && Number(m[1]) >= 1 && Number(m[1]) <= 31 ? ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2) : '';
+      } else f[k] = el.value;
+    };
+    box.addEventListener('input', function (e) { read(e.target); });
+    box.addEventListener('change', function (e) {
+      read(e.target);
+      if (e.target.dataset.redraw) draw();
+      // A new or renamed deadline shows up in the other rows' "Før/Etter" lists without moving the focus.
+      if (e.target.dataset.k === 'navn') box.querySelectorAll('select[data-k="fra"]').forEach(function (sel) { sel.innerHTML = refOpts(rows[Number(sel.dataset.i)]); });
+    });
+    box.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-dl]'); if (!b) return;
+      e.stopPropagation();
+      var p = b.dataset.dl.split('|'), i = Number(p[1]);
+      if (p[0] === 'add') rows.push({ id: 'f' + Date.now().toString(36), navn: '', 'for': '', notat: '', hvordan: 'for', dager: '', ukedag: '1', fast: '', fra: 'dato' });
+      if (p[0] === 'del') {
+        var gone = rows[i], users = rows.filter(function (x) { return x.fra === gone.id; });
+        if (users.length && !window.confirm(users.map(function (x) { return x.navn; }).join(', ') + ' regnes fra denne fristen. Slette likevel? De regnes da fra datoen.')) return;
+        users.forEach(function (x) { x.fra = 'dato'; });
+        rows.splice(i, 1);
+      }
+      if (p[0] === 'up' && i > 0) rows.splice(i - 1, 0, rows.splice(i, 1)[0]);
+      if (p[0] === 'down' && i < rows.length - 1) rows.splice(i + 1, 0, rows.splice(i, 1)[0]);
+      draw();
+      if (p[0] === 'add') { var n = box.querySelectorAll('[data-k="navn"]'); if (n.length) n[n.length - 1].focus(); }
+    });
+    draw();
+  }
+  // Change one deadline for one year (or go back to the standard date).
+  function editRunDeadline(arg) {
+    var p = arg.split('|'), r = byId('Runder', p[0]), s = r && byId('Serier', r.serie_id);
+    var f = s && deadlineList(s).find(function (x) { return x.id === p[1]; });
+    if (!f) return;
+    var own = ownDeadlines(r), std = runDeadlineDates(r, s, false)[f.id] || '', cur = runDeadlineDates(r, s)[f.id] || '';
+    var users = deadlineList(s).filter(function (x) { return x.fra === f.id; }).map(function (x) { return x.navn; });
+    var store = function (date) {
+      if (date) own[f.id] = date; else delete own[f.id];
+      closeDrawer();
+      save('Runder', [{ id: r.id, frister: JSON.stringify(own) }]).then(function () { toast('Lagret. Oppgaver og frister som regnes fra den, er flyttet.'); load(true); });
+    };
+    openDrawer('<h2>' + esc(f.navn) + ' ' + esc(r.aar) + '</h2><p class="empty">Standard: ' + esc(ruleText(f, s)) + (std ? ' (' + esc(fmtDate(std)) + ')' : '') + '. ' +
+      (users.length ? 'Disse flyttes med: ' + esc(users.join(', ')) + '. ' : '') + 'Oppgaver som regnes fra fristen, flyttes også.</p>' +
+      field('Dato i ' + esc(r.aar), 'dato', cur, 'date') +
+      actions(own[f.id] ? '<button type="button" class="btn ghost" data-dlreset="1">Tilbake til standard</button>' : ''),
+      function (form) { var d = val(form, 'dato'); store(d && d !== std ? d : ''); });
+    var reset = document.querySelector('#drawerForm [data-dlreset]');
+    if (reset) reset.addEventListener('click', function (e) { e.stopPropagation(); store(''); });
   }
 
   // ---- Agenda variants (Agendaer) ----
@@ -1662,7 +1855,7 @@
   // ---- The delmål board on a year page: one column per delmål ----
   function boardTask(t, s) {
     var locked = isLocked(t), done = t.status === 'Ferdig', ring = done ? 'done' : (t.status === 'Pågående' || t.status === 'Venter på') ? 'started' : '';
-    var when = t.mal_dager !== '' && t.mal_dager != null ? daysText(t.mal_dager) + (t.frist ? ' (' + fmtDate(t.frist) + ')' : '') : t.frist ? fmtDate(t.frist) : '';
+    var when = t.mal_dager !== '' && t.mal_dager != null ? daysText(t.mal_dager, dlNameOf(s, t.mal_fra)) + (t.frist ? ' (' + fmtDate(t.frist) + ')' : '') : t.frist ? fmtDate(t.frist) : '';
     var meta = [];
     if (when) meta.push('<span class="' + (isLate(t) ? 'late' : '') + '">' + esc(when) + '</span>');
     if (locked) meta.push('etter ' + blockers(t).map(function (b) { return '«' + esc(b.tittel) + '»'; }).join(' og '));
@@ -1855,9 +2048,9 @@
           alternativ_til: others.filter(function (o) { return form.querySelector('[name="alt_' + o.id + '"]').checked; }).map(function (o) { return o.id; }).join(',') };
         if (!row.navn) { toast('Skriv et navn'); return; }
         if (id) row.id = id; else { row.status = 'aktiv'; row.versjon = '1'; }
-        save('Serier', [row]).then(function (saved) { closeDrawer(); toast('Lagret'); if (!id) location.hash = '#serie/' + saved[0].id; else render(); });
+        save('Serier', [row]).then(function (saved) { closeDrawer(); toast('Lagret'); if (!id) location.hash = '#serie/' + saved[0].id; else load(true); });
       });
-    initTaskListEditor();
+    initTaskListEditor(deadlineList(s).map(function (f) { return f.navn; }));
   }
   function newRun(sid) {
     var s = byId('Serier', sid);
@@ -3552,6 +3745,8 @@
     if (ds.delsdoc) { if (!window.confirm('Slette lenken til filen? Selve filen slettes ikke.')) return; closeDrawer(); save('Dokumenter', [], [ds.delsdoc]).then(function () { toast('Slettet'); render(); }); return; }
     // v12
     if (ds.dmtick) { tickGroup(ds.dmtick); return; }
+    if (ds.dledit) { editDeadlines(ds.dledit); return; }   // v15
+    if (ds.dlset) { editRunDeadline(ds.dlset); return; }
     if (ds.mstick) { msToggle(ds.mstick); return; }
     if (ds.msalt) { msAlt(ds.msalt); return; }
     if (ds.pedit !== undefined) { var pe = ds.pedit.split('|'); editPerson(pe[0], pe[1]); return; }

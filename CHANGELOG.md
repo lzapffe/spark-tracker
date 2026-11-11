@@ -3,6 +3,22 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v15 – 11 November 2026
+
+### Added
+- **Frister (named deadlines)** on each activity, e.g. Påmeldingsfrist or Innleveringsfrist. Each has a name, **for whom** (Prosjektene, Søkerne, Mentorene, Meg, Andre), an optional note, and a rule:
+  - a fixed date every year (e.g. 15.3), or
+  - a number of days before or after the date (for a process: the start or end date) or another deadline, or
+  - the first chosen weekday before or after it (e.g. "mandagen før Pitch").
+  When the date or a deadline moves, every deadline counted from it moves too.
+- **Frister panel** on the activity page (the rules and this year's dates, "Rediger fristene") and on the year page (all deadlines sorted by date, for whom, the rule, days left or "✓ passert").
+- **Change a deadline for one year:** "Endre" on the year page. The deadlines and tasks counted from it move with it; "Tilbake til standard" undoes it. Shown as "endret i år" (and "flyttet" on the ones that moved with it).
+- **Tasks and delmål can count from a deadline:** a "fra …" choice next to the days in the task list editor (as text: `Send påminnelse | -3 | fra: Påmeldingsfrist`). Renaming a deadline updates the task list.
+
+### Back end
+- New columns: `Serier.frister` (JSON rules), `Runder.frister` (this year's changed dates), `Oppgaver.mal_fra` (the deadline a task counts from). Run `setup` once.
+- `deadlines_()` / `deadlineDate_()` work out the dates; `makeRunTasks_` and `refreshRunTasks_` count from them. Saving an activity moves the open tasks of its current years.
+
 ## v14 – 10 November 2026
 
 ### Added
