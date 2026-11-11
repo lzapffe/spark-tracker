@@ -3,6 +3,36 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v16 – 11 November 2026
+
+### Added
+- **Kommende** on Oversikt: activities this month and next (events by date, processes that are running or about to start) with days left, signed up, tasks done and the next deadline, plus reminders for deadlines. **Alle frister** opens the new **Frister** page (Mer → Frister): every deadline, one month at a time.
+- **Deadlines:**
+  - One deadline at a time: **+ Ny frist** and **Rediger** on each deadline, with click buttons instead of drop-downs and a live preview ("I 2026: man. 9. mars").
+  - From a year page, Rediger asks **Bare i <år>** (default: this year's date and who it applies to) or **Alle år** (the rule).
+  - Rules in days, **weeks**, **workdays** (skips weekends) or a weekday ("mandagen før", or "mandagen i uka før"); optional time of day.
+  - **For hvem** with groups (all active, 1st year, 2nd year, signed up); single projects can be left out per year.
+  - **Levert** ticks per project on the year page, and reminders for those who have not delivered: **Purring** (on, default the day after) and **Påminnelse** before the deadline (off until turned on). They show on Oversikt and the year page with **Kopier e-postliste** (leaders and contact persons) and **Ferdig**. Nothing is sent automatically.
+  - The weekday is shown with every deadline date, and **⚠** marks deadlines and tasks that land on a Saturday or Sunday.
+- **Mat og servering** on events: **Trenger mat / Ingen mat**, then **Butikk** (shopping list with quantities) or **Catering** (supplier, order link). Suggested tasks (Lag handleliste, Handle mat, Forbered maten / Bestill catering 7 days before …) you can add or skip. A **standard** per activity, **Lagre som standard** from a year, **Registrer rester** after the event, and quantity suggestions from earlier years per person and hour.
+- **Gjesteliste** on events: pick people from the signed-up projects and contacts, or type a name. **Allergies** on project people, the project leader and Kontakter are copied in, and a warning shows when someone has allergies and there is food.
+- **Tasks:**
+  - **Gjelder**: Generell, Ett prosjekt or **En gruppe** (all active, 1st year, 2nd year, applicants) with projects you can leave out and a "ferdig" tick per project; the task is done when all are ticked. **Del opp per prosjekt** makes one task each.
+  - **Åpner**: pick the tasks this one unlocks (as well as "Låses opp av").
+  - **Venter på svar**: who you wait for and "minn meg på etter N dager". The task leaves the to-do lists for a "Venter på svar" panel and comes back in Haster with ⏰ after N days. **Fikk svar** asks: back on the list, or done.
+  - **+ Relatert oppgave**: a new task with the same project/group, activity and delmål; you choose the deadline.
+- **Arbeidsflyt** view (columns of what can be done at the same time) as a switch on the activity page (the yearly list) and the year page (that year's tasks).
+
+### Changed
+- **Activity page** is one long page: Generell info, Frister, **Oppgaver og delmål** (Liste / Arbeidsflyt, "Rediger oppgaver og delmål" in a wide editor), Agenda, Mat og servering, År. The Rediger form only has name, type, category, info and links.
+- **Type** is now *Arrangement (én dag)* or *Prosess (en periode)* as two buttons; what used to be Type (Workshop, Mentormøte …) is **Kategori**.
+- **Agenda**: start and end time for the event, then a table of sections (time, what, **Ansvarlig** picked from people or typed). Only breaks are marked. Variants for a different number of participants are under "Flere varianter etter antall deltakere".
+- The task form is reordered: Tittel, Gjelder, Frist, Status, Låses opp av / Åpner; the rest under **Mer**.
+
+### Back end
+- New columns: `Runder.frist_status`, `Runder.mat`, `Runder.gjester`, `Serier.mat`, `Agendaer.start_tid`, `Agendaer.slutt_tid`, `Oppgaver.gruppe`, `utenom`, `avkrysset`, `relatert_til`, `Kontakter.allergier`, `Prosjekter.leder_allergier`. Run `setup` once.
+- `deadlineDate_` understands weeks, workdays and "the week before" (`deadlineRule_`); v15 rules still work.
+
 ## v15 – 11 November 2026
 
 ### Added

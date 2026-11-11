@@ -587,3 +587,48 @@ table.ag tr.agend td { color: var(--muted); font-weight: 400; }
 .tl-when { display: flex; gap: 4px; align-items: center; }
 .tl-row .tl-when input[type=number] { width: 76px; flex: none; }
 .tl-row .tl-when select.tl-from { width: auto; max-width: 150px; }
+
+/* v16: deadlines, agenda, food, guests, workflow, tasks */
+.drawer.wide { width: min(980px, 100%); }
+.dl-list { display: grid; gap: 8px; }
+.dl-item { display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.dl-item:last-child { border-bottom: 0; }
+.dl-date small, .dl-main small { display: block; }
+.dl-side { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+.dl-ticks { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.dl-tick { border: 0; cursor: pointer; }
+.dl-q { margin: 10px 0; }
+.dl-lab { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 4px; }
+.dl-n { width: 72px; }
+.dl-preview { background: var(--card2); border-radius: var(--r-s); padding: 8px 12px; }
+.dl-rem .right { gap: 6px; }
+.seg-radio label { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; cursor: pointer; font-size: 13px; }
+.seg-radio label + label { border-left: 1px solid var(--line); }
+.seg-radio input { margin: 0; }
+.ag-span { margin: 2px 0 8px; }
+.c-brk { background: var(--card2); color: var(--muted); border: 1px dashed var(--line); }
+.ag-row2 { display: grid; grid-template-columns: 46px minmax(0, 2fr) 70px minmax(0, 1.3fr) auto auto; gap: 6px; align-items: center; }
+.ag-row2.brk { background: var(--card2); border-radius: var(--r-s); padding: 2px 4px; }
+.ag-row2 input[type=text], .ag-row2 input[type=number] { width: 100%; min-width: 0; }
+.ag-at { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12.5px; }
+.ag-var { margin: 10px 0; }
+.banner.warn { background: var(--s-late-bg); color: var(--s-late); margin: 8px 0; }
+.shop-row { display: grid; grid-template-columns: minmax(0, 2fr) 90px 80px auto; gap: 6px; align-items: center; }
+.shop-row .shop-sg { grid-column: 1 / -1; justify-self: start; }
+.rest-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.rest-row input { width: 90px; }
+.food-sugg { margin-top: 10px; }
+.flow { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; }
+.fcol { flex: 0 0 210px; display: flex; flex-direction: column; gap: 6px; }
+.fcard { background: var(--card2); border-radius: var(--r-s); padding: 8px 10px; }
+.fcard small { display: block; color: var(--muted); font-size: 12px; }
+.fcard[data-task] { cursor: pointer; }
+.fcard.isdone { opacity: .6; }
+.grp-row { display: flex; justify-content: space-between; gap: 8px; }
+@media (max-width: 640px) {
+  .dl-item { grid-template-columns: minmax(0, 1fr) auto; }
+  .dl-item .dl-date { grid-column: 1 / -1; }
+  .ag-row2 { grid-template-columns: 46px minmax(0, 1fr) 64px; }
+  .ag-row2 input[data-k="ansvarlig"] { grid-column: 2 / 4; }
+  .shop-row { grid-template-columns: minmax(0, 1fr) 70px 64px auto; }
+}
