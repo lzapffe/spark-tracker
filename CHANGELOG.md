@@ -3,6 +3,19 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v17 – 11 November 2026 (page only)
+
+### Changed
+- **Frister**: the event itself is shown as a thick line among the deadlines (name and date; a process gets a line for the start and the end), on the year page, the activity page and the Frister page, so you can see what comes before and after.
+- **Arbeidsflyt**:
+  - "+ Ny oppgave i flyten", "+ Neste", "+ Gren" and "Ny oppgave etter alle valgte" open the **full task form** (all the normal options), with "Låses opp av" already filled in. The task is an ordinary task.
+  - **No deadline by default** (it used to be 7 days after it unlocks); add one if you need it.
+  - **✕** on every card deletes the task; tasks that waited for it wait for what it waited for instead.
+  - Each separate chain of tasks gets **its own row**, and tasks that are not linked to anything are collected under "Enkeltoppgaver", instead of "Steg 1, Steg 2 …" columns across everything. The same on the Arbeidsflyt switch on the activity and year pages.
+
+### Fixed
+- A double click (or Enter and a click) on Lagre could save twice and make duplicate tasks. Every form now saves once.
+
 ## v16 – 11 November 2026
 
 ### Added

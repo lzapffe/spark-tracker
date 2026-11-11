@@ -678,7 +678,13 @@
     dr.innerHTML = '<form id="drawerForm">' + html + '</form>';
     dr.hidden = false; $('drawerBg').hidden = false;
     var form = $('drawerForm');
-    form.addEventListener('submit', function (e) { e.preventDefault(); onSubmit(form); });
+    // v17: a double click or Enter + click must not save twice (that made duplicate tasks).
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      if (form.dataset.busy) return;
+      form.dataset.busy = '1'; setTimeout(function () { delete form.dataset.busy; }, 1200);
+      onSubmit(form);
+    });
     var first = form.querySelector('input,select,textarea'); if (first) first.focus();
   }
   function closeDrawer() { $('drawer').hidden = true; $('drawerBg').hidden = true; $('drawer').innerHTML = ''; $('drawer').classList.remove('wide'); }
@@ -1657,6 +1663,25 @@
     if (!list) { toast('Ingen e-postadresser å kopiere'); return; }
     copyText(list);
   }
+  // v17: the event itself as a thick line among the deadlines (a process gets one for the start and one for the end).
+  function eventMarks(r, s) {
+    if (!r || !r.dato) return [];
+    if (artOf(s) === 'prosess') return [{ dt: r.dato, label: s.navn + ' ' + r.aar + ' starter' }].concat(r.sluttdato ? [{ dt: r.sluttdato, label: s.navn + ' ' + r.aar + ' slutter' }] : []);
+    return [{ dt: r.dato, label: s.navn + ' ' + r.aar }];
+  }
+  function eventLine(m, link) {
+    return '<div class="dl-event"><span>' + (link ? '<button class="plink" data-go="runde/' + esc(link) + '">' + esc(m.label) + '</button>' : esc(m.label)) + ' · ' + esc(fmtDateW(m.dt)) + '</span></div>';
+  }
+  // Deadline rows (html) and event lines merged by date; an event line comes before deadlines on the same day.
+  function withEvents(rows, marks) {
+    var out = [];
+    rows.forEach(function (x) {
+      marks.filter(function (m) { return !m.used && x.dt && m.dt <= x.dt; }).forEach(function (m) { m.used = 1; out.push(m.html); });
+      out.push(x.html);
+    });
+    marks.filter(function (m) { return !m.used; }).forEach(function (m) { out.push(m.html); });
+    return out.join('');
+  }
   function sortedDeadlines(s, dates) { return deadlineList(s).slice().sort(function (a, b) { return (dates[a.id] || '9999') < (dates[b.id] || '9999') ? -1 : (dates[a.id] || '9999') > (dates[b.id] || '9999') ? 1 : 0; }); }
   // The year page: every deadline this year, sorted by date, with "levert" ticks and reminders.
   function runDeadlinesPanel(r, s) {
@@ -1664,7 +1689,7 @@
     var dates = runDeadlineDates(r, s), std = runDeadlineDates(r, s, false), own = ownDeadlines(r), st = dlState(r);
     var rems = dlReminders(r.id);
     return '<section class="panel"><h2>Frister ' + esc(r.aar) + '</h2>' + (rems.length ? '<div class="tasklist">' + rems.map(dlReminderHtml).join('') + '</div>' : '') +
-      (list.length ? '<div class="dl-list">' + sortedDeadlines(s, dates).map(function (f) {
+      (list.length ? '<div class="dl-list">' + withEvents(sortedDeadlines(s, dates).map(function (f) {
         var dt = dates[f.id], changed = own[f.id] ? ' <span class="chip c-alt">endret i år</span>' : dt !== std[f.id] ? ' <span class="chip c-alt">flyttet</span>' : '';
         var group = dlGroup(f, r), out = (st[f.id] || {}).utenom || [], lev = (st[f.id] || {}).levert || {};
         var mem = group.filter(function (x) { return out.indexOf(x.id) < 0; });
@@ -1675,17 +1700,18 @@
           '<div class="dl-main"><b>' + esc(f.navn) + '</b>' + changed + ' ' + dlForChip(f) + weekendWarn(dt) +
           '<small class="dl-note">' + esc(ruleText(f, s)) + (own[f.id] && std[f.id] ? ' · standard: ' + esc(fmtDateW(std[f.id])) : '') + (f.notat ? ' · ' + esc(f.notat) : '') + '</small>' + ticks + '</div>' +
           '<div class="dl-side">' + dlStatus(dt) + '<button type="button" class="btn small ghost" data-dledit="' + esc(s.id + '|' + f.id + '|' + r.id) + '">Rediger</button></div></div>';
-      }).join('') + '</div>' : '<div class="empty">Ingen frister ennå.</div>') +
+      }).map(function (html, i) { var f = sortedDeadlines(s, dates)[i]; return { dt: dates[f.id], html: html }; }), eventMarks(r, s).map(function (m) { return { dt: m.dt, html: eventLine(m) }; })) + '</div>' : '<div class="empty">Ingen frister ennå.</div>') +
       '<div class="row wrap"><button type="button" class="btn small" data-dledit="' + esc(s.id + '||' + r.id) + '">+ Ny frist</button></div></section>';
   }
   // The activity page: the rules, sorted by this year's date when there is a current year.
   function seriesDeadlinesPanel(s, r) {
     var list = deadlineList(s), dates = r ? runDeadlineDates(r, s) : {};
-    return '<section class="panel"><h2>Frister</h2>' + (list.length ? '<div class="dl-list">' + sortedDeadlines(s, dates).map(function (f) {
+    var sorted = sortedDeadlines(s, dates);
+    return '<section class="panel"><h2>Frister</h2>' + (list.length ? '<div class="dl-list">' + withEvents(sorted.map(function (f) {
       return '<div class="dl-item"><div class="dl-date">' + (r && dates[f.id] ? '<b>' + esc(fmtDateW(dates[f.id])) + '</b><small>' + esc(r.aar) + '</small>' : '<b>–</b>') + '</div>' +
         '<div class="dl-main"><b>' + esc(f.navn) + '</b> ' + dlForChip(f) + (r ? weekendWarn(dates[f.id]) : '') + '<small class="dl-note">' + esc(ruleText(f, s)) + (f.tid ? ' · kl. ' + esc(f.tid) : '') + (f.notat ? ' · ' + esc(f.notat) : '') + '</small></div>' +
         '<div class="dl-side"><button type="button" class="btn small ghost" data-dledit="' + esc(s.id + '|' + f.id + '|' + (r ? r.id : '')) + '">Rediger</button></div></div>';
-    }).join('') + '</div>' : '<div class="empty">Ingen frister ennå. Legg inn frister som påmeldingsfrist eller innleveringsfrist, så kan oppgavene regnes fra dem.</div>') +
+    }).map(function (html, i) { return { dt: r ? dates[sorted[i].id] : '', html: html }; }), eventMarks(r, s).map(function (m) { return { dt: m.dt, html: eventLine(m, r.id) }; })) + '</div>' : '<div class="empty">Ingen frister ennå. Legg inn frister som påmeldingsfrist eller innleveringsfrist, så kan oppgavene regnes fra dem.</div>') +
       '<div class="row wrap"><button type="button" class="btn small" data-dledit="' + esc(s.id + '||' + (r ? r.id : '')) + '">+ Ny frist</button></div></section>';
   }
 
@@ -1843,14 +1869,20 @@
       deadlineList(s).forEach(function (f) { if (dates[f.id] && dates[f.id].slice(0, 7) === mon) items.push({ r: r, s: s, f: f, dt: dates[f.id] }); });
     });
     items.sort(function (a, b) { return a.dt < b.dt ? -1 : a.dt > b.dt ? 1 : 0; });
+    var marks = [];
+    d.Runder.filter(function (r) { return r.arkivert !== 'ja' && r.status !== 'avlyst'; }).forEach(function (r) {
+      var s = byId('Serier', r.serie_id); if (!s) return;
+      eventMarks(r, s).forEach(function (m) { if (m.dt.slice(0, 7) === mon) marks.push({ dt: m.dt, html: eventLine(m, r.id) }); });
+    });
+    marks.sort(function (a, b) { return a.dt < b.dt ? -1 : 1; });
     var label = MONTHS[p[1] - 1] + ' ' + p[0];
     return head('Frister', label.charAt(0).toUpperCase() + label.slice(1), '<span class="seg"><button data-fmon="' + shift(-1) + '" aria-label="Forrige måned">‹</button><button data-fmon="' + today().slice(0, 7) + '" aria-pressed="' + (mon === today().slice(0, 7)) + '">Denne måneden</button><button data-fmon="' + shift(1) + '" aria-label="Neste måned">›</button></span>') +
-      '<section class="panel">' + (items.length ? '<div class="dl-list">' + items.map(function (x) {
+      '<section class="panel">' + (items.length || marks.length ? '<div class="dl-list">' + withEvents(items.map(function (x) {
         var lev = (dlState(x.r)[x.f.id] || {}).levert || {}, mem = dlMembers(x.f, x.r);
         return '<div class="dl-item"><div class="dl-date"><b>' + esc(fmtDateW(x.dt)) + '</b>' + (x.f.tid ? '<small>kl. ' + esc(x.f.tid) + '</small>' : '') + '</div>' +
           '<div class="dl-main"><b>' + esc(x.f.navn) + '</b> ' + dlForChip(x.f) + weekendWarn(x.dt) + '<small class="dl-note"><button class="plink" data-go="runde/' + esc(x.r.id) + '">' + esc(x.s.navn + ' ' + x.r.aar) + '</button> · ' + esc(ruleText(x.f, x.s)) + (mem.length ? ' · levert ' + mem.filter(function (m) { return lev[m.id]; }).length + '/' + mem.length : '') + '</small></div>' +
           '<div class="dl-side">' + dlStatus(x.dt) + '</div></div>';
-      }).join('') + '</div>' : '<div class="empty">Ingen frister i ' + esc(label) + '.</div>') + '</section>';
+      }).map(function (html, i) { return { dt: items[i].dt, html: html }; }), marks) + '</div>' : '<div class="empty">Ingen frister i ' + esc(label) + '.</div>') + '</section>';
   }
 
   // ---- Agenda variants (Agendaer) ----
@@ -2209,15 +2241,18 @@
       return lv[k];
     };
     items.forEach(function (x) { level(x.key, 0); });
-    var max = Math.max.apply(null, items.map(function (x) { return lv[x.key]; })), cols = [];
-    for (var i = 0; i <= max; i++) cols.push(items.filter(function (x) { return lv[x.key] === i; }));
-    return '<div class="flow">' + cols.map(function (c, i) {
-      return '<div class="fcol"><span class="dm-m">' + (i === 0 ? 'Kan starte med en gang' : 'Steg ' + (i + 1)) + '</span>' + c.map(function (x) {
-        var after = (x.after || []).map(function (k) { return by[k] ? by[k].name : ''; }).filter(Boolean);
-        return '<div class="fcard' + (x.done ? ' isdone' : '') + '"' + (x.task ? ' data-task="' + esc(x.task) + '"' : '') + '><b>' + esc(x.name) + '</b>' + (x.group ? ' <span class="chip c-info sh">🎯 ' + esc(x.group) + '</span>' : '') +
-          (x.meta ? '<small>' + esc(x.meta) + '</small>' : '') + (after.length ? '<small>🔒 etter ' + esc(after.join(', ')) + '</small>' : '') + '</div>';
-      }).join('') + '</div>';
-    }).join('') + '</div>';
+    var cardF = function (x) {
+      var after = (x.after || []).map(function (k) { return by[k] ? by[k].name : ''; }).filter(Boolean);
+      return '<div class="fcard' + (x.done ? ' isdone' : '') + '"' + (x.task ? ' data-task="' + esc(x.task) + '"' : '') + '><b>' + esc(x.name) + '</b>' + (x.group ? ' <span class="chip c-info sh">🎯 ' + esc(x.group) + '</span>' : '') +
+        (x.meta ? '<small>' + esc(x.meta) + '</small>' : '') + (after.length ? '<small>🔒 etter ' + esc(after.join(', ')) + '</small>' : '') + '</div>';
+    };
+    // v17: one row per separate chain; the unlinked tasks together at the end.
+    return wfLanes(items.map(function (x) { return Object.assign({}, x, { id: x.key, after: (x.after || []).filter(function (a) { return by[a]; }) }); })).map(function (lane) {
+      if (lane.single) return '<div class="flane"><span class="dm-m">Enkeltoppgaver</span><div class="fsingles">' + lane.items.map(function (x) { return cardF(by[x.id]); }).join('') + '</div></div>';
+      var cols = [];
+      lane.items.forEach(function (x) { (cols[lv[x.id]] = cols[lv[x.id]] || []).push(by[x.id]); });
+      return '<div class="flane"><span class="dm-m">' + esc(lane.items[0].name) + ' →</span><div class="flow">' + cols.filter(Boolean).map(function (c) { return '<div class="fcol">' + c.map(cardF).join('') + '</div>'; }).join('') + '</div></div>';
+    }).join('');
   }
   function listFlowItems(s) {
     var group = '', out = [];
@@ -3382,6 +3417,32 @@
     items.forEach(function (it) { level(it, 0); });
     return lv;
   }
+  // v17: split into chains: tasks linked by "låses opp av" (either way) belong together. items need {id, after}.
+  // Returns [{items, single}] with the longest chains first and the unlinked tasks last (single = true).
+  function wfLanes(items) {
+    var byId2 = {}, link = {}, seen = {}, lanes = [], singles = [];
+    items.forEach(function (it) { byId2[it.id] = it; link[it.id] = []; });
+    items.forEach(function (it) { it.after.forEach(function (a) { if (byId2[a] && a !== it.id) { link[it.id].push(a); link[a].push(it.id); } }); });
+    items.forEach(function (it) {
+      if (seen[it.id]) return;
+      var comp = [], stack = [it.id];
+      while (stack.length) { var x = stack.pop(); if (seen[x]) continue; seen[x] = 1; comp.push(byId2[x]); link[x].forEach(function (y) { if (!seen[y]) stack.push(y); }); }
+      if (comp.length === 1) singles.push(comp[0]); else lanes.push(comp.sort(function (a, b) { return items.indexOf(a) - items.indexOf(b); }));
+    });
+    lanes.sort(function (a, b) { return b.length - a.length; });
+    var out = lanes.map(function (l) { return { items: l, single: false }; });
+    if (singles.length) out.push({ items: singles, single: true });
+    return out;
+  }
+  // v17: delete a card in the workflow. Tasks that waited for it no longer do.
+  function wfDelete(id) {
+    var k = wfParse(state.filters.wfKey), tab = k.kind === 'p' ? 'Progress' : 'Oppgaver', row = byId(tab, id);
+    if (!row || !window.confirm('Slette «' + row.tittel + '»?')) return;
+    var waiting = state.d[tab].filter(function (x) { return ids(x.laases_opp_av).indexOf(id) >= 0; })
+      .map(function (x) { return { id: x.id, laases_opp_av: ids(x.laases_opp_av).filter(function (y) { return y !== id; }).concat(ids(row.laases_opp_av)).filter(function (y, i, a) { return a.indexOf(y) === i; }).join(',') }; });
+    state.filters.wfSel = (state.filters.wfSel || []).filter(function (x) { return x !== id; });
+    (waiting.length ? save(tab, waiting) : Promise.resolve()).then(function () { return save(tab, [], [id]); }).then(function () { toast('Slettet'); load(true); });
+  }
   function wfCardInfo(kind, row) {
     if (kind === 'p') {
       var when = row.timing === 'etter' ? (row.frist_dager || 7) + ' dager etter' : row.timing === 'maaned' ? 'slutten av ' + monthName(row.maaned) : row.timing === 'dato' ? 'fast ' + row.dato : 'ingen frist';
@@ -3409,17 +3470,21 @@
       (f.wfKey ? '<button class="btn" data-wf-add="start">+ Ny oppgave i flyten</button>' : '');
     if (!f.wfKey) return head('Arbeidsflyt', 'Rekkefølgen oppgaver låses opp i', tools) + '<div class="panel empty">Ingen oppgaver med «Gjelder» ennå. Velg «Ny arbeidsflyt …».</div>';
 
-    var k = wfParse(f.wfKey), items = wfItems(f.wfKey), lv = wfLevels(items), cols = [];
-    items.forEach(function (it) { (cols[lv[it.id]] = cols[lv[it.id]] || []).push(it); });
-    var canvas = cols.map(function (c, i) {
-      return '<div class="wfcol"><h3>Steg ' + (i + 1) + '</h3>' + c.map(function (it) {
-        var st = k.kind === 'p' ? 'tpl' : !openTask(it.row) ? 'done' : isLocked(it.row) ? 'locked' : 'open';
+    var k = wfParse(f.wfKey), items = wfItems(f.wfKey), lv = wfLevels(items);
+    // v17: each separate chain of tasks gets its own row (lane); tasks that wait for nothing and open nothing share one row.
+    var card = function (it) {
+          var st = k.kind === 'p' ? 'tpl' : !openTask(it.row) ? 'done' : isLocked(it.row) ? 'locked' : 'open';
         var inGroup = it.after.filter(function (id) { return items.some(function (x) { return x.id === id; }); });
         return '<div class="wfcard ' + st + (inGroup.length > 1 ? ' join' : '') + (sel.indexOf(it.id) >= 0 ? ' sel' : '') + '" data-wf="' + esc(it.id) + '" data-after="' + esc(inGroup.join(',')) + '" tabindex="0">' +
           (inGroup.length > 1 ? '<span class="jointag">' + (inGroup.length === 2 ? 'begge' : 'alle') + ' må være ferdige</span>' : '') +
           '<b>' + esc(it.name) + '</b><small>' + wfCardInfo(k.kind, it.row) + '</small>' +
-          '<div class="acts"><button class="btn small" data-wf-add="next" data-id="' + esc(it.id) + '">+ Neste</button><button class="btn small" data-wf-add="branch" data-id="' + esc(it.id) + '">+ Gren</button><button class="btn small ghost" data-wf-edit="' + esc(it.id) + '">Rediger</button></div></div>';
-      }).join('') + '</div>';
+          '<div class="acts"><button class="btn small" data-wf-add="next" data-id="' + esc(it.id) + '">+ Neste</button><button class="btn small" data-wf-add="branch" data-id="' + esc(it.id) + '">+ Gren</button><button class="btn small ghost" data-wf-edit="' + esc(it.id) + '">Rediger</button><button class="btn small ghost" data-wf-del="' + esc(it.id) + '" aria-label="Slett ' + esc(it.name) + '">✕</button></div></div>';
+    };
+    var canvas = wfLanes(items).map(function (lane) {
+      if (lane.single) return '<div class="wflane"><h3>Enkeltoppgaver</h3><div class="wfsingles">' + lane.items.map(card).join('') + '</div></div>';
+      var cols = [];
+      lane.items.forEach(function (it) { (cols[lv[it.id]] = cols[lv[it.id]] || []).push(it); });
+      return '<div class="wflane"><h3>' + esc(lane.items[0].name) + ' →</h3><div class="wfrow">' + cols.filter(Boolean).map(function (c) { return '<div class="wfcol">' + c.map(card).join('') + '</div>'; }).join('') + '</div></div>';
     }).join('');
     var selbar = sel.length ?
       '<span>' + sel.length + ' valgt.</span><button class="btn small primary" data-wf-add="join"' + (sel.length < 2 ? ' disabled' : '') + '>+ Ny oppgave etter alle valgte</button><button class="btn small" data-wf-clear="1">Fjern valg</button>' :
@@ -3456,14 +3521,22 @@
     var after = mode === 'next' ? [srcId] : mode === 'branch' ? src.after.slice() : mode === 'join' ? f.wfSel.slice() : [];
     var names = after.map(function (id) { var it = items.find(function (x) { return x.id === id; }); return it ? '«' + esc(it.name) + '»' : ''; }).filter(Boolean);
     var isTpl = k.kind === 'p';
+    if (!isTpl) {
+      // v17: the full task form (all the normal options); "Låses opp av" is filled in, no deadline unless you add one.
+      var base0 = src ? src.row : (items[0] ? items[0].row : {}), p0 = k.kind === 'o' ? byId('Prosjekter', k.where) : null, rn0 = k.kind === 'r' ? byId('Runder', k.where) : null;
+      f.wfSel = [];
+      editTask(null, { tittel: '', prosjekt_id: p0 ? p0.id : '', runde_id: rn0 ? rn0.id : '', fase: base0.fase || (p0 ? p0.fase : 'Felles'), spor: rn0 ? (base0.spor || '') : k.spor,
+        aar: rn0 ? rn0.aar : p0 ? today().slice(0, 4) : k.where, type: 'oppgave', status: 'Ikke startet', liste: '', delmaal: base0.delmaal || '', laases_opp_av: after.join(',') });
+      return;
+    }
     openDrawer('<h2>Ny oppgave i flyten</h2><p class="empty">' + (names.length ? 'Låses opp når ' + names.join(' og ') + (names.length > 1 ? ' er ferdige.' : ' er ferdig.') : 'Første oppgave (venter ikke på noe).') + '</p>' +
       field('Tittel', 'tittel', '') +
-      (after.length ? field('Frist: dager etter at den låses opp', 'dager', '7', 'number') : isTpl ? '' : field('Frist', 'frist', '', 'date')) +
+      (after.length ? field('Frist: dager etter at den låses opp (tomt = ingen frist)', 'dager', '', 'number') : '') +
       (isTpl ? '<p class="empty">Gjelder «' + esc(k.spor) + '» i ' + esc(k.where) + '. Nye prosjekter i fasen får oppgaven.</p>' : '') + actions(),
       function (form) {
         var title = val(form, 'tittel'); if (!title) { toast('Skriv en tittel'); return; }
         var base = src ? src.row : (items[0] ? items[0].row : {});
-        var days = after.length ? (val(form, 'dager') || '7') : '';
+        var days = after.length ? (val(form, 'dager') || '') : '';
         if (isTpl) {
           var maxR = Math.max.apply(null, [0].concat(state.d.Progress.map(function (s) { return Number(s.rekkefolge) || 0; })));
           var copyTiming = !after.length && src;
@@ -4282,6 +4355,7 @@
     if (ds.tlaz) { state.filters.tlaz = ds.tlaz; state.keepScroll = true; render(); return; }
     if (ds.tlp) { state.keepScroll = true; toggleTlProject(ds.tlp); return; }
     if (ds.wfAdd) { wfAdd(ds.wfAdd, ds.id); return; }
+    if (ds.wfDel) { wfDelete(ds.wfDel); return; }
     if (ds.wfEdit) { if (wfParse(state.filters.wfKey).kind === 'p') editStep(ds.wfEdit); else editTask(ds.wfEdit); return; }
     if (ds.wfClear) { state.filters.wfSel = []; state.keepScroll = true; render(); return; }
     if (ds.wf) { wfToggle(ds.wf); return; }

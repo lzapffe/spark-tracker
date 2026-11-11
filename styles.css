@@ -632,3 +632,15 @@ table.ag tr.agend td { color: var(--muted); font-weight: 400; }
   .ag-row2 input[data-k="ansvarlig"] { grid-column: 2 / 4; }
   .shop-row { grid-template-columns: minmax(0, 1fr) 70px 64px auto; }
 }
+
+/* v17: the event as a thick line among the deadlines; workflow lanes */
+.dl-event { display: flex; align-items: center; gap: 10px; margin: 6px 0; color: var(--title); font-weight: 600; font-size: 13.5px; }
+.dl-event::before, .dl-event::after { content: ""; flex: 1; border-top: 3px solid var(--accent); border-radius: 2px; }
+.wfcanvas { display: flex; flex-direction: column; gap: 22px; }
+.wflane > h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; margin: 0 0 8px; }
+.wfrow { display: grid; grid-auto-flow: column; grid-auto-columns: 210px; gap: 56px; }
+.wfsingles { display: grid; grid-template-columns: repeat(auto-fill, 210px); gap: 14px; }
+.flane { margin-bottom: 14px; }
+.flane > .dm-m { display: block; margin-bottom: 6px; }
+.fsingles { display: flex; flex-wrap: wrap; gap: 8px; }
+.fsingles .fcard { width: 210px; }
