@@ -3,6 +3,11 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v18 – 11 November 2026 (page only)
+
+### Fixed
+- **Arbeidsflyt opened the wrong flow** for an activity year with no tasks yet: "Åpne i Arbeidsflyt" then fell back to the first flow in the list (e.g. "Mal: Workshop (Felles)", the Årsplan template), and "+ Ny oppgave i flyten" added to that template. Every current activity year is now in the list, with or without tasks, and a chip next to the list says what kind of flow it is (Mal i årsplanen, Prosjekt, Generelle oppgaver, Aktivitet).
+
 ## v17 – 11 November 2026 (page only)
 
 ### Changed

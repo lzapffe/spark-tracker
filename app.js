@@ -3385,8 +3385,9 @@
     });
     d.Oppgaver.filter(function (t) { return !t.prosjekt_id && !t.runde_id && t.aar === year && t.spor && t.type !== 'notater'; })
       .forEach(function (t) { add('g|' + year + '|' + t.spor, 'Generelt ' + year + ': ' + t.spor, 'Generelle oppgaver'); });
-    // v12: one flow per activity year that has tasks (the open years first).
-    d.Runder.filter(function (r) { return r.arkivert !== 'ja' && d.Oppgaver.some(function (t) { return t.runde_id === r.id && t.type !== 'notater'; }); })
+    // v12: one flow per current activity year. v18: also years with no tasks yet, so "Åpne i Arbeidsflyt" on a new
+    // year opens that year (before, the page fell back to the first flow in the list, e.g. "Mal: Workshop (Felles)").
+    d.Runder.filter(function (r) { return r.arkivert !== 'ja' || r.id === wfParse(state.filters.wfKey || 'x||').where; })
       .forEach(function (r) { add('r|' + r.id + '|', seriesName(r.serie_id) + ' ' + r.aar, 'Aktiviteter'); });
     return out;
   }
@@ -3466,7 +3467,8 @@
       opts += option(g.key, f.wfKey, g.label);
     });
     if (lastGroup) opts += '</optgroup>';
-    var tools = '<select id="fWf" aria-label="Arbeidsflyt">' + opts + '<option value="__new">Ny arbeidsflyt …</option></select>' +
+    var kindName = { p: 'Mal i årsplanen', o: 'Prosjekt', g: 'Generelle oppgaver', r: 'Aktivitet' }[wfParse(f.wfKey || 'x||').kind] || '';
+    var tools = (kindName ? '<span class="chip c-info">' + esc(kindName) + '</span>' : '') + '<select id="fWf" aria-label="Arbeidsflyt">' + opts + '<option value="__new">Ny arbeidsflyt …</option></select>' +
       (f.wfKey ? '<button class="btn" data-wf-add="start">+ Ny oppgave i flyten</button>' : '');
     if (!f.wfKey) return head('Arbeidsflyt', 'Rekkefølgen oppgaver låses opp i', tools) + '<div class="panel empty">Ingen oppgaver med «Gjelder» ennå. Velg «Ny arbeidsflyt …».</div>';
 
