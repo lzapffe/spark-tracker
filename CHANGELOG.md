@@ -3,6 +3,43 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v19 – 12 November 2026 (page and back end)
+
+One bundled update with everything agreed in the 11–12 November design round (demo `spark-app-demo.html`).
+Needs the new `Kode.gs`, `setup()` once (new columns) and a new deployment, plus these page files.
+
+### Added
+- **Avklaringer**: questions to settle for an activity year (for example honorar, sted, krav til pitchen).
+  - In the activity's task list they are a third kind of row (`? Spørsmål | spør: Navn | felt: honorar`), next to delmål and tasks. In the editor: "+ Avklaring", with who to ask (empty = you), a field name for e-mails, or "Fylles fra året".
+  - Each year gets them as tasks shown as "Avklar: …" with a **?** box. You tick one by writing the answer; clearing the answer opens it again.
+  - "Dato og tid" and "Sted" (`auto: dato` / `auto: sted`) are answered by themselves when you set the date or the place on the year.
+  - The answer form shows **earlier answers** (last year first) with a **"Bruk dette"** button.
+  - Tasks can **need** answers (`trenger: honorar`, "Trenger svar på" in the task form) and stay locked until they are answered.
+  - The year page has an **Avklaringer** table (question, who to ask, this year's answer, last year's).
+  - Answers can be used in e-mail templates as **{feltnavn}**; a template that still misses a value shows "mangler …".
+- **Delmål can wait for other delmål** (`# Panelister klare | -42 | etter: Dato, tid og sted klart`, "Etter delmål" in the editor). Their tasks stay locked until those delmål are reached; avklaringer can always be answered.
+- **Person popup**: click a name (for example "spør: Taran", "Snakk med Taran", "Se alt til Taran") to see everything to ask or follow up with that person, grouped by activity year, with "Kopier listen". The name link has no underline.
+- **"Snakk med X (N ting)"** appears by itself when someone has open avklaringer (on the year page, on Oversikt and under Generelt → Samtaler on Oppgaver).
+- **Panel list** on the year page for activities marked "Har panel eller jury": name, e-mail, competence, choice (Førstevalg / Reserve), e-mail sent, reply, last contact, reminder date, with "Send til de neste" and "Purr dem som venter" (one e-mail with the addresses as Bcc, dates noted).
+- **The year's task page** ("Se oppgavene →", `#rundeoppg/<id>`), with a **Liste / Flytskjema** switch:
+  - Liste: one panel per delmål ("etter: …" links jump to that delmål), then "Uten delmål". While a task form is open, what the task waits for has a pale yellow background and what it unlocks a pale blue one. The form sits beside the list (no dark cover); ✕, Esc or a click outside closes it.
+  - Flytskjema: a box per delmål, task cards in columns, arrows for "låses opp av". Drag from the dot on a card onto another card (the other card then waits for it), or drag a whole card onto another (it then waits for that one). No loops, no links into an avklaring, no link that already exists through other tasks; a new link removes direct links it makes unnecessary. Right-click a card: Ny oppgave før / etter denne, Åpne skjemaet, Slett (tasks that waited for it take over its waits). Right-click an arrow: Slett pilen. Tasks you can do now have a green edge, done ones a pale green fill, locked ones are paler. Cards glide to their new place after a change.
+- **Oppdater fra listen**: after changing an activity's task list, the year shows what would change (new tasks, moved to another delmål, new waits, new deadline rules, removed lines) with tick boxes. Done, started and waiting tasks are never changed.
+- **Provisional date**: a year with no date shows last year's date + 1 year ("Foreløpig dato"), and deadlines counted from it with ~ in front. Nothing is saved until you set the real date.
+
+### Changed
+- **Oversikt** (the chosen "Oversikt 1"): cards for activities in the next two months, the sentence "Denne uka: N ting å gjøre og M som venter på svar", **Denne uka** (Fra før, Resten av uka, Neste uke folded), **Venter på** per person, and **Kommende to måneder** as a plain list per month (activities, deadlines, delmål, milestones with which projects are done or missing). The KPI tiles, Haster, project cards, the big project table, late milestones and "Lenge siden sist" are no longer on Oversikt.
+- **Oppgaver** (the chosen "Oppgaver 2"): grouped by where tasks belong (Aktiviteter by date, Prosjekter, Generelt with Samtaler, Idéer), with filter chips, "N venter på svar →", Vis ferdige / Vis låste and a short search field. Groups fold with a round arrow button; an activity group is open when it happens within two months or has something late. Locked tasks sit at the bottom of their group as "+ N som venter på noe annet" (or greyed in place with Vis låste). Tasks waiting for a reply stay in their group with a pale circle and "Venter på svar fra X" in grey. The Pågående panel is gone.
+- **Activity year page**: "Kan gjøres nå" and "Venter på noen" at the top, then **Arbeidsflyt: delmål** (boxes with status, count and deadline; it grows to fit, no scrolling; a click opens the task page at that delmål), Avklaringer, Panel next to Frister and Agenda, then the rest as before. The old delmål board and the Delmål/Arbeidsflyt switch on the year page are replaced by the task page.
+- **Task rows**: locked tasks show a dashed circle and grey "etter: …" / "trenger: …" text instead of a padlock; a passed deadline reads "fristen var …" on the new pages.
+- **Task form**: for tasks in an activity year, "Låses opp av" is now "Venter på oppgaver" (with a search field) and "Trenger svar på". Every form has a ✕ at the top.
+- **Activity form**: new tick box "Har panel eller jury".
+
+### Back end
+- New columns (added by `setup()`): `Oppgaver.spoer`, `svar`, `felt`, `auto_svar`; `Serier.panel`; `Runder.panel`.
+- `makeRunTasks_` reads `?` lines (type `avklaring`) and `trenger:`, and can make only chosen titles (`api_runTasks` with `kun`).
+- `syncAutoAnswers_` answers "Dato og tid" / "Sted" when a year is saved.
+
 ## v18 – 11 November 2026 (page only)
 
 ### Fixed
