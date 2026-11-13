@@ -2634,7 +2634,7 @@
       '<div class="grid2">' + field('Kategori', 'type', '', 'select', typeOpts) + field('Rekkefølge', 'rekkefolge', s.rekkefolge, 'number') +
         field('Agendaen velges etter antall', 'agenda_faktor', '', 'select', option('prosjekter', factorOf(s), 'prosjekter') + option('sokere', factorOf(s), 'søkere') + option('eget', factorOf(s), 'eget (skrives på året)')) + '</div>' +
       '<label class="check"><input type="checkbox" name="obligatorisk"' + (s.obligatorisk === 'ja' ? ' checked' : '') + '> Obligatorisk (alle prosjekter må være med minst én gang)</label>' +
-      '<label class="check"><input type="checkbox" name="panel"' + (s.panel === 'ja' ? ' checked' : '') + '> Har panel eller jury (en kandidatliste på hvert år)</label>' +
+      panelPicker(s) +
       field('Generell info (gjelder alle år)', 'beskrivelse', s.beskrivelse, 'textarea') +
       field('Lenke til egen veiledning', 'guide', s.guide) +
       '<p class="empty">Oppgaver, delmål, frister, agenda og mat legges inn i hvert sitt felt på aktivitetssiden.</p>' +
@@ -2643,13 +2643,17 @@
         others.map(function (o) { return '<label><input type="checkbox" name="alt_' + esc(o.id) + '"' + (ids(s.alternativ_til).indexOf(o.id) >= 0 ? ' checked' : '') + '> ' + esc(o.navn) + '</label>'; }).join('') + '</div></details>' : '') + actions(),
       function (form) {
         var artIn = form.querySelector('[name="art"]:checked');
-        var row = { navn: val(form, 'navn'), art: artIn ? artIn.value : 'arrangement', type: val(form, 'type'), rekkefolge: val(form, 'rekkefolge'), agenda_faktor: val(form, 'agenda_faktor'), obligatorisk: val(form, 'obligatorisk'), panel: val(form, 'panel'), beskrivelse: val(form, 'beskrivelse'), guide: val(form, 'guide'),
+        var row = { navn: val(form, 'navn'), art: artIn ? artIn.value : 'arrangement', type: val(form, 'type'), rekkefolge: val(form, 'rekkefolge'), agenda_faktor: val(form, 'agenda_faktor'), obligatorisk: val(form, 'obligatorisk'), beskrivelse: val(form, 'beskrivelse'), guide: val(form, 'guide'),
           relaterte: others.filter(function (o) { return form.querySelector('[name="rel_' + o.id + '"]').checked; }).map(function (o) { return o.id; }).join(','),
           alternativ_til: others.filter(function (o) { return form.querySelector('[name="alt_' + o.id + '"]').checked; }).map(function (o) { return o.id; }).join(',') };
         if (!row.navn) { toast('Skriv et navn'); return; }
+        var pl = pnRead(), pj = panelJson(pl);   // v20: same as the type's standard = follow the type
+        row.paneler = pj === panelJson(typePanels(row.type)) ? '' : pj;
+        row.panel = pl.some(function (p) { return p.k === 'panel' && p.on; }) ? 'ja' : '';
         if (id) row.id = id; else { row.status = 'aktiv'; row.versjon = '1'; }
         save('Serier', [row]).then(function (saved) { closeDrawer(); toast('Lagret'); if (!id) location.hash = '#serie/' + saved[0].id; else load(true); });
       });
+    initPanelPicker();
   }
   function newRun(sid) {
     var s = byId('Serier', sid);
@@ -4636,7 +4640,6 @@
       (r.status !== 'gjennomført' ? '<button class="btn primary" data-act="finishrun" data-id="' + esc(r.id) + '">Merk som gjennomført</button>' : '');
     var when = [r.dato ? fmtDateW(r.dato) + (r.sluttdato ? ' – ' + fmtDateW(r.sluttdato) : '') : '', r.tid ? 'kl. ' + r.tid : '', r.sted].filter(Boolean).join(' · ');
     var row = function (t) { return taskRow(t, { soft: true, noProject: true, dm: true }); };
-    var showPanel = s && (s.panel === 'ja' || panelOf(r).length);
     return '<div class="top"><div class="ptitle"><div class="short"><a href="#hendelser">Aktiviteter</a> / <button class="plink" data-go="serie/' + esc(s ? s.id : '') + '">' + esc(s ? s.navn : '') + '</button></div><h1>' + esc(runName(r) || 'Hendelse') + '</h1>' +
         '<div class="sub">' + (when ? esc(when) : pd ? '<span class="prov">Foreløpig dato: ' + esc(fmtDateW(pd)) + ' ' + esc(pd.slice(0, 4)) + '</span> (fjorårets + 1 år) · ingen tid eller sted ennå' : 'Ingen dato ennå') +
         ' · <span class="chip ' + (r.status === 'gjennomført' ? 'c-done' : 'c-info') + '">' + esc(r.status || 'planlagt') + '</span>' + (r.arkivert === 'ja' ? ' <span class="chip c-na">arkivert</span>' : '') + '</div></div>' +
@@ -4648,25 +4651,163 @@
         '<section class="panel"><h2><span>Venter på noen</span><span class="dm-m">' + waits.length + '</span></h2>' + (waits.length ? '<div class="tasklist">' + waits.map(row).join('') + '</div>' : '<div class="empty">Ingen venter på svar nå.</div>') + '</section>' +
       '</div>' +
       dmFlowPanel(r, s, tasks, hasList) +
-      avkPanel(r, tasks) +
-      '<div class="cols">' + (showPanel ? panelPanel(r) : '') + '<div class="cols1">' + (s ? runDeadlinesPanel(r, s) : '') + (s && (artOf(s) !== 'prosess' || agendasOf(s).length) ? agendaPanel(s, r) : '') + '</div></div>' +
-      (s ? docsPanel(s, r) : '') +
-      (s && artOf(s) !== 'prosess' ? '<div class="cols">' + guestPanel(r) + matPanel(r, s) + '</div>' : '') +
-      '<div class="cols">' +
-        (artOf(s) === 'prosess' ? '' : '<section class="panel"><h2>Hvem var med?</h2>' + (candidates.length ? candidates.map(function (p) {
-          var a = att.find(function (x) { return x.prosjekt_id === p.id; });
-          var isAlt = a && a.status === 'Alternativ';
-          return '<div class="task"><span></span><div><div class="tt">' + esc(p.kortnavn) + '</div><div class="meta"><span class="ph">' + esc(p.fase) + '</span>' +
-            (isAlt ? ' <span class="chip c-alt">◆ ' + esc(altText(a) || 'alternativ') + '</span> <button type="button" class="plink" data-altedit="' + esc(p.id) + '|' + esc(r.id) + '">endre</button>' : '') + '</div></div>' +
-            '<select data-attend="' + esc(p.id) + '" data-run="' + esc(r.id) + '" aria-label="Deltakelse ' + esc(p.kortnavn) + '">' + option('', a ? a.status : '', '–') + options(['Påmeldt', 'Deltatt', 'Ikke møtt', 'Alternativ'], a ? a.status : '') + '</select></div>';
-        }).join('') : '<div class="empty">Ingen aktive prosjekter.</div>') + '</section>') +
-        '<div class="cols1">' +
-          '<section class="panel"><h2>Notater for dette året</h2>' + (r.notater ? '<p class="pre">' + esc(r.notater) + '</p>' : '<div class="empty">Ingen notater. Klikk Rediger.</div>') + '</section>' +
-          runToolsPanel(r, s, att) +
-          expensePanel(r) +
-          (s ? '<section class="panel"><h2>Generell info</h2>' + (s.beskrivelse ? '<p class="pre">' + esc(s.beskrivelse) + '</p>' : '<div class="empty">Ingen generell info ennå.</div>') + expHtml(s, '') + '</section>' : '') +
-        '</div>' +
-      '</div>';
+      runPanelsHtml(r, s, tasks, att, candidates);
+  }
+  // ---- v20: which panels an activity year shows, in which order and on which side ----
+  // Each entry: k = key, on = shown, w = 'hel' (full width), 'v' (left column) or 'h' (right column).
+  // The top of the page (Kan gjøres nå, Venter på noen, the delmål flow) is always shown.
+  var RUN_PANELS = [
+    { k: 'avk', n: 'Avklaringer', on: 1, w: 'hel' },
+    { k: 'panel', n: 'Panel (kandidatliste)', on: 0, w: 'v' },
+    { k: 'frister', n: 'Frister', on: 0, w: 'h' },
+    { k: 'agenda', n: 'Agenda', on: 0, w: 'h' },
+    { k: 'docs', n: 'Dokumenter og e-post', on: 0, w: 'hel' },
+    { k: 'gjester', n: 'Gjesteliste', on: 0, w: 'v' },
+    { k: 'mat', n: 'Mat og servering', on: 0, w: 'h' },
+    { k: 'hvem', n: 'Hvem var med?', on: 0, w: 'v' },
+    { k: 'notater', n: 'Notater for dette året', on: 1, w: 'h' },
+    { k: 'verktoy', n: 'Til denne aktiviteten', on: 1, w: 'h' },
+    { k: 'utgifter', n: 'Utgifter', on: 1, w: 'h' },
+    { k: 'info', n: 'Generell info', on: 1, w: 'h' }
+  ];
+  var PANEL_SIDES = { hel: 'Hel bredde', v: 'Venstre', h: 'Høyre' };
+  // Reads a saved list; panels it doesn't mention (added in a later version) get their default place.
+  function panelList(json) {
+    var saved = jsonOf(json, []), out = [];
+    if (!Array.isArray(saved)) saved = [];
+    saved.forEach(function (x) {
+      var d = RUN_PANELS.find(function (p) { return p.k === (x && x.k); });
+      if (d && !out.some(function (o) { return o.k === d.k; })) out.push({ k: d.k, n: d.n, on: x.on ? 1 : 0, w: PANEL_SIDES[x.w] ? x.w : d.w });
+    });
+    RUN_PANELS.forEach(function (d, i) { if (!out.some(function (o) { return o.k === d.k; })) out.splice(Math.min(i, out.length), 0, { k: d.k, n: d.n, on: d.on, w: d.w }); });
+    return out;
+  }
+  function panelJson(list) { return JSON.stringify(list.map(function (p) { return { k: p.k, on: p.on ? 1 : 0, w: p.w }; })); }
+  function typePanels(type) { var m = typeListRow(type); return panelList(m ? m.paneler : ''); }
+  // The activity's own choice, else its type's standard, else RUN_PANELS. The v19 "Har panel" tick counts as ticked.
+  function seriesPanels(s) {
+    var list = s && s.paneler ? panelList(s.paneler) : typePanels(s ? s.type : '');
+    if (s && !s.paneler && s.panel === 'ja') list.forEach(function (p) { if (p.k === 'panel') p.on = 1; });
+    return list;
+  }
+  // Does this year already hold something for the panel? Then it is shown even when not ticked.
+  function panelHasData(k, r, s, att) {
+    switch (k) {
+      case 'avk': return state.d.Oppgaver.some(function (t) { return t.runde_id === r.id && isAvk(t); });
+      case 'panel': return panelOf(r).length > 0;
+      case 'frister': return !!s && (deadlineList(s).length > 0 || Object.keys(ownDeadlines(r)).length > 0);
+      case 'agenda': return !!s && agendasOf(s).length > 0;
+      case 'docs': return !!s && (docsOf(s, r).length > 0 || templatesOf(s).length > 0);
+      case 'gjester': return guestsOf(r).length > 0;
+      case 'mat': return !!matOf(r).pa;
+      case 'hvem': return att.length > 0;
+      case 'notater': return !!r.notater;
+      case 'utgifter': return state.d.Utgifter.some(function (u) { return u.runde_id === r.id; });
+      case 'info': return !!s && (!!s.beskrivelse || expsFor(s, '').length > 0);
+    }
+    return false;
+  }
+  function runPanelHtml(k, r, s, tasks, att, candidates) {
+    switch (k) {
+      case 'avk': return avkPanel(r, tasks);
+      case 'panel': return panelPanel(r);
+      case 'frister': return s ? runDeadlinesPanel(r, s) : '';
+      case 'agenda': return s ? agendaPanel(s, r) : '';
+      case 'docs': return s ? docsPanel(s, r) : '';
+      case 'gjester': return guestPanel(r);
+      case 'mat': return s ? matPanel(r, s) : '';
+      case 'hvem': return attendPanel(r, att, candidates);
+      case 'notater': return '<section class="panel"><h2>Notater for dette året</h2>' + (r.notater ? '<p class="pre">' + esc(r.notater) + '</p>' : '<div class="empty">Ingen notater. Klikk Rediger.</div>') + '</section>';
+      case 'verktoy': return runToolsPanel(r, s, att);
+      case 'utgifter': return expensePanel(r);
+      case 'info': return s ? '<section class="panel"><h2>Generell info</h2>' + (s.beskrivelse ? '<p class="pre">' + esc(s.beskrivelse) + '</p>' : '<div class="empty">Ingen generell info ennå.</div>') + expHtml(s, '') + '</section>' : '';
+    }
+    return '';
+  }
+  // Lays the panels out in order. Hel bredde takes a whole row. Panels marked Venstre / Høyre that come one
+  // after another form a two-column block: the Venstre ones stack on the left, the Høyre ones on the right.
+  // If a block only has one side, its panels are shared out over both columns.
+  // The note on an unticked panel only shows once you have made a choice (for the activity or its type).
+  function runPanelsHtml(r, s, tasks, att, candidates) {
+    var tm = s ? typeListRow(s.type) : null, chosen = !!(s && (s.paneler || (tm && tm.paneler)));
+    var shown = seriesPanels(s).map(function (p) {
+      var data = !p.on && panelHasData(p.k, r, s, att);
+      if (!p.on && !data) return null;
+      var html = runPanelHtml(p.k, r, s, tasks, att, candidates);
+      if (!html) return null;
+      if (!p.on && chosen) html = html.replace('</h2>', '</h2><p class="empty pn-off">Ikke valgt for denne aktiviteten. Vises fordi det står noe her.</p>');
+      return { w: p.w, html: html };
+    }).filter(Boolean);
+    var out = '', block = null;
+    var flush = function () {
+      if (!block) return;
+      var L = block.v, R = block.h;
+      if (!L.length || !R.length) {
+        var all = L.concat(R);
+        if (all.length === 1) { out += all[0]; block = null; return; }
+        L = all.filter(function (x, i) { return i % 2 === 0; }); R = all.filter(function (x, i) { return i % 2 === 1; });
+      }
+      out += '<div class="cols"><div class="cols1">' + L.join('') + '</div><div class="cols1">' + R.join('') + '</div></div>';
+      block = null;
+    };
+    shown.forEach(function (p) {
+      if (p.w === 'hel') { flush(); out += p.html; return; }
+      block = block || { v: [], h: [] };
+      block[p.w].push(p.html);
+    });
+    flush();
+    return out;
+  }
+  // "Hvem var med?" (moved out of pageRun in v20 so it can be ticked on and off).
+  function attendPanel(r, att, candidates) {
+    return '<section class="panel"><h2>Hvem var med?</h2>' + (candidates.length ? candidates.map(function (p) {
+      var a = att.find(function (x) { return x.prosjekt_id === p.id; });
+      var isAlt = a && a.status === 'Alternativ';
+      return '<div class="task"><span></span><div><div class="tt">' + esc(p.kortnavn) + '</div><div class="meta"><span class="ph">' + esc(p.fase) + '</span>' +
+        (isAlt ? ' <span class="chip c-alt">◆ ' + esc(altText(a) || 'alternativ') + '</span> <button type="button" class="plink" data-altedit="' + esc(p.id) + '|' + esc(r.id) + '">endre</button>' : '') + '</div></div>' +
+        '<select data-attend="' + esc(p.id) + '" data-run="' + esc(r.id) + '" aria-label="Deltakelse ' + esc(p.kortnavn) + '">' + option('', a ? a.status : '', '–') + options(['Påmeldt', 'Deltatt', 'Ikke møtt', 'Alternativ'], a ? a.status : '') + '</select></div>';
+    }).join('') : '<div class="empty">Ingen aktive prosjekter.</div>') + '</section>';
+  }
+  // The panel picker in the activity form: tick, side and ↑ ↓, plus the type's standard.
+  function panelPicker(s) {
+    return '<div class="f"><span class="group-h">Paneler på årssiden</span>' +
+      '<p class="empty">Kryss av det du vil ha på hvert år. «Kan gjøres nå», «Venter på noen» og delmålene er alltid øverst. Hel bredde går over hele siden. Venstre og Høyre: paneler som står etter hverandre i listen, legges i to kolonner. Et panel som ikke er valgt, vises likevel hvis det står noe i det.</p>' +
+      '<p class="empty" id="pnSrc">' + (s.paneler ? 'Egne valg for denne aktiviteten.' : 'Følger standarden for typen.') + '</p>' +
+      '<div class="pn-list" id="pnList">' + seriesPanels(s).map(pnRow).join('') + '</div>' +
+      '<div class="row wrap"><button type="button" class="btn small ghost" id="pnType">Lagre som standard for typen</button><button type="button" class="btn small ghost" id="pnReset">Bruk standarden for typen</button></div></div>';
+  }
+  function pnRow(p) {
+    return '<div class="pn-row" data-pn="' + esc(p.k) + '"><label class="check"><input type="checkbox"' + (p.on ? ' checked' : '') + '> ' + esc(p.n) + '</label>' +
+      '<select aria-label="Plassering for ' + esc(p.n) + '">' + Object.keys(PANEL_SIDES).map(function (w) { return option(w, p.w, PANEL_SIDES[w]); }).join('') + '</select>' +
+      '<span class="pn-mv"><button type="button" class="btn small ghost" data-pnmv="-1" aria-label="Flytt ' + esc(p.n) + ' opp">↑</button><button type="button" class="btn small ghost" data-pnmv="1" aria-label="Flytt ' + esc(p.n) + ' ned">↓</button></span></div>';
+  }
+  function pnRead() {
+    return Array.prototype.map.call(document.querySelectorAll('#pnList .pn-row'), function (row) {
+      var d = RUN_PANELS.find(function (p) { return p.k === row.dataset.pn; });
+      return { k: d.k, n: d.n, on: row.querySelector('input').checked ? 1 : 0, w: row.querySelector('select').value };
+    });
+  }
+  function initPanelPicker() {
+    var list = document.getElementById('pnList'), form = document.getElementById('drawerForm');
+    if (!list || !form) return;
+    var typeOf = function () { var t = form.querySelector('[name="type"]'); return t ? t.value : ''; };
+    list.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-pnmv]'); if (!b) return;
+      var row = b.closest('.pn-row'), up = b.dataset.pnmv === '-1';
+      var other = up ? row.previousElementSibling : row.nextElementSibling;
+      if (!other) return;
+      if (up) list.insertBefore(row, other); else list.insertBefore(other, row);
+      b.focus();
+    });
+    document.getElementById('pnType').addEventListener('click', function () {
+      var type = typeOf(), m = typeListRow(type), row = { type: type, paneler: panelJson(pnRead()) };
+      if (m) row.id = m.id;
+      save('Typemaler', [row]).then(function () { toast('Lagret som standard for ' + (TYPE_NAMES[type] || type) + '. Gjelder aktiviteter av typen som ikke har egne valg.'); });
+    });
+    document.getElementById('pnReset').addEventListener('click', function () {
+      list.innerHTML = typePanels(typeOf()).map(pnRow).join('');
+      document.getElementById('pnSrc').textContent = 'Følger standarden for typen (lagres når du trykker Lagre).';
+    });
   }
   // "Arbeidsflyt: delmål": one box per delmål, arrows for "etter", columns by order. Not scrollable: it grows.
   function dmFlowPanel(r, s, tasks, hasList) {

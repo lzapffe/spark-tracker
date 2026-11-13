@@ -3,6 +3,24 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v20 – 13 November 2026 (page and back end)
+
+Choose which panels an activity year shows. Needs the new `Kode.gs`, `setup()` once (one new column in Serier and Typemaler) and a new deployment, plus these page files.
+
+### Added
+- **Paneler på årssiden** in the activity form (Rediger aktivitet): tick the panels you want on every year of the activity, move them with ↑ ↓, and choose **Hel bredde**, **Venstre** or **Høyre** for each. Panels marked Venstre / Høyre that come one after another sit side by side in two columns; Hel bredde takes a whole row.
+- Ticked by default: Avklaringer, Notater for dette året, Til denne aktiviteten, Utgifter and Generell info. Not ticked by default: Panel, Frister, Agenda, Dokumenter og e-post, Gjesteliste, Mat og servering, Hvem var med?
+- **Standard per type**: "Lagre som standard for typen" saves the ticks as the standard for all activities of that type (for example Workshop). An activity follows its type until you change its own ticks; "Bruk standarden for typen" goes back to it.
+- "Kan gjøres nå", "Venter på noen" and the delmål flow are always shown at the top.
+
+### Changed
+- A panel that is not ticked but already holds something for that year (for example deadlines, a guest list, attendance or notes) is still shown, with the line "Ikke valgt for denne aktiviteten. Vises fordi det står noe her." (the line only shows once you have saved a choice for the activity or its type). Nothing you have entered is hidden.
+- The "Har panel eller jury" tick is replaced by "Panel (kandidatliste)" in the new list. Activities that had it ticked keep their panel.
+- Process activities no longer hide Gjesteliste, Mat and Hvem var med? by rule; they follow the ticks like everything else.
+
+### Back end
+- New columns `Serier.paneler` and `Typemaler.paneler` (JSON list of `{k, on, w}` in order). Empty = follow the type's standard, then the built-in default.
+
 ## v19 – 12 November 2026 (page and back end)
 
 One bundled update with everything agreed in the 11–12 November design round (demo `spark-app-demo.html`).
