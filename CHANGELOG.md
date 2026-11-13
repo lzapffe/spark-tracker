@@ -3,6 +3,31 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v21 – 13 November 2026 (page and back end)
+
+Feedback on the activity page demo, made general for the whole app. Needs the new `Kode.gs`, `setup()` once (three new columns in Oppgaver) and a new deployment, plus these page files.
+
+### Added
+- **Done animation:** ticking a task turns the circle green with a check, then the row folds away slowly on Oversikt, Oppgaver and the activity year. Answering an avklaring does the same with its `?` box.
+- **Tasks for several people:** a task can be for "Flere personer" (pick the names), "Panelkandidater" or "Foredragsholdere" (follows the year's list). The task shows "x av y", a progress bar and a button per person, like the deadlines under Frister. **Trenger** sets how many are needed (empty = all); the task is done (with the animation) when enough are ticked. Project groups (Alle aktive, 1. år, 2. år, Søkerne) get the same buttons.
+- **Panel tasks count from the list:** choose whether the task counts "Har fått e-post" or "Har sagt ja". A click on a name notes the e-mail date (or Ja) in the panel list. ✉ next to a candidate who hasn't had the e-mail opens an e-mail to them and notes it as sent. Taking a tick off asks first.
+- **Foredragsholdere:** a new panel on the year page that works like the panel list (Tema instead of Kompetanse). Not ticked by default; tick it in Rediger aktivitet → Paneler på årssiden (for example for workshops).
+- **People as tags:** "Venter på (hvem)", "Fra hvem" and "Spør" pick people from Kontakter, project leaders and the people on projects. You can still type a new name (shown with a dashed border). Several names are allowed in Venter på.
+- **Person popup with tabs:** a name opens Generelt (e-mail, phone, role and tags, where the person is connected: project leader, project person, panel, speaker, guest), Spør (open avklaringer and tasks that name them) and Venter på (everything you wait for from them across all activities and projects, also unanswered panel and speaker e-mails). A name in "Venter på svar fra" opens the Venter på tab; a name after "spør:" opens Spør. "Legg til i Kontakter" / "Rediger kontakt".
+- **Bruk bare fornavn:** a tick in the popup (Generelt). Then the person is shown with the first name everywhere names are shown as links, in Venter på and on the task buttons. On by default for project leaders.
+- **Guest list:** everyone who says Ja on the panel or speaker list is put on the year's guest list (never taken off automatically).
+- **Kontakter:** a new panel candidate or speaker is added to Kontakter with the tag panel / foredragsholder; the name field suggests people already there and fills in the e-mail.
+
+### Changed
+- **Half done:** the ◐ button is gone. Shift-click the circle (or hold it on a phone) to mark a task Pågående; do it again to go back.
+- **Hvem var med?** uses buttons (Påmeldt, Deltatt, Ikke møtt, Alternativ) instead of a drop-down.
+- **Avklaringer:** answered ones are folded under "Vis N som er avklart"; only open ones show.
+- **Empty panels** shrink to the heading and one line.
+- Fixed: the name after "spør:" broke onto its own line.
+
+### Back end
+- New columns `Oppgaver.personer`, `Oppgaver.trenger`, `Oppgaver.teller`; new setting `fornavn` (JSON `{name: ja/nei}`).
+
 ## v20 – 13 November 2026 (page and back end)
 
 Choose which panels an activity year shows. Needs the new `Kode.gs`, `setup()` once (one new column in Serier and Typemaler) and a new deployment, plus these page files.

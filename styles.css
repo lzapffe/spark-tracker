@@ -831,3 +831,48 @@ body.fldragging, body.fldragging * { cursor: grabbing !important; user-select: n
 .pn-row select { width: auto; }
 .pn-mv { display: inline-flex; gap: 2px; }
 .pn-off { margin: -4px 0 8px; font-size: 12px; }
+
+/* v21: "done" animation (celebrate in app.js): the circle turns green with a check, then the row folds away */
+@keyframes fxpop { 0% { transform: scale(1); } 45% { transform: scale(1.35); } 100% { transform: scale(1); } }
+.task.fx-done .ring, .task.fx-done .box { background: var(--done); border-color: var(--done); color: var(--card); animation: fxpop .4s ease; }
+.task.fx-done .ring::after { content: ""; position: absolute; left: 5px; top: 2px; width: 4px; height: 8px; border: solid var(--card); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.task.fx-done .tt { color: var(--muted); }
+.task.fx-leave { overflow: hidden; opacity: 0; max-height: 0 !important; padding-top: 0; padding-bottom: 0; transition: opacity .35s ease, max-height .4s ease .05s, padding .4s ease .05s; }
+@media (prefers-reduced-motion: reduce) { .task.fx-done .ring, .task.fx-done .box { animation: none; } .task.fx-leave { transition: none; } }
+/* v21: "Hvem var med?" buttons */
+.att-seg button { font-size: 12.5px; padding: 4px 8px; }
+/* v21: answered avklaringer folded */
+.avk-fold td { border-bottom: 0; padding-top: 8px; }
+/* v21: a panel with nothing in it shrinks to its heading and one line */
+.panel:has(.empty):not(:has(.task, .li, table, .drow, .dl-list, .pre, .exp, .ag-span, .tasklist, .flcv, input, select, textarea, .seg, .board)) { padding-top: 10px; padding-bottom: 10px; }
+.panel:has(.empty):not(:has(.task, .li, table, .drow, .dl-list, .pre, .exp, .ag-span, .tasklist, .flcv, input, select, textarea, .seg, .board)) > h2 { margin-bottom: 2px; }
+.panel:has(.empty):not(:has(.task, .li, table, .drow, .dl-list, .pre, .exp, .ag-span, .tasklist, .flcv, input, select, textarea, .seg, .board)) .empty { font-size: 12.5px; padding: 0; margin: 2px 0; }
+/* v21: a name link inside a line stays on that line (.person from Oversikt made it a grid) */
+.plink.person { display: inline; padding: 0; border: 0; margin: 0; }
+@media (max-width: 600px) { .att-seg { grid-column: 2 / -1; justify-self: start; } }
+/* v21: group tasks: x of y, a bar and a button per person / project / candidate */
+.gt { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+.gt-bar { flex: 0 1 120px; margin: 0; }
+.gt-b { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.gt-m { display: inline-flex; align-items: center; gap: 2px; }
+.gt-btn { font: inherit; font-size: 12.5px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
+.gt-btn:hover { border-color: var(--muted); }
+.gt-btn[aria-pressed="true"] { background: var(--done); border-color: var(--done); color: var(--card); }
+.gt-btn.no { text-decoration: line-through; color: var(--muted); }
+.gt-mail { font: inherit; font-size: 13px; border: 0; background: none; cursor: pointer; color: var(--accent); padding: 2px 4px; }
+.seg.wrap { flex-wrap: wrap; }
+/* v21: picking people as tags (Venter på, Spør, Personer) */
+.pk-box { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: var(--r-s); padding: 4px 6px; background: var(--card); margin-top: 4px; }
+.pk-chips { display: contents; }
+.pk-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; padding: 2px 4px 2px 10px; border-radius: 999px; background: var(--head); color: var(--head-text); }
+.pk-chip.new { background: none; border: 1px dashed var(--muted); color: var(--text); }
+.pk-chip button { border: 0; background: none; cursor: pointer; font-size: 11px; color: inherit; padding: 2px 4px; }
+.pk-box .pk-in { flex: 1 1 120px; min-width: 100px; border: 0; padding: 4px; margin: 0; background: none; box-shadow: none; }
+.pk-box .pk-in:focus { outline: none; }
+.pk-box:focus-within { border-color: var(--accent); }
+/* v21: person popup tabs */
+.pp-tabs { justify-self: start; }
+.pp-pane { display: grid; gap: 10px; }
+.pp-pane[hidden] { display: none; }
+.pp-info { display: grid; gap: 4px; font-size: 13.5px; }
+.pp-info > div { display: grid; grid-template-columns: 70px 1fr; gap: 8px; align-items: baseline; }
