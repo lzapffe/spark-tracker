@@ -3,6 +3,26 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v24 – 14 November 2026 (page and back end)
+
+One Milepæler list: the Årsplan sjekkpunkter and the project milepæler are now the same thing. Needs the new `Kode.gs`, `setup()` once and a new deployment, plus these page files. Delmål stay in each activity's task list.
+
+### Changed
+- **Sjekkpunkter = Prosjekt milepæler.** A project's sjekkpunkter (cards, the project page, the Prosjekter table, the phase pages) are now the Prosjekt milepæler of its phase, in month order. A task whose Milepæl isn't in the list still shows as its own sjekkpunkt, as before.
+- **Late only after the date or month.** A milepæl has a month and an optional day. Without a day it is late after the end of the month; with a day, after that date. An overdue task no longer makes it late before then (the overdue task is still named in the details).
+- **Prosjekter, "Sjekkpunkter og milepæler":** one column per milepæl (no separate goal columns), with the date or month and "x/y nådd" under each heading. Every milepæl cell is a click to tick it or undo. Workshops and Mentormøter columns only where the phase has no milepæl for them.
+- **Project page:** one **Milepæler** panel instead of "Status for prosjektet" + "Milepæler": this year first, then what isn't reached from earlier years, the other years folded. Click a milepæl's text to open its task.
+- **"Gjelder" on tasks and Årsplan steps is now "Milepæl"**, a drop-down of the Prosjekt milepæler by phase. "Ny milepæl …" makes a new Prosjekt milepæl when you save (for a project task or a per-project step). Other values (older names, the categories on general steps) are kept under "Annet (ikke en milepæl)". The Årsplan column and Arbeidsflyt say Milepæl too.
+- **The milepæl form:** "Gjelder" is now **Type** (Prosjekt / Program); new **Dag (valgfritt)**; new **Nås når**: the tasks (as before), enough workshops or mentor meetings (Prosjekt), all projects have reached a Prosjekt milepæl, or a delmål in an activity (Program).
+- Project cards say "x av y milepæler".
+
+### Added (by `setup()`, only what is missing)
+- A Prosjekt milepæl for every Årsplan Gjelder on a per-project step that didn't have one, including **Oppstartsintervju holdt** (1. år, January).
+- **Workshops gjennomført** and **Mentormøter holdt** (2. år, December), reached from attendance.
+- **Alle fremdriftsrapporter er inne** is reached when every 1st-year project has "Fremdriftsrapport mottatt".
+- **Panelet til pitchen er klart** is reached by Pitchdag's delmål "Panelister klare".
+- `Milepaeler` columns `dag`, `kilde`, `kilde_ref`. No data is removed; tasks and steps keep their values.
+
 ## v23 – 14 November 2026 (page only)
 
 One Prosjekter page instead of Prosjekter + Rutenett + Status, and a new start on Statistikk. Only page files change; `Kode.gs` stays as in v22.
