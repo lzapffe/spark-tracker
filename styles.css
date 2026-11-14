@@ -876,3 +876,18 @@ body.fldragging, body.fldragging * { cursor: grabbing !important; user-select: n
 .pp-pane[hidden] { display: none; }
 .pp-info { display: grid; gap: 4px; font-size: 13.5px; }
 .pp-info > div { display: grid; grid-template-columns: 70px 1fr; gap: 8px; align-items: baseline; }
+/* v22: Personer page, person page, tag editor, Samle personer */
+.peeps td { vertical-align: top; }
+.peeps .chip { margin: 1px 0; }
+.ppage { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.ppage .pp-info > div { display: grid; grid-template-columns: 110px 1fr; gap: 8px; }
+.ppage .pp-g { margin-top: 12px; }
+.ppage .pp-gen { grid-row: span 2; }
+.pp-info > div > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.tagedit { display: grid; gap: 6px; margin: 8px 0 12px; }
+.tg-row { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; }
+.gather { display: grid; gap: 0; margin: 8px 0 12px; }
+.ga-row { display: grid; grid-template-columns: 1fr minmax(120px, 190px); gap: 10px; align-items: center; border-top: 1px solid var(--line); padding: 7px 0; }
+.ga-n { display: block; font-size: 13.5px; }
+.ga-n small { display: block; margin-left: 22px; }
+@media (max-width: 760px) { .ga-row { grid-template-columns: 1fr; } .ppage { grid-template-columns: 1fr; } .ppage .pp-gen { grid-row: auto; } }

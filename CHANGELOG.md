@@ -3,6 +3,27 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v22 – 13 November 2026 (page and back end)
+
+One person register. Needs the new `Kode.gs`, `setup()` once (four new columns in Kontakter) and a new deployment, plus these page files.
+
+### Added
+- **Personer** (Mer → Personer): everyone in one register, with search and filters (tag, role, year, "venter på noe fra", "har noe å spørre om"). Each row opens the **person page**, with Generelt, Spør and Venter på side by side.
+- **Roles with year come by themselves:** "Er med som" shows where the person is used: Prosjektleder, Prosjektmedarbeider, Mentor, Søker, Panel, Foredragsholder, Gjest and Agenda, with the year (for example "Panel 2026"). They can be filtered by role and year. Your own tags are for everything else.
+- **The person form:** Fornavn and Etternavn as separate fields (double first names work), "Bruk bare fornavn", "Dette er meg", organisation, role, e-mail, phone, allergies, topics, known via, tags and notes.
+- **One change, everywhere:** a new name, e-mail or allergy in the register is copied to every place the person is used (project leader, project people, applicants, panel, speakers, guests, tasks and agendas). The toast says how many places changed.
+- **Every name goes into the register:** a project leader, an applicant's leader, a project person, a guest, a panel candidate or a name in Venter på / Spør / Personer is added to the register when you save. Name fields suggest people from the register and fill in their e-mail and allergies.
+- **Names are links** in more places: project leader (project page and list), project people, applicants, guest list, panel and agenda Ansvarlig.
+- **Rediger tagger** on Personer: rename, merge (give two tags the same name) or delete tags; the change applies to everyone. It asks before taking a tag away from people.
+- **Samle personer** on Personer: lists the names already in the app that aren't in the register, with where they come from. Tick who to add, or say a name is the same person as another (then that name is used everywhere). It also asks for your own name once, so "Meg" shows as Linn.
+
+### Changed
+- The Kontakter tab moved out of Kunnskapsbank to Personer.
+- The person popup has "Åpne personsiden" and uses the register (organisation, allergies, topics, roles with year).
+
+### Back end
+- New columns `Kontakter.fornavn`, `etternavn`, `bare_fornavn`, `meg`. The page keeps names in step; the script only stores them.
+
 ## v21 – 13 November 2026 (page and back end)
 
 Feedback on the activity page demo, made general for the whole app. Needs the new `Kode.gs`, `setup()` once (three new columns in Oppgaver) and a new deployment, plus these page files.

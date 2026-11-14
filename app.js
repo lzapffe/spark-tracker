@@ -218,7 +218,7 @@
     ['oversikt', 'Oversikt'], ['oppgaver', 'Oppgaver'], ['prosjekter', 'Prosjekter'], ['sokere', 'Søkere'],
     ['Faser', [['fase/soknad', 'Søknad'], ['fase/1', '1. år'], ['fase/2', '2. år'], ['fase/avslutning', 'Avslutning']]],
     ['hendelser', 'Aktiviteter'], ['maned', 'Måned og år'], ['innboks', 'Innboks'],
-    ['Mer', [['kunnskap', 'Kunnskapsbank'], ['status', 'Status'], ['sok', 'Søk'], ['progress', 'Årsplan'], ['arbeidsflyt', 'Arbeidsflyt'], ['statistikk', 'Statistikk'], ['budsjett', 'Budsjett'], ['maler', 'E-post'], ['frister', 'Frister'], ['innstillinger', 'Innstillinger']]]
+    ['Mer', [['personer', 'Personer'], ['kunnskap', 'Kunnskapsbank'], ['status', 'Status'], ['sok', 'Søk'], ['progress', 'Årsplan'], ['arbeidsflyt', 'Arbeidsflyt'], ['statistikk', 'Statistikk'], ['budsjett', 'Budsjett'], ['maler', 'E-post'], ['frister', 'Frister'], ['innstillinger', 'Innstillinger']]]
   ];
   function renderNav() {
     var d = state.d;
@@ -227,7 +227,7 @@
       innboks: d.Innboks.filter(function (i) { return i.sortert !== 'ja'; }).length,
       sokere: d.Søkere.filter(function (s) { return s.status === 'Aktiv' || !s.status; }).length
     };
-    var cur = (state.view === 'prosjekt' || state.view === 'tidslinje') ? 'prosjekter' : state.view === 'uke' ? 'oppgaver' : (state.view === 'serie' || state.view === 'runde' || state.view === 'rundeoppg') ? 'hendelser' : state.view === 'fase' ? 'fase/' + state.param : state.view;
+    var cur = (state.view === 'prosjekt' || state.view === 'tidslinje') ? 'prosjekter' : state.view === 'uke' ? 'oppgaver' : state.view === 'person' ? 'personer' : (state.view === 'serie' || state.view === 'runde' || state.view === 'rundeoppg') ? 'hendelser' : state.view === 'fase' ? 'fase/' + state.param : state.view;
     function link(n) {
       var c = counts[n[0]] ? '<span class="count">' + counts[n[0]] + '</span>' : '';
       return '<a class="nav' + (cur === n[0] ? ' on' : '') + '" href="#' + n[0] + '">' + n[1] + c + '</a>';
@@ -264,7 +264,7 @@
     renderNav();
     var pages = { oversikt: pageOverview, oppgaver: pageTasks, prosjekter: pageProjects, prosjekt: pageProject, sokere: pageApplicants, progress: pageProgress, innboks: pageInbox, innstillinger: pageSettings,
       fase: pagePhase, maned: pageMonth, hendelser: pageEvents, serie: pageSeries, runde: pageRun, gjennomgang: pageReview, uke: pageWeek, status: pageStatus, kunnskap: pageKnowledge, sok: pageSearch,
-      tidslinje: pageTimeline, arbeidsflyt: pageWorkflow, statistikk: pageStats, budsjett: pageBudget, maler: pageTemplates, frister: pageDeadlines, rundeoppg: pageRunTasks };
+      tidslinje: pageTimeline, arbeidsflyt: pageWorkflow, statistikk: pageStats, budsjett: pageBudget, maler: pageTemplates, frister: pageDeadlines, rundeoppg: pageRunTasks, personer: pagePeople, person: pagePerson };
     state.dmc = {};   // v19: delmål per year, worked out again for each drawing
     var keep = state.keepScroll ? window.scrollY : 0; state.keepScroll = false;
     ($('main').innerHTML = (pages[state.view] || pageOverview)());
@@ -401,7 +401,7 @@
     else body = '<div class="panel tablewrap"><table class="t"><tr><th>Prosjekt</th><th>Fase</th><th>Fakultet</th><th>Enhet</th><th>Prosjektleder</th><th>Kull</th><th>Slutt</th><th>Åpne</th><th>Forfalt</th></tr>' +
       list.map(function (p) {
         var open = d.Oppgaver.filter(function (t) { return t.prosjekt_id === p.id && openTask(t); });
-        return '<tr class="click" data-go="prosjekt/' + esc(p.id) + '"><td class="strong">' + esc(p.kortnavn) + '</td><td><span class="ph">' + esc(p.fase) + '</span>' + (p.forsinket === 'ja' ? ' <span class="chip c-late">Forsinket</span>' : '') + '</td><td>' + esc(p.fakultet) + '</td><td>' + esc(p.enhet) + '</td><td>' + esc(p.leder) + '</td><td>' + esc(p.kull) + '</td><td>' + esc(fmtDate(p.ny_sluttdato || p.sluttdato)) + '</td><td>' + open.length + '</td><td>' + (open.filter(isLate).length || '') + '</td></tr>';
+        return '<tr class="click" data-go="prosjekt/' + esc(p.id) + '"><td class="strong">' + esc(p.kortnavn) + '</td><td><span class="ph">' + esc(p.fase) + '</span>' + (p.forsinket === 'ja' ? ' <span class="chip c-late">Forsinket</span>' : '') + '</td><td>' + esc(p.fakultet) + '</td><td>' + esc(p.enhet) + '</td><td>' + (p.leder ? personLink(p.leder) : '') + '</td><td>' + esc(p.kull) + '</td><td>' + esc(fmtDate(p.ny_sluttdato || p.sluttdato)) + '</td><td>' + open.length + '</td><td>' + (open.filter(isLate).length || '') + '</td></tr>';
       }).join('') + '</table></div>';
     return head('Prosjekter', list.length + ' ' + (list.length === 1 ? 'prosjekt' : 'prosjekter'), tools) + body +
       (!f.pfase ? '<section class="panel"><h2>Alle prosjekter</h2>' + bigGrid(list) + '</section>' : '');
@@ -432,7 +432,7 @@
         '<div class="sub"><span class="ph">' + esc(p.fase) + '</span> ' + (p.forsinket === 'ja' ? '<span class="chip c-late">Forsinket</span> ' : '') + esc([p.fakultet, p.enhet].filter(Boolean).join(' · ')) + '</div></div>' +
         '<div class="tools">' + tools + '</div></div>' +
       '<section class="panel"><div class="facts">' +
-        fact('Prosjektleder', p.leder) + fact('E-post', p.epost) + fact('Kull', p.kull) + fact('Startdato', fmtDate(p.startdato)) +
+        '<div><span>Prosjektleder</span>' + (p.leder ? personLink(p.leder) : '–') + '</div>' + fact('E-post', p.epost || emailOf(p.leder)) + fact('Kull', p.kull) + fact('Startdato', fmtDate(p.startdato)) +
         fact('I fasen siden', fmtDate(p.fase_start)) + fact('Planlagt slutt', fmtDate(p.sluttdato)) + (p.ny_sluttdato ? fact('Ny slutt', fmtDate(p.ny_sluttdato)) : '') +
         fact('Mentor', mentor ? mentor.navn : '') + fact('Samarbeid', p.partnere) +
       '</div>' + (p.maal ? '<p>' + esc(p.maal) + '</p>' : '') + (p.forsinkelse_aarsak ? '<p class="empty">Forsinkelse: ' + esc(p.forsinkelse_aarsak) + '</p>' : '') + (p.merknader ? '<p class="empty">' + esc(p.merknader) + '</p>' : '') + '</section>' +
@@ -484,7 +484,7 @@
     var p = byId('Prosjekter', pid), list = projContacts(p), isNew = idx === '' || idx == null, c = isNew ? { kopi: 'nei' } : list[Number(idx)] || {};
     var roles = PERSON_ROLES.slice(); if (c.rolle && roles.indexOf(c.rolle) < 0) roles.push(c.rolle);
     openDrawer('<h2>' + (isNew ? 'Ny person' : 'Rediger person') + ': ' + esc(p.kortnavn) + '</h2><div class="grid2">' +
-        field('Navn', 'navn', c.navn) + field('Organisasjon', 'organisasjon', c.organisasjon) + field('E-post', 'epost', c.epost) +
+        '<label class="f">Navn<input type="text" name="navn" list="pkList" autocomplete="off" value="' + esc(c.navn || '') + '"></label>' + field('Organisasjon', 'organisasjon', c.organisasjon) + field('E-post', 'epost', c.epost) +
         field('Rolle', 'rolle', '', 'select', option('', c.rolle || '', '–') + roles.map(function (r) { return option(r, c.rolle || '', r); }).join('')) + '</div>' +
       tagPicker(tagsOf(c)) +
       field('Allergier eller dietter', 'allergier', c.allergier) +
@@ -496,17 +496,20 @@
         if (row.epost && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.epost)) { toast('Sjekk e-postadressen'); return; }
         row.tagger = pickedTags(form);
         if (isNew) list.push(row); else list[Number(idx)] = Object.assign({}, list[Number(idx)], row);
+        ensurePeople([{ navn: row.navn, epost: row.epost, allergier: row.allergier, enhet: row.organisasjon }]);   // v22
         closeDrawer(); saveContacts(pid, list).then(function () { toast('Lagret'); });
       });
+    var ef = $('drawerForm'); ef.insertAdjacentHTML('beforeend', peopleDatalist());
+    fillFromRegister(ef.querySelector('[name="navn"]'), { epost: ef.querySelector('[name="epost"]'), allergier: ef.querySelector('[name="allergier"]'), enhet: ef.querySelector('[name="organisasjon"]') });
   }
   function contactsPanel(p) {
     var list = projContacts(p), cc = projCc(p);
     var gen = state.d.Maler.filter(function (m) { return m.type === 'generell'; }).sort(function (a, b) { return Number(a.rekkefolge || 0) - Number(b.rekkefolge || 0); });
     var v = { navn: p.leder || '', prosjekt: p.tittel || p.kortnavn, beskrivelse: p.maal || '' };
     return '<section class="panel"><h2>Personer</h2>' +
-      '<div class="task"><span></span><div><div class="tt">' + esc(p.leder || 'Prosjektleder ikke satt') + '</div><div class="meta">Prosjektleder' + (p.epost ? ' · ' + esc(p.epost) : '') + '</div></div></div>' +
+      '<div class="task"><span></span><div><div class="tt">' + (p.leder ? personLink(p.leder) : 'Prosjektleder ikke satt') + '</div><div class="meta">Prosjektleder' + (p.epost ? ' · ' + esc(p.epost) : '') + '</div></div></div>' +
       list.map(function (c, i) {
-        return '<div class="task"><span></span><div class="t" data-pedit="' + esc(p.id) + '|' + i + '"><div class="tt">' + esc(c.navn || c.epost) + (isKp(c) ? ' <span class="chip c-info">Kontaktperson</span>' : '') + '</div>' +
+        return '<div class="task"><span></span><div class="t" data-pedit="' + esc(p.id) + '|' + i + '"><div class="tt">' + (c.navn ? personLink(c.navn) : esc(c.epost)) + (isKp(c) ? ' <span class="chip c-info">Kontaktperson</span>' : '') + '</div>' +
           '<div class="meta">' + esc([c.rolle, c.organisasjon, c.epost].filter(Boolean).join(' · ')) + (tagsOf(c).length ? ' ' + tagChips(c) : '') + '</div></div>' +
           '<button class="btn ghost small" data-delpc="' + esc(p.id) + '|' + i + '" aria-label="Fjern ' + esc(c.navn || c.epost) + '">✕</button></div>';
       }).join('') +
@@ -556,7 +559,7 @@
       '<section class="panel"><h2>Avsluttet ' + esc(year) + '</h2>' +
       (closed.length ? '<div class="tablewrap"><table class="t"><tr><th>Søker</th><th>Status</th><th>Fakultet</th><th>Prosjektleder</th><th>Merknader</th></tr>' + closed.map(function (s) {
         var go = s.status === 'Opptatt' && byId('Prosjekter', s.id) ? ' class="click" data-go="prosjekt/' + esc(s.id) + '"' : ' class="click" data-edit-applicant="' + esc(s.id) + '"';
-        return '<tr' + go + '><td class="strong">' + esc(s.kortnavn) + '</td><td><span class="chip ' + (s.status === 'Opptatt' ? 'c-done' : 'c-na') + '">' + esc(s.status) + '</span></td><td>' + esc(s.fakultet) + '</td><td>' + esc(s.leder) + '</td><td>' + esc(s.merknader) + '</td></tr>';
+        return '<tr' + go + '><td class="strong">' + esc(s.kortnavn) + '</td><td><span class="chip ' + (s.status === 'Opptatt' ? 'c-done' : 'c-na') + '">' + esc(s.status) + '</span></td><td>' + esc(s.fakultet) + '</td><td>' + (s.leder ? personLink(s.leder) : '') + '</td><td>' + esc(s.merknader) + '</td></tr>';
       }).join('') + '</table></div>' : '<div class="empty">Ingen ennå.</div>') + '</section>';
   }
   function applicantCard(s) {
@@ -809,6 +812,7 @@
         if (!row.tittel) { toast('Skriv en tittel'); return; }
         if (gj === 'pro' && !row.prosjekt_id) { toast('Velg prosjekt'); return; }
         if (gj === 'grp' && grp === 'personer' && !row.personer) { toast('Velg minst én person'); return; }
+        ensurePeople(namesOf(row.venter_paa, row.personer));   // v22: new names go into the register
         // A group task where every project is done is done.
         var autoDone = false;
         if (gj === 'grp' && openTask({ status: row.status }) && groupReached(Object.assign({}, t, row, { avkrysset: row.avkrysset }))) { row.status = 'Ferdig'; autoDone = true; }
@@ -888,7 +892,7 @@
         var row = { tittel: val(form, 'tittel'), type: 'avklaring' };
         if (!row.tittel) { toast('Skriv spørsmålet'); return; }
         if (!t.auto_svar) {
-          row.spoer = val(form, 'spoer'); row.felt = (val(form, 'felt') || '').replace(/[{}\s]/g, ''); row.svar = val(form, 'svar');
+          row.spoer = val(form, 'spoer'); ensurePeople(namesOf(row.spoer));   // v22 row.felt = (val(form, 'felt') || '').replace(/[{}\s]/g, ''); row.svar = val(form, 'svar');
           row.status = row.svar ? 'Ferdig' : 'Ikke startet';
         }
         if (groupNames.length) row.delmaal = val(form, 'delmaal');
@@ -911,6 +915,7 @@
       '<div class="grid2">' + peopleField('Fra hvem', 'venter_paa', t.venter_paa) + field('Minn meg på etter (dager)', 'dager', '5', 'number') + '</div>' + actions(),
       function (form) {
         var n = Number(val(form, 'dager')) || 5;
+        ensurePeople(namesOf(val(form, 'venter_paa')));   // v22
         save('Oppgaver', [{ id: id, status: 'Venter på', venter_paa: val(form, 'venter_paa'), oppfolging: addDays(today(), n) }]).then(function () { closeDrawer(); toast('Flyttet til «Venter på svar». Du blir minnet på det ' + fmtDateW(addDays(today(), n)) + '.'); render(); });
       });
   }
@@ -966,18 +971,19 @@
       '<div class="grid2">' + field('Kortnavn', 'kortnavn', p.kortnavn) + field('Kull', 'kull', '', 'select', kullOptions(p.kull)) + '</div>' +
       field('Full tittel', 'tittel', p.tittel) +
       '<div class="grid2">' + field('Fakultet', 'fakultet', '', 'select', options(FACULTIES, p.fakultet || '', '–')) + field('Institutt/enhet', 'enhet', p.enhet) +
-        field('Prosjektleder', 'leder', p.leder) + field('E-post', 'epost', p.epost) +
+        '<label class="f">Prosjektleder<input type="text" name="leder" list="pkList" autocomplete="off" value="' + esc(p.leder || '') + '"></label>' + field('E-post', 'epost', p.epost) +
         field('Prosjektleders allergier eller dietter', 'leder_allergier', p.leder_allergier) +
         field('Startdato', 'startdato', p.startdato, 'date') + field('Planlagt slutt', 'sluttdato', p.sluttdato, 'date') +
         (id ? '' : field('Fase', 'fase', '', 'select', options(ACTIVE, p.fase))) +
-        field('Mentor', 'mentor_id', '', 'select', option('', p.mentor_id || '', '–') + contacts.map(function (c) { return option(c.id, p.mentor_id || '', c.navn); }).join('')) +
+        field('Mentor', 'mentor_id', '', 'select', option('', p.mentor_id || '', '–') + contacts.map(function (c) { return option(c.id, p.mentor_id || '', personName(c)); }).join('')) +
       '</div>' +
       field('Andre samarbeidspartnere', 'partnere', p.partnere) +
       field('Mål / kort beskrivelse', 'maal', p.maal, 'textarea') +
-      field('Merknader', 'merknader', p.merknader, 'textarea') + actions(),
+      field('Merknader', 'merknader', p.merknader, 'textarea') + peopleDatalist() + actions(),
       function (form) {
         var row = {}; ['kortnavn', 'kull', 'tittel', 'fakultet', 'enhet', 'leder', 'epost', 'leder_allergier', 'startdato', 'sluttdato', 'mentor_id', 'partnere', 'maal', 'merknader'].forEach(function (k) { row[k] = val(form, k); });
         if (!row.kortnavn) { toast('Skriv et kortnavn'); return; }
+        ensurePeople([{ navn: row.leder, epost: row.epost, allergier: row.leder_allergier, enhet: row.enhet }]);   // v22
         if (id) { row.id = id; save('Prosjekter', [row]).then(function () { closeDrawer(); toast('Lagret'); render(); }); return; }
         // A new project: save it, then set its phase so the phase's tasks are made.
         var fase = val(form, 'fase');
@@ -990,6 +996,7 @@
     // v11: Kull → start date 1 January that year (new projects); start date → planned end 2 years later.
     // A date is only filled in when it is empty or still the value filled in automatically.
     var form = $('drawerForm'), get = function (n) { return form.querySelector('[name="' + n + '"]'); };
+    fillFromRegister(get('leder'), { epost: get('epost'), allergier: get('leder_allergier') });   // v22
     var autoStart = id ? '' : get('startdato').value, autoEnd = get('sluttdato').value === endFrom(get('startdato').value) || !get('sluttdato').value ? get('sluttdato').value : null;
     get('kull').addEventListener('change', function () {
       if (id || !/^\d{4}$/.test(this.value)) return;
@@ -1024,15 +1031,27 @@
       '<div class="grid2">' + field('Kortnavn', 'kortnavn', s.kortnavn) + field('Søknadsår', 'soknadsaar', s.soknadsaar) + '</div>' +
       field('Prosjekttittel', 'tittel', s.tittel) +
       '<div class="grid2">' + field('Fakultet', 'fakultet', '', 'select', options(FACULTIES, s.fakultet || '', '–')) + field('Institutt/enhet', 'enhet', s.enhet) +
-        field('Prosjektleder', 'leder', s.leder) + field('E-post', 'epost', s.epost) +
+        '<label class="f">Prosjektleder<input type="text" name="leder" list="pkList" autocomplete="off" value="' + esc(s.leder || '') + '"></label>' + field('E-post', 'epost', s.epost) +
         field('Steg', 'steg', '', 'select', options(STEPS, s.steg || STEPS[0])) + field('Status', 'status', '', 'select', options(['Aktiv', 'Opptatt', 'Avslått', 'Trukket'], s.status || 'Aktiv')) + '</div>' +
-      field('Merknader', 'merknader', s.merknader, 'textarea') + actions(),
+      field('Merknader', 'merknader', s.merknader, 'textarea') + peopleDatalist() + actions(),
       function (form) {
         var row = {}; ['kortnavn', 'soknadsaar', 'tittel', 'fakultet', 'enhet', 'leder', 'epost', 'steg', 'status', 'merknader'].forEach(function (k) { row[k] = val(form, k); });
         if (!row.kortnavn) { toast('Skriv et kortnavn'); return; }
+        ensurePeople([{ navn: row.leder, epost: row.epost, enhet: row.enhet }]);   // v22
         if (id) row.id = id;
         save('Søkere', [row]).then(function () { closeDrawer(); toast('Lagret'); if (!id) load(true); else render(); });
       });
+    var sf = $('drawerForm'); fillFromRegister(sf.querySelector('[name="leder"]'), { epost: sf.querySelector('[name="epost"]') });   // v22
+  }
+  // v22: picking a name from the register fills in empty fields (e-mail, allergies, organisation).
+  function fillFromRegister(input, targets) {
+    if (!input) return;
+    input.addEventListener('change', function () {
+      var c = contactOf(input.value); if (!c) return;
+      if (targets.epost && !targets.epost.value) targets.epost.value = c.epost || '';
+      if (targets.allergier && !targets.allergier.value) targets.allergier.value = c.allergier || '';
+      if (targets.enhet && !targets.enhet.value) targets.enhet.value = c.enhet || '';
+    });
   }
 
   // Admit an applicant.
@@ -1995,8 +2014,8 @@
   function isBreak(x) { return x.art === 'pause'; }
   // Names to pick "Ansvarlig" from (free text is fine too): me, contacts and the people on the projects.
   function peopleNames() {
-    var out = ['Meg'], add = function (n) { n = String(n || '').trim(); if (n && out.indexOf(n) < 0) out.push(n); };
-    state.d.Kontakter.forEach(function (c) { add(c.navn); });
+    var m = me(), out = [m ? personName(m) : 'Meg'], add = function (n) { n = String(n || '').trim(); if (n && !out.some(function (x) { return sameName(x, n); })) out.push(n); };
+    state.d.Kontakter.forEach(function (c) { add(personName(c)); });   // v22: the register first
     state.d.Prosjekter.filter(function (p) { return p.fase !== 'Arkivert'; }).forEach(function (p) { add(p.leder); projContacts(p).forEach(function (c) { add(c.navn); }); });
     return out;
   }
@@ -2021,7 +2040,7 @@
     }
     var table = rows.length ? '<div class="tablewrap"><table class="t ag"><tr><th>Tid</th><th>Hva</th><th>Ansvarlig</th></tr>' + rows.map(function (x) {
       var from = hhmm(start, at); at += Number(x.min) || 0;
-      return '<tr class="' + (isBreak(x) ? 'brk' : '') + '"><td class="agt">' + from + '–' + hhmm(start, at) + '</td><td>' + (isBreak(x) ? '<span class="chip c-brk">Pause</span> ' : '') + esc(x.hva) + expHtml(s, 'agenda:' + x.id) + '</td><td>' + esc(x.ansvarlig || '') + '</td></tr>';
+      return '<tr class="' + (isBreak(x) ? 'brk' : '') + '"><td class="agt">' + from + '–' + hhmm(start, at) + '</td><td>' + (isBreak(x) ? '<span class="chip c-brk">Pause</span> ' : '') + esc(x.hva) + expHtml(s, 'agenda:' + x.id) + '</td><td>' + (x.ansvarlig ? personLink(x.ansvarlig) : '') + '</td></tr>';
     }).join('') + '</table></div>' : '<div class="empty">Ingen bolker ennå. Klikk «Rediger agendaen».</div>';
     return '<section class="panel"><h2>Agenda</h2>' + (seg || note ? '<div class="agbar"><div class="row wrap">' + seg + '</div><div class="row wrap">' + note + '</div></div>' : '') + span + table +
       (a.merknad ? '<p class="pre ag-note">' + esc(a.merknad) + '</p>' : '') +
@@ -2242,7 +2261,7 @@
   function guestPanel(r) {
     var g = guestsOf(r), on = matOf(r).pa === 'ja';
     return '<section class="panel"><h2>Gjesteliste</h2>' + (g.length ? '<div class="tasklist">' + g.map(function (x, i) {
-      return '<div class="task"><span></span><div class="t"><div class="tt">' + esc(x.navn) + '</div><div class="meta">' + esc(x.hvor || '') + (x.allergier ? ' <span class="chip ' + (on ? 'c-late' : 'c-prog') + '">' + (on ? '⚠ ' : '') + 'Allergi: ' + esc(x.allergier) + '</span>' : '') + '</div></div>' +
+      return '<div class="task"><span></span><div class="t"><div class="tt">' + personLink(x.navn) + '</div><div class="meta">' + esc(x.hvor || '') + (x.allergier ? ' <span class="chip ' + (on ? 'c-late' : 'c-prog') + '">' + (on ? '⚠ ' : '') + 'Allergi: ' + esc(x.allergier) + '</span>' : '') + '</div></div>' +
         '<div class="right"><button type="button" class="btn small ghost" data-guestedit="' + esc(r.id + '|' + i) + '">Endre</button><button type="button" class="btn small ghost" data-guestdel="' + esc(r.id + '|' + i) + '" aria-label="Fjern ' + esc(x.navn) + '">✕</button></div></div>';
     }).join('') + '</div><p class="dm-m">' + g.length + ' på listen</p>' : '<div class="empty">Ingen på gjestelisten ennå.</div>') +
       '<div class="row wrap"><button type="button" class="btn small" data-guestedit="' + esc(r.id) + '|">+ Gjest</button>' + (signedUp(r).length ? '<button type="button" class="btn small ghost" data-guestall="' + esc(r.id) + '">Legg til alle fra de påmeldte prosjektene</button>' : '') + '</div></section>';
@@ -2251,10 +2270,10 @@
   function guestCandidates(r) {
     var out = [];
     signedUp(r).forEach(function (p) {
-      if (p.leder) out.push({ navn: p.leder, hvor: p.kortnavn + ' (leder)', allergier: p.leder_allergier || '' });
+      if (p.leder) out.push({ navn: p.leder, hvor: p.kortnavn + ' (leder)', allergier: p.leder_allergier || (contactOf(p.leder) || {}).allergier || '' });
       projContacts(p).forEach(function (c) { if (c.navn) out.push({ navn: c.navn, hvor: p.kortnavn + (c.rolle ? ' (' + c.rolle + ')' : ''), allergier: c.allergier || '' }); });
     });
-    state.d.Kontakter.forEach(function (c) { out.push({ navn: c.navn, hvor: 'Kontakt' + (c.rolle ? ': ' + c.rolle : ''), allergier: c.allergier || '' }); });
+    state.d.Kontakter.forEach(function (c) { out.push({ navn: personName(c), hvor: 'Kontakt' + (c.rolle ? ': ' + c.rolle : ''), allergier: c.allergier || '' }); });
     return out;
   }
   function saveGuests(r, list, msg) {
@@ -2269,12 +2288,13 @@
     var cands = guestCandidates(r);
     openDrawer('<h2>' + (isNew ? 'Ny gjest' : 'Endre gjest') + '</h2>' +
       (isNew && cands.length ? field('Velg fra listen (eller skriv navnet under)', 'pick', '', 'select', option('', '', '–') + cands.map(function (c, i) { return option(String(i), '', c.navn + ' · ' + c.hvor); }).join('')) : '') +
-      '<div class="grid2">' + field('Navn', 'navn', g.navn) + field('Hvor fra', 'hvor', g.hvor) + '</div>' +
+      '<div class="grid2"><label class="f">Navn<input type="text" name="navn" list="pkList" autocomplete="off" value="' + esc(g.navn || '') + '"></label>' + field('Hvor fra', 'hvor', g.hvor) + '</div>' + peopleDatalist() +
       field('Allergier eller dietter', 'allergier', g.allergier) + '<p class="empty">Hentes fra personen eller kontakten hvis det er skrevet der. Endrer du det her, gjelder det bare dette arrangementet.</p>' + actions(),
       function (form) {
         var row = { navn: val(form, 'navn'), hvor: val(form, 'hvor'), allergier: val(form, 'allergier') };
         if (!row.navn) { toast('Skriv et navn'); return; }
         if (isNew) list.push(row); else list[Number(p[1])] = row;
+        ensurePeople([{ navn: row.navn }]);   // v22 (the allergy here is for this event only)
         closeDrawer(); saveGuests(r, list, warnAllergy(r, [row]) || 'Lagret');
       });
     var pick = document.querySelector('#drawerForm [name="pick"]');
@@ -2287,6 +2307,7 @@
     var r = byId('Runder', rid), list = guestsOf(r), names = list.map(function (g) { return g.navn.toLowerCase(); });
     var add = guestCandidates(r).filter(function (c) { return c.hvor !== 'Kontakt' && c.hvor.indexOf('Kontakt:') !== 0 && names.indexOf(c.navn.toLowerCase()) < 0; });
     if (!add.length) { toast('Alle er allerede på listen'); return; }
+    ensurePeople(add.map(function (g) { return { navn: g.navn, allergier: g.allergier }; }));   // v22
     saveGuests(r, list.concat(add), warnAllergy(r, add) || add.length + ' lagt til');
   }
 
@@ -3075,11 +3096,159 @@
     }).catch(fail);
   }
 
+  // ---- v22: Personer (the register) and the person page ----------------------------------
+  // Filters: search, tag, kind (where they are used: Prosjektleder, Panel …), year, open things.
+  function pagePeople() {
+    var d = state.d, f = state.filters, q = (f.peq || '').toLowerCase();
+    var rows = d.Kontakter.map(function (c) { var n = personName(c); return { c: c, n: n, w: personWhere(n), it: personItems(n) }; });
+    var years = uniq([].concat.apply([], rows.map(function (r) { return r.w.map(function (w) { return w.y; }); }))).sort().reverse();
+    var tags = uniq(tagList().concat([].concat.apply([], d.Kontakter.map(tagsOf))));
+    var list = rows.filter(function (r) {
+      var c = r.c;
+      if (q && [r.n, c.enhet, c.rolle, c.epost, c.emner, c.kjenner_via, c.notater, c.tagger].concat(r.w.map(function (w) { return w.n; })).join(' ').toLowerCase().indexOf(q) < 0) return false;
+      if (f.petag && tagsOf(c).indexOf(f.petag) < 0) return false;
+      if (f.pekind && !r.w.some(function (w) { return w.k === f.pekind && (!f.peyear || w.y === f.peyear); })) return false;
+      if (f.peyear && !f.pekind && !r.w.some(function (w) { return w.y === f.peyear; })) return false;
+      if (f.peopen === 'venter' && !r.it.waits.length) return false;
+      if (f.peopen === 'spor' && !r.it.asks.length) return false;
+      return true;
+    }).sort(function (a, b) { var x = (a.c.etternavn || a.n).toLowerCase() + a.n.toLowerCase(), y = (b.c.etternavn || b.n).toLowerCase() + b.n.toLowerCase(); return x < y ? -1 : x > y ? 1 : 0; });
+    var missing = gatherList().length;
+    var sel = function (id, cur, blank, opts) { return '<select id="' + id + '" aria-label="' + esc(blank) + '">' + option('', cur || '', blank) + opts.map(function (o) { return option(o, cur || '', o); }).join('') + '</select>'; };
+    var tools = '<input type="text" class="search" id="fPeq" placeholder="Søk etter navn, organisasjon, tema …" value="' + esc(f.peq || '') + '">' +
+      sel('fPetag', f.petag, 'Alle tagger', tags) + sel('fPekind', f.pekind, 'Alle roller', PERSON_KINDS) + sel('fPeyear', f.peyear, 'Alle år', years) +
+      '<select id="fPeopen" aria-label="Åpne ting">' + option('', f.peopen || '', 'Alle') + option('venter', f.peopen || '', 'Venter på noe fra') + option('spor', f.peopen || '', 'Har noe å spørre om') + '</select>' +
+      '<button class="btn" data-act="edittags">Rediger tagger</button>' + (missing ? '<button class="btn" data-act="gather">Samle personer (' + missing + ')</button>' : '') +
+      '<button class="btn primary" data-act="newcontact">Ny person</button>';
+    var body = list.length ? '<div class="panel tablewrap"><table class="t peeps"><tr><th>Navn</th><th>Er med som</th><th>Tagger</th><th>Organisasjon</th><th>E-post</th><th>Venter på</th><th>Spør</th></tr>' + list.map(function (r) {
+      var c = r.c;
+      return '<tr class="click" data-go="person/' + esc(c.id) + '"><td class="strong">' + esc(r.n) + (c.meg === 'ja' ? ' <span class="chip c-na">deg</span>' : '') + '</td><td>' + autoChips(r.w, 3) + '</td><td>' + tagChips(c) + '</td><td>' + esc(c.enhet) + '</td><td>' + esc(c.epost) + '</td>' +
+        '<td>' + (r.it.waits.length ? '<span class="chip c-prog">' + r.it.waits.length + '</span>' : '') + '</td><td>' + (r.it.asks.length ? '<span class="chip c-q">' + r.it.asks.length + '</span>' : '') + '</td></tr>';
+    }).join('') + '</table></div>' : '<div class="panel empty">' + (d.Kontakter.length ? 'Ingen personer passer filteret.' : 'Ingen i registeret ennå. «Samle personer» henter navnene som allerede står i appen.') + '</div>';
+    return head('Personer', list.length + ' av ' + d.Kontakter.length + ' personer' + (missing ? ' · ' + missing + ' navn i appen er ikke i registeret ennå' : ''), tools) + body;
+  }
+  function pagePerson() {
+    var c = byId('Kontakter', state.param);
+    if (!c) return head('Personer', '<a href="#personer">← Personer</a>') + '<div class="panel empty">Fant ikke personen.</div>';
+    var x = personParts(personName(c), true);
+    state.ppTexts = x.texts;
+    var sub = [c.rolle, c.enhet].filter(Boolean).map(esc).join(' · ');
+    return '<div class="top"><div class="ptitle"><div class="short"><a href="#personer">Personer</a> / ' + esc(x.name) + '</div><h1>' + esc(x.name) + '</h1>' + (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>' +
+      '<div class="tools">' + (c.epost ? '<a class="btn" href="' + esc(mailto(c.epost, '', '', '')) + '">E-post</a>' : '') + '<button class="btn primary" data-contact-edit="' + esc(c.id) + '">Rediger</button></div></div>' +
+      '<div class="ppage">' + x.parts.map(function (p, i) { return '<section class="panel' + (i === 0 ? ' pp-gen' : '') + '"><h2>' + esc(p[1]) + '</h2>' + p[2] + '</section>'; }).join('') + '</div>';
+  }
+
+  // ---- v22: Rediger tagger: rename, merge (rename to a tag that exists) or delete; applies to everyone ----
+  function editTags() {
+    var d = state.d, count = {};
+    var bump = function (t) { count[t] = (count[t] || 0) + 1; };
+    d.Kontakter.forEach(function (c) { tagsOf(c).forEach(bump); });
+    d.Prosjekter.forEach(function (p) { projContacts(p).forEach(function (c) { tagsOf(c).forEach(bump); }); });
+    var all = uniq(tagList().concat(Object.keys(count)));
+    openDrawer('<h2>Rediger tagger</h2><p class="empty">Endre navnet for å gi en tagg nytt navn. Gi den samme navn som en annen tagg for å slå dem sammen. Endringen gjelder alle som har taggen.</p>' +
+      '<div class="tagedit">' + all.map(function (t, i) {
+        return '<div class="tg-row"><input type="text" name="tg_' + i + '" value="' + esc(t) + '" aria-label="Tagg ' + esc(t) + '"><span class="dm-m">' + (count[t] || 0) + ' ' + ((count[t] || 0) === 1 ? 'person' : 'personer') + '</span><label class="dm-m"><input type="checkbox" name="tgdel_' + i + '"> Slett</label></div>';
+      }).join('') + '</div>' + field('Nye tagger (skill med komma)', 'nye', '') + actions(),
+      function (form) {
+        var map = {}, gone = [];
+        all.forEach(function (t, i) {
+          var del = form.querySelector('[name="tgdel_' + i + '"]').checked, nv = val(form, 'tg_' + i);
+          map[t] = del || !nv ? '' : nv;
+          if (!map[t] && count[t]) gone.push(t + ' (' + count[t] + ')');
+        });
+        if (gone.length && !window.confirm('Taggen blir tatt bort fra alle som har den: ' + gone.join(', ') + '. Fortsette?')) return;
+        var fix = function (v) { var l = uniq(splitList(v).map(function (t) { return map[t] === undefined ? t : map[t]; })); return l.join(', '); };
+        var kRows = d.Kontakter.filter(function (c) { return fix(c.tagger) !== tagsOf(c).join(', '); }).map(function (c) { return { id: c.id, tagger: fix(c.tagger) }; });
+        var pRows = d.Prosjekter.map(function (p) {
+          var l = projContacts(p), ch = false;
+          l.forEach(function (c) { var nv = fix(c.tagger); if (nv !== tagsOf(c).join(', ')) { c.tagger = nv; ch = true; } });
+          return ch ? { id: p.id, kontakter: JSON.stringify(l) } : null;
+        }).filter(Boolean);
+        var newList = uniq(all.map(function (t) { return map[t]; }).concat(splitList(val(form, 'nye')))).filter(Boolean);
+        api('api_saveSettings', { tagger: newList.join(', ') }).then(function (st) { if (st) state.d.Innstillinger = st; })
+          .then(function () { return kRows.length ? save('Kontakter', kRows) : null; })
+          .then(function () { return pRows.length ? save('Prosjekter', pRows) : null; })
+          .then(function () { closeDrawer(); toast('Taggene er lagret' + (kRows.length + pRows.length ? ' (' + (kRows.length + pRows.length) + ' endret)' : '')); render(); }).catch(fail);
+      });
+  }
+
+  // ---- v22: Samle personer: names used in the app that aren't in the register yet ----
+  // Returns [{navn, from: [where], epost, allergier, enhet}], one per name.
+  function gatherList() {
+    var d = state.d, by = {}, order = [];
+    var add = function (n, from, x) {
+      n = String(n || '').trim(); if (!n || /[{}]/.test(n) || sameName(n, 'Meg') || contactOf(n)) return;   // {felt} placeholders are not people
+      var k = n.toLowerCase();
+      if (!by[k]) { by[k] = { navn: n, from: [], epost: '', allergier: '', enhet: '' }; order.push(k); }
+      var g = by[k]; if (g.from.indexOf(from) < 0) g.from.push(from);
+      x = x || {}; ['epost', 'allergier', 'enhet'].forEach(function (f) { if (!g[f] && x[f]) g[f] = x[f]; });
+    };
+    d.Prosjekter.forEach(function (p) {
+      add(p.leder, 'Prosjektleder ' + p.kortnavn, { epost: p.epost, allergier: p.leder_allergier, enhet: p.enhet });
+      projContacts(p).forEach(function (c) { add(c.navn, (c.rolle || 'Person') + ' i ' + p.kortnavn, { epost: c.epost, allergier: c.allergier, enhet: c.organisasjon }); });
+    });
+    d.Søkere.forEach(function (a) { add(a.leder, 'Søker ' + a.kortnavn + ' ' + (a.soknadsaar || ''), { epost: a.epost, enhet: a.enhet }); });
+    d.Runder.forEach(function (r) {
+      panelOf(r).forEach(function (x) { add(x.navn, (x.rolle === 'taler' ? 'Foredragsholder ' : 'Panel ') + runName(r), { epost: x.epost }); });
+      guestsOf(r).forEach(function (g) { add(g.navn, 'Gjest ' + runName(r), { allergier: g.allergier }); });
+    });
+    d.Oppgaver.forEach(function (t) {
+      whoList(t.venter_paa).forEach(function (n) { add(n, 'Venter på: ' + t.tittel); });
+      whoList(t.personer).forEach(function (n) { add(n, 'Oppgave: ' + t.tittel); });
+      if (isAvk(t)) add(avkWho(t), 'Spør: ' + t.tittel);
+    });
+    (d.Agendaer || []).forEach(function (ag) { agRows(ag).forEach(function (x) { add(x.ansvarlig, 'Agenda: ' + (ag.navn || '')); }); });
+    return order.map(function (k) { return by[k]; });
+  }
+  // The preview: tick who to add; or say a name is the same person as someone else (then that name is used everywhere).
+  function gatherPeople() {
+    var list = gatherList(), m = me();
+    var reg = state.d.Kontakter.map(personName);
+    var like = function (n) {   // names that may be the same person: same first word or same last word
+      var w = n.toLowerCase().split(/\s+/), f = w[0], l = w[w.length - 1];
+      return reg.concat(list.map(function (x) { return x.navn; })).filter(function (o) { if (sameName(o, n)) return false; var v = o.toLowerCase().split(/\s+/); return v[0] === f || (w.length > 1 && v[v.length - 1] === l); });
+    };
+    openDrawer('<h2>Samle personer</h2><p class="empty">Navnene under står i appen, men ikke i registeret. Huk av dem du vil legge til. Er et navn den samme personen som en annen, velg det til høyre: da brukes det navnet overalt. Ingenting lagres før du trykker Lagre.</p>' +
+      (m ? '' : '<div class="f"><span class="group-h">Deg selv</span><div class="grid2">' + field('Ditt fornavn', 'meg_fornavn', 'Linn') + field('Ditt etternavn', 'meg_etternavn', '') + '</div><p class="empty">Du vises med dette navnet der det står «Meg» (for eksempel Ansvarlig i agendaer).</p></div>') +
+      (list.length ? '<div class="gather">' + list.map(function (x, i) {
+        var opts = like(x.navn);
+        return '<div class="ga-row"><label class="ga-n"><input type="checkbox" name="ga_' + i + '" checked> <b>' + esc(x.navn) + '</b>' + (x.epost ? ' <span class="dm-m">' + esc(x.epost) + '</span>' : '') + '<small class="was">' + esc(x.from.slice(0, 3).join(' · ') + (x.from.length > 3 ? ' · +' + (x.from.length - 3) : '')) + '</small></label>' +
+          '<select name="gs_' + i + '" aria-label="Samme person som"><option value="">Ny person</option>' + opts.map(function (o) { return option(o, '', 'Samme som ' + o); }).join('') + '<option value="__other">Samme som …</option></select></div>';
+      }).join('') + '</div>' : '<p class="empty">Alle navnene i appen er allerede i registeret.</p>') + actions(),
+      function (form) {
+        var create = [], merges = [];
+        if (!m) { var mf = val(form, 'meg_fornavn'), me2 = val(form, 'meg_etternavn'); if (mf) create.push({ navn: [mf, me2].filter(Boolean).join(' '), fornavn: mf, etternavn: me2, meg: 'ja', bare_fornavn: 'ja' }); }
+        list.forEach(function (x, i) {
+          var sel = form.querySelector('[name="gs_' + i + '"]'), same = sel.value === '__other' ? (sel.dataset.other || '') : sel.value;
+          if (same) { merges.push({ from: x.navn, to: same }); return; }
+          if (!form.querySelector('[name="ga_' + i + '"]').checked) return;
+          var nm = splitName(x.navn), fm = firstMap()[x.navn.toLowerCase()];
+          create.push({ navn: x.navn, fornavn: nm.fornavn, etternavn: nm.etternavn, epost: x.epost, allergier: x.allergier, enhet: x.enhet, bare_fornavn: fm || (leaderOf(x.navn).length ? 'ja' : '') });
+        });
+        if (!create.length && !merges.length) { closeDrawer(); return; }
+        var n = 0;
+        (create.length ? save('Kontakter', create) : Promise.resolve()).then(function () {
+          return merges.reduce(function (pr, g) { return pr.then(function () { return propagatePerson({ navn: g.from }, contactOf(g.to) || { navn: g.to }).then(function (k) { n += k || 0; }); }); }, Promise.resolve());
+        }).then(function () {
+          closeDrawer(); toast(create.length + ' lagt i registeret' + (merges.length ? ', ' + merges.length + ' slått sammen (' + n + ' steder endret)' : ''));
+          load(true);
+        });
+      });
+    $('drawer').querySelectorAll('select[name^="gs_"]').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        if (sel.value !== '__other') return;
+        var v = window.prompt('Hvilket navn er det samme som? (skriv navnet slik det står i registeret)');
+        if (!v) { sel.value = ''; return; }
+        sel.dataset.other = v.trim(); sel.options[sel.selectedIndex].textContent = 'Samme som ' + v.trim();
+      });
+    });
+  }
+
   // ---- Page: Kunnskap (contacts, notes, guides) ---------------------------------------
   function pageKnowledge() {
-    var d = state.d, f = state.filters, tab = f.ktab || 'kontakter', q = (f.kq || '').toLowerCase();
+    var d = state.d, f = state.filters, tab = f.ktab && f.ktab !== 'kontakter' ? f.ktab : 'notater', q = (f.kq || '').toLowerCase();   // v22: people are on Personer
     var match = function (o, keys) { return !q || keys.some(function (k) { return String(o[k] || '').toLowerCase().indexOf(q) >= 0; }); };
-    var seg = '<span class="seg">' + [['kontakter', 'Kontakter'], ['notater', 'Notater'], ['veiledninger', 'Veiledninger']].map(function (t) { return '<button data-ktab="' + t[0] + '" aria-pressed="' + (tab === t[0]) + '">' + t[1] + '</button>'; }).join('') + '</span>';
+    var seg = '<span class="seg">' + [['notater', 'Notater'], ['veiledninger', 'Veiledninger']].map(function (t) { return '<button data-ktab="' + t[0] + '" aria-pressed="' + (tab === t[0]) + '">' + t[1] + '</button>'; }).join('') + '</span>';
     var tools = '<input type="text" class="search" id="fKq" placeholder="Søk i kunnskapsbanken" value="' + esc(f.kq || '') + '">' + seg +
       (tab === 'kontakter' ? '<button class="btn primary" data-act="newcontact">Ny kontakt</button>' : tab === 'notater' ? '<button class="btn primary" data-act="newnote">Nytt notat</button>' : '');
     var body;
@@ -3098,28 +3267,49 @@
       var names = { 'Søknad': 'Søknadsfasen', '1. år': '1. år', '2. år': '2. år', 'Avslutning': 'Avslutning', workshop: 'Workshops', mentormote: 'Mentormøter', intervju: 'Intervjuer', pitch: 'Pitch', kunnskap: 'Kunnskapsbank' };
       body = '<div class="panel"><div class="hist">' + Object.keys(g).map(function (k) { return '<div><a href="' + esc(safeUrl(g[k])) + '" target="_blank" rel="noopener noreferrer">' + esc(names[k] || k) + '</a></div>'; }).join('') + '</div><p class="empty">Hver veiledning har overskriftene «Slik gjør du det», «E-postmaler», «Erfaringer» og «Husk til neste gang».</p></div>';
     }
-    return head('Kunnskapsbank', 'Kontakter, notater og veiledninger', tools) + body;
+    return head('Kunnskapsbank', 'Notater og veiledninger · personene er under <a href="#personer">Personer</a>', tools) + body;
   }
 
+  // v22: the person form. Fornavn and Etternavn are separate (double first names), plus "Bruk bare fornavn" and
+  // "Dette er meg". Saving a change of name, e-mail or allergies copies it to every place the person is used.
   function editContact(id, preset) {
-    var c = id ? byId('Kontakter', id) : (preset || {});
+    var c = id ? byId('Kontakter', id) : Object.assign({}, preset || {});
+    if (!c) return;
+    var nm = c.fornavn || c.etternavn ? { fornavn: c.fornavn || '', etternavn: c.etternavn || '' } : splitName(c.navn);
     var projects = state.d.Prosjekter.filter(function (p) { return p.fase !== 'Arkivert'; });
     var linked = (c.prosjekter || '').split(',');
-    openDrawer('<h2>' + (id ? esc(c.navn) : 'Ny kontakt') + '</h2>' +
-      '<div class="grid2">' + field('Navn', 'navn', c.navn) + field('Rolle', 'rolle', c.rolle) + field('Enhet', 'enhet', c.enhet) + field('E-post', 'epost', c.epost) +
-        field('Telefon', 'telefon', c.telefon) + field('Sist kontakt', 'sist_kontakt', c.sist_kontakt, 'date') + '</div>' +
-      field('Temaer (skill med komma)', 'emner', c.emner) + field('Kjenner via', 'kjenner_via', c.kjenner_via) + field('Allergier eller dietter', 'allergier', c.allergier) +
+    var before = id ? { navn: personName(c), epost: c.epost || '', allergier: c.allergier || '' } : null;
+    openDrawer('<h2>' + (id ? esc(personName(c)) : 'Ny person') + '</h2>' +
+      '<div class="grid2">' + field('Fornavn', 'fornavn', nm.fornavn) + field('Etternavn', 'etternavn', nm.etternavn) + '</div>' +
+      '<label class="check"><input type="checkbox" name="bare_fornavn"' + (id ? (firstOnly(personName(c)) ? ' checked' : '') : (c.bare_fornavn === 'ja' ? ' checked' : '')) + '> Bruk bare fornavn i appen</label>' +
+      '<label class="check"><input type="checkbox" name="meg"' + (c.meg === 'ja' ? ' checked' : '') + '> Dette er meg (vises i stedet for «Meg»)</label>' +
+      '<div class="grid2">' + field('E-post', 'epost', c.epost) + field('Telefon', 'telefon', c.telefon) +
+        field('Organisasjon / enhet', 'enhet', c.enhet) + field('Rolle eller stilling', 'rolle', c.rolle) +
+        field('Allergier eller dietter', 'allergier', c.allergier) + field('Sist kontakt', 'sist_kontakt', c.sist_kontakt, 'date') + '</div>' +
+      field('Temaer (skill med komma)', 'emner', c.emner) + field('Kjenner via', 'kjenner_via', c.kjenner_via) +
       tagPicker(tagsOf(c)) +
-      (projects.length ? '<div class="cl"><span class="group-h">Prosjekter</span>' + projects.map(function (p) { return '<label><input type="checkbox" name="pr_' + esc(p.id) + '"' + (linked.indexOf(p.id) >= 0 ? ' checked' : '') + '> ' + esc(p.kortnavn) + '</label>'; }).join('') + '</div>' : '') +
+      (projects.length ? '<details class="unl"' + (c.prosjekter ? ' open' : '') + '><summary class="group-h">Andre prosjekter personen hører til</summary><div class="cl">' + projects.map(function (p) { return '<label><input type="checkbox" name="pr_' + esc(p.id) + '"' + (linked.indexOf(p.id) >= 0 ? ' checked' : '') + '> ' + esc(p.kortnavn) + '</label>'; }).join('') + '</div></details>' : '') +
       field('Notater (jobbrelatert)', 'notater', c.notater, 'textarea') +
+      '<p class="empty">Prosjektleder, panel, gjest og lignende kommer av seg selv fra der personen er brukt, med år.</p>' +
       actions((id ? '<button type="button" class="btn danger" data-delcontact="' + esc(id) + '">Slett</button> ' : '') + '<button type="button" class="btn" data-contacttoday="1">Snakket med i dag</button>'),
       function (form) {
-        var row = {}; ['navn', 'rolle', 'enhet', 'epost', 'telefon', 'sist_kontakt', 'emner', 'kjenner_via', 'notater', 'allergier'].forEach(function (k) { row[k] = val(form, k); });
-        row.prosjekter = projects.filter(function (p) { return form.querySelector('[name="pr_' + p.id + '"]').checked; }).map(function (p) { return p.id; }).join(',');
-        if (!row.navn) { toast('Skriv et navn'); return; }
+        var row = {}; ['fornavn', 'etternavn', 'rolle', 'enhet', 'epost', 'telefon', 'sist_kontakt', 'emner', 'kjenner_via', 'notater', 'allergier'].forEach(function (k) { row[k] = val(form, k); });
+        row.navn = [row.fornavn, row.etternavn].filter(Boolean).join(' ');
+        if (!row.navn) { toast('Skriv fornavn'); return; }
+        var other = state.d.Kontakter.find(function (x) { return x.id !== id && sameName(personName(x), row.navn); });
+        if (other) { toast(row.navn + ' finnes allerede i registeret'); return; }
+        row.bare_fornavn = val(form, 'bare_fornavn'); row.meg = val(form, 'meg') === 'ja' ? 'ja' : '';
+        row.prosjekter = projects.filter(function (p) { var x = form.querySelector('[name="pr_' + p.id + '"]'); return x && x.checked; }).map(function (p) { return p.id; }).join(',');
         row.tagger = pickedTags(form);
         if (id) row.id = id;
-        save('Kontakter', [row]).then(function () { closeDrawer(); toast('Lagret'); render(); });
+        // Only one person can be "meg".
+        var oldMe = row.meg === 'ja' ? state.d.Kontakter.filter(function (x) { return x.meg === 'ja' && x.id !== id; }).map(function (x) { return { id: x.id, meg: '' }; }) : [];
+        save('Kontakter', [row].concat(oldMe)).then(function () {
+          return before ? propagatePerson(before, row) : 0;
+        }).then(function (n) {
+          closeDrawer(); toast(n ? 'Lagret, og endret ' + n + (n === 1 ? ' sted' : ' steder') + ' der personen er brukt' : 'Lagret');
+          if (n) load(true); else render();
+        });
       });
   }
   function editNote(id) {
@@ -4460,7 +4650,19 @@
   function sameName(a, b) { return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase(); }
   // "Venter på" and "Spør" hold names as text; several names are separated by commas.
   function whoList(v) { return splitList(v); }
-  function contactOf(name) { return state.d.Kontakter.find(function (c) { return sameName(c.navn, name); }) || null; }
+  // v22: Kontakter is the person register. A row: navn (full name, kept as fornavn + etternavn), fornavn, etternavn,
+  // bare_fornavn ('ja' / 'nei' / '' = default), meg ('ja' = Linn herself), enhet (organisasjon / enhet), rolle,
+  // epost, telefon, allergier, emner, kjenner_via, notater, tagger, prosjekter, sist_kontakt.
+  // Other places keep the person's name; the register is matched by name, and a change of name, e-mail or
+  // allergies in the register is copied to every place the name is used (propagatePerson).
+  function me() { return state.d.Kontakter.find(function (c) { return c.meg === 'ja'; }) || null; }
+  function personName(c) { return c ? ([c.fornavn, c.etternavn].filter(Boolean).join(' ').trim() || String(c.navn || '').trim()) : ''; }
+  function contactOf(name) {
+    if (sameName(name, 'Meg')) return me();
+    return state.d.Kontakter.find(function (c) { return sameName(c.navn, name) || sameName(personName(c), name); }) || null;
+  }
+  // "Kari Anne Nordmann" → fornavn "Kari Anne", etternavn "Nordmann" (a guess; can be changed in the form).
+  function splitName(n) { var p = String(n || '').trim().split(/\s+/).filter(Boolean); return p.length < 2 ? { fornavn: p[0] || '', etternavn: '' } : { fornavn: p.slice(0, -1).join(' '), etternavn: p[p.length - 1] }; }
   function leaderOf(name) { return state.d.Prosjekter.filter(function (p) { return p.fase !== 'Arkivert' && sameName(p.leder, name); }); }
   function emailOf(name) {
     var c = contactOf(name); if (c && c.epost) return c.epost;
@@ -4470,10 +4672,18 @@
     state.d.Runder.forEach(function (r) { panelOf(r).forEach(function (x) { if (!e && x.epost && sameName(x.navn, name)) e = x.epost; }); });
     return e;
   }
-  // "Bruk bare fornavn": Innstillinger.fornavn = JSON {name in lower case: 'ja' / 'nei'}. Project leaders are 'ja' until changed.
+  // "Bruk bare fornavn": the register's bare_fornavn; else the v21 setting 'fornavn'; else ja for project leaders.
   function firstMap() { var m = jsonOf(state.d.Innstillinger.fornavn, {}); return m && typeof m === 'object' && !Array.isArray(m) ? m : {}; }
-  function firstOnly(name) { var v = firstMap()[String(name || '').trim().toLowerCase()]; return v ? v === 'ja' : leaderOf(name).length > 0; }
-  function shortPerson(name) { name = String(name || '').trim(); return firstOnly(name) ? name.split(/\s+/)[0] : name; }
+  function firstOnly(name) {
+    var c = contactOf(name); if (c && c.bare_fornavn) return c.bare_fornavn === 'ja';
+    var v = firstMap()[String(name || '').trim().toLowerCase()]; return v ? v === 'ja' : leaderOf(name).length > 0;
+  }
+  function shortPerson(name) {
+    name = String(name || '').trim();
+    var c = contactOf(name), full = c ? personName(c) : name;
+    if (!firstOnly(name)) return full;
+    return c && c.fornavn ? c.fornavn : full.split(/\s+/)[0];
+  }
   // A name that opens the person popup (tab: 'gen', 'spor' or 'venter').
   function personLink(n, tab) { return '<button type="button" class="plink person" data-person="' + esc(n) + '"' + (tab ? ' data-pptab="' + tab + '"' : '') + '>' + esc(shortPerson(n)) + '</button>'; }
   function peopleLinks(v, tab) { return whoList(v).map(function (n) { return personLink(n, tab); }).join(', '); }
@@ -4489,7 +4699,7 @@
   function pkChip(n) { return '<span class="pk-chip' + (isKnown(n) ? '' : ' new') + '"' + (isKnown(n) ? '' : ' title="Ikke i Kontakter ennå"') + '>' + esc(n) + '<button type="button" data-pkx="' + esc(n) + '" aria-label="Fjern ' + esc(n) + '">✕</button></span>'; }
   function initPeopleFields() {
     var dr = $('drawer'); if (!dr || !dr.querySelector('.pk')) return;
-    if (!$('pkList')) dr.insertAdjacentHTML('beforeend', '<datalist id="pkList">' + peopleNames().filter(function (n) { return n !== 'Meg'; }).map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join('') + '</datalist>');
+    if (!$('pkList')) dr.insertAdjacentHTML('beforeend', peopleDatalist());
     dr.querySelectorAll('.pk').forEach(function (box) {
       if (box.dataset.pkok) return; box.dataset.pkok = '1';
       var hid = box.querySelector('input[type=hidden]'), inp = box.querySelector('.pk-in'), chips = box.querySelector('.pk-chips');
@@ -4523,82 +4733,202 @@
       '<div class="meta"><span>' + esc(where || uniq(p.list.map(function (t) { return runName(runOf(t)) || 'Generelt'; })).join(' og ')) + '</span></div></div><span></span></div>';
   }
   function uniq(list) { return list.filter(function (x, i) { return x && list.indexOf(x) === i; }); }
-  // Where a person is connected: project leader, person on a project, panel candidate, speaker, guest.
+  function peopleDatalist() { return '<datalist id="pkList">' + peopleNames().filter(function (n) { return n !== 'Meg'; }).map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join('') + '</datalist>'; }
+
+  // v22: where a person appears, each with a kind and a year: these show as automatic tags ("Panel 2026",
+  // "Prosjektleder 2025"), so the register needs no tag per year. {k: kind, y: year, n: where, go: link}
+  var PERSON_KINDS = ['Prosjektleder', 'Prosjektmedarbeider', 'Mentor', 'Søker', 'Panel', 'Foredragsholder', 'Gjest', 'Agenda'];
   function personWhere(name) {
-    var d = state.d, out = [];
-    leaderOf(name).forEach(function (p) { out.push({ k: 'Prosjektleder', n: p.kortnavn, go: 'prosjekt/' + p.id }); });
-    d.Prosjekter.filter(function (p) { return p.fase !== 'Arkivert'; }).forEach(function (p) { projContacts(p).forEach(function (c) { if (sameName(c.navn, name)) out.push({ k: c.rolle || 'Person i prosjektet', n: p.kortnavn, go: 'prosjekt/' + p.id }); }); });
+    var d = state.d, out = [], c = contactOf(name);
+    var is = function (n) { return sameName(n, name) || (c && (sameName(n, c.navn) || sameName(n, personName(c)) || (c.meg === 'ja' && sameName(n, 'Meg')))); };
+    d.Prosjekter.filter(function (p) { return p.fase !== 'Arkivert'; }).forEach(function (p) {
+      if (is(p.leder)) out.push({ k: 'Prosjektleder', y: p.kull || '', n: p.kortnavn, go: 'prosjekt/' + p.id });
+      if (c && p.mentor_id === c.id) out.push({ k: 'Mentor', y: p.kull || '', n: p.kortnavn, go: 'prosjekt/' + p.id });
+      projContacts(p).forEach(function (x) { if (is(x.navn)) out.push({ k: 'Prosjektmedarbeider', r: x.rolle || '', y: p.kull || '', n: p.kortnavn, go: 'prosjekt/' + p.id }); });
+    });
+    d.Søkere.forEach(function (a) { if (is(a.leder)) out.push({ k: 'Søker', y: a.soknadsaar || '', n: a.kortnavn, go: 'sokere' }); });
     d.Runder.filter(function (r) { return r.arkivert !== 'ja'; }).forEach(function (r) {
-      panelOf(r).forEach(function (x) { if (sameName(x.navn, name)) out.push({ k: (x.rolle === 'taler' ? 'Foredragsholder' : 'Panelkandidat') + (x.svar ? ' · ' + x.svar.toLowerCase() : ''), n: runName(r), go: 'runde/' + r.id }); });
-      guestsOf(r).forEach(function (g) { if (sameName(g.navn, name)) out.push({ k: 'Gjest', n: runName(r), go: 'runde/' + r.id }); });
+      panelOf(r).forEach(function (x) { if (is(x.navn)) out.push({ k: x.rolle === 'taler' ? 'Foredragsholder' : 'Panel', r: x.svar || '', y: r.aar || '', n: runName(r), go: 'runde/' + r.id }); });
+      guestsOf(r).forEach(function (g) { if (is(g.navn)) out.push({ k: 'Gjest', y: r.aar || '', n: runName(r), go: 'runde/' + r.id }); });
+    });
+    (d.Agendaer || []).forEach(function (ag) {
+      if (!agRows(ag).some(function (x) { return is(x.ansvarlig); })) return;
+      var s = byId('Serier', ag.serie_id); out.push({ k: 'Agenda', y: '', n: (s ? s.navn + ': ' : '') + (ag.navn || 'Agenda'), go: s ? 'serie/' + s.id : 'hendelser' });
     });
     return out;
   }
-  // v21: the person popup has three tabs. Generelt: contact info, role and tags, where the person is connected,
-  // "Bruk bare fornavn". Spør: open avklaringer for them and open tasks that name them. Venter på: everything
-  // you wait for from them, across all activities and projects (tasks and unanswered panel / speaker e-mails).
-  function personPop(name, tab) {
-    var d = state.d;
-    var word = new RegExp('(^|[^\\wæøåÆØÅ])' + String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^\\wæøåÆØÅ])', 'i');
+  function whereTags(where) { return uniq(where.map(function (w) { return w.k + (w.y ? ' ' + w.y : ''); })); }
+  function autoChips(where, max) {
+    var t = whereTags(where), more = max && t.length > max ? t.length - max : 0;
+    return (max ? t.slice(0, max) : t).map(function (x) { return '<span class="chip c-info">' + esc(x) + '</span>'; }).join(' ') + (more ? ' <span class="dm-m">+' + more + '</span>' : '');
+  }
+  // Open things for a person: asks (Spør) and waits (Venter på).
+  function personItems(name) {
+    var d = state.d, c = contactOf(name), names = uniq([name, c && c.navn, c && personName(c), c && c.meg === 'ja' ? 'Meg' : '']);
+    var is = function (n) { return names.some(function (x) { return sameName(x, n); }); };
+    var word = new RegExp('(^|[^\\wæøåÆØÅ])(' + names.filter(function (x) { return x !== 'Meg'; }).map(function (x) { return String(x).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }).join('|') + ')($|[^\\wæøåÆØÅ])', 'i');
     var asks = [], waits = [];
     d.Oppgaver.forEach(function (t) {
       if (!openTask(t)) return;
-      if (whoList(t.venter_paa).some(function (n) { return sameName(n, name); })) waits.push({ t: t, kind: 'w' });
-      else if (avkAsks(t) && sameName(avkWho(t), name)) asks.push({ t: t, kind: 'q' });
+      if (whoList(t.venter_paa).some(is)) waits.push({ t: t, kind: 'w' });
+      else if (avkAsks(t) && is(avkWho(t))) asks.push({ t: t, kind: 'q' });
       else if (!isAvk(t) && word.test(t.tittel || '')) asks.push({ t: t, kind: 't' });
     });
     d.Runder.filter(function (r) { return r.arkivert !== 'ja'; }).forEach(function (r) {
-      panelOf(r).forEach(function (x) { if (sameName(x.navn, name) && x.svar === 'Venter') waits.push({ r: r, x: x, kind: 'p' }); });
+      panelOf(r).forEach(function (x) { if (is(x.navn) && x.svar === 'Venter') waits.push({ r: r, x: x, kind: 'p' }); });
     });
-    var texts = {};
+    return { asks: asks, waits: waits };
+  }
+  // The three parts of a person (popup and person page): Generelt, Spør, Venter på.
+  function personParts(name, page) {
+    var c = contactOf(name), where = personWhere(name), mail = emailOf(name), it = personItems(name), texts = {};
+    var shown = c ? personName(c) : name;
     var list = function (items, key) {
       var groups = {}, order = [], lines = [];
-      items.forEach(function (it) { var g = it.r ? runName(it.r) : runName(runOf(it.t)) || (it.t.prosjekt_id ? shortName(it.t.prosjekt_id) : 'Generelt'); if (!groups[g]) { groups[g] = []; order.push(g); } groups[g].push(it); });
+      items.forEach(function (x) { var g = x.r ? runName(x.r) : runName(runOf(x.t)) || (x.t.prosjekt_id ? shortName(x.t.prosjekt_id) : 'Generelt'); if (!groups[g]) { groups[g] = []; order.push(g); } groups[g].push(x); });
       var html = order.map(function (g) {
         lines.push(g + ':');
-        return '<div class="pp-g"><span class="group-h">' + esc(g) + '</span>' + groups[g].map(function (it) {
-          if (it.kind === 'p') {
-            lines.push('- Svar om ' + (it.x.rolle === 'taler' ? 'å holde innlegg' : 'panelet'));
-            return '<button type="button" class="pp-item" data-ppgo="runde/' + esc(it.r.id) + '"><span class="box"></span><span><b>Svar om ' + (it.x.rolle === 'taler' ? 'å holde innlegg' : 'panelet') + '</b><small class="was">E-post sendt ' + esc(fmtDate(it.x.sendt)) + (it.x.purres ? ' · purres ' + esc(fmtDateW(it.x.purres)) : '') + '</small></span></button>';
+        return '<div class="pp-g"><span class="group-h">' + esc(g) + '</span>' + groups[g].map(function (x) {
+          if (x.kind === 'p') {
+            var what = x.x.rolle === 'taler' ? 'å holde innlegg' : 'panelet';
+            lines.push('- Svar om ' + what);
+            return '<button type="button" class="pp-item" data-ppgo="runde/' + esc(x.r.id) + '"><span class="box"></span><span><b>Svar om ' + what + '</b><small class="was">E-post sendt ' + esc(fmtDate(x.x.sendt)) + (x.x.purres ? ' · purres ' + esc(fmtDateW(x.x.purres)) : '') + '</small></span></button>';
           }
-          var t = it.t, ear = it.kind === 'q' ? avkEarlier(t)[0] : null;
+          var t = x.t, ear = x.kind === 'q' ? avkEarlier(t)[0] : null;
           lines.push('- ' + t.tittel);
-          return '<button type="button" class="pp-item" data-ppopen="' + esc(t.id) + '"><span class="box' + (it.kind === 'q' ? ' q">?' : '">') + '</span><span><b>' + esc(t.tittel) + '</b>' +
-            (ear ? '<small class="was">I fjor: ' + esc(ear.svar) + '</small>' : it.kind === 'w' ? '<small class="was">' + (t.status === 'Venter på' ? 'Venter på svar' : esc(t.status)) + (t.oppfolging ? ' · minnes på ' + esc(fmtDateW(t.oppfolging)) : '') + '</small>' : '') + '</span></button>';
+          return '<button type="button" class="pp-item" data-ppopen="' + esc(t.id) + '"><span class="box' + (x.kind === 'q' ? ' q">?' : '">') + '</span><span><b>' + esc(t.tittel) + '</b>' +
+            (ear ? '<small class="was">I fjor: ' + esc(ear.svar) + '</small>' : x.kind === 'w' ? '<small class="was">' + (t.status === 'Venter på' ? 'Venter på svar' : esc(t.status)) + (t.oppfolging ? ' · minnes på ' + esc(fmtDateW(t.oppfolging)) : '') + '</small>' : '') + '</span></button>';
         }).join('') + '</div>';
       }).join('');
       texts[key] = 'Til ' + shortPerson(name) + ':\n' + lines.join('\n');
       return html;
     };
-    var c = contactOf(name), where = personWhere(name), mail = emailOf(name);
-    var roles = uniq([c && c.rolle].concat(tagsOf(c)).concat(where.map(function (w) { return w.k.split(' · ')[0]; })));
+    var info = function (l, v) { return v ? '<div><span class="dm-m">' + l + '</span><span>' + v + '</span></div>' : ''; };
+    var first = c ? (c.fornavn || splitName(shown).fornavn) : splitName(shown).fornavn;
     var gen = '<div class="pp-info">' +
-      (mail ? '<div><span class="dm-m">E-post</span><a href="' + esc(mailto(mail, '', '', '')) + '">' + esc(mail) + '</a></div>' : '') +
-      (c && c.telefon ? '<div><span class="dm-m">Telefon</span><a href="tel:' + esc(String(c.telefon).replace(/\s/g, '')) + '">' + esc(c.telefon) + '</a></div>' : '') +
-      (c && c.enhet ? '<div><span class="dm-m">Enhet</span>' + esc(c.enhet) + '</div>' : '') +
-      (roles.length ? '<div><span class="dm-m">Rolle</span><span>' + roles.map(function (x) { return '<span class="chip c-na">' + esc(x) + '</span>'; }).join(' ') + '</span></div>' : '') + '</div>' +
-      (where.length ? '<div class="pp-g"><span class="group-h">Er med i</span>' + where.map(function (w) { return '<button type="button" class="pp-item" data-ppgo="' + esc(w.go) + '"><span></span><span><b>' + esc(w.n) + '</b><small class="was">' + esc(w.k) + '</small></span></button>'; }).join('') + '</div>' : '') +
-      (/\s/.test(String(name).trim()) ? '<label class="check"><input type="checkbox" data-ppfirst="' + esc(name) + '"' + (firstOnly(name) ? ' checked' : '') + '> Bruk bare fornavn (' + esc(String(name).trim().split(/\s+/)[0]) + ')</label>' : '') +
-      (!c && !leaderOf(name).length ? '<p class="empty">' + esc(name) + ' er ikke i Kontakter ennå.</p>' : '') +
-      '<div class="row wrap">' + (c ? '<button type="button" class="btn small" data-ppedit="' + esc(c.id) + '">Rediger kontakt</button>' : '<button type="button" class="btn small" data-ppadd="' + esc(name) + '">Legg til i Kontakter</button>') + '</div>';
-    var tabs = [['gen', 'Generelt', gen], ['spor', 'Spør' + (asks.length ? ' (' + asks.length + ')' : ''), asks.length ? list(asks, 'spor') + '<div class="row wrap"><button type="button" class="btn small" data-ppcopy="spor">Kopier listen</button></div>' : '<div class="empty">Ingenting å spørre ' + esc(shortPerson(name)) + ' om nå.</div>'],
-      ['venter', 'Venter på' + (waits.length ? ' (' + waits.length + ')' : ''), waits.length ? list(waits, 'venter') + '<div class="row wrap"><button type="button" class="btn small" data-ppcopy="venter">Kopier listen</button></div>' : '<div class="empty">Du venter ikke på noe fra ' + esc(shortPerson(name)) + ' nå.</div>']];
+      info('E-post', mail ? '<a href="' + esc(mailto(mail, '', '', '')) + '">' + esc(mail) + '</a>' : '') +
+      info('Telefon', c && c.telefon ? '<a href="tel:' + esc(String(c.telefon).replace(/\s/g, '')) + '">' + esc(c.telefon) + '</a>' : '') +
+      info('Organisasjon', c && c.enhet ? esc(c.enhet) : '') + info('Rolle', c && c.rolle ? esc(c.rolle) : '') +
+      info('Er med som', where.length ? autoChips(where) : '') +
+      info('Tagger', c && tagsOf(c).length ? tagChips(c) : '') +
+      info('Allergier', c && c.allergier ? esc(c.allergier) : '') + info('Temaer', c && c.emner ? esc(c.emner) : '') +
+      info('Kjenner via', c && c.kjenner_via ? esc(c.kjenner_via) : '') + info('Sist kontakt', c && c.sist_kontakt ? esc(fmtDate(c.sist_kontakt)) : '') +
+      (page && c && c.notater ? info('Notater', esc(c.notater)) : '') + '</div>' +
+      (where.length ? '<div class="pp-g"><span class="group-h">Er med i</span>' + where.map(function (w) { return '<button type="button" class="pp-item" data-ppgo="' + esc(w.go) + '"><span></span><span><b>' + esc(w.n) + '</b><small class="was">' + esc(w.k + (w.r && w.r !== w.k ? ' · ' + w.r : '') + (w.y ? ' · ' + w.y : '')) + '</small></span></button>'; }).join('') + '</div>' : '') +
+      (first && first !== shown ? '<label class="check"><input type="checkbox" data-ppfirst="' + esc(name) + '"' + (firstOnly(name) ? ' checked' : '') + '> Bruk bare fornavn (' + esc(first) + ')</label>' : '') +
+      (!c ? '<p class="empty">' + esc(name) + ' er ikke i registeret ennå.</p>' : '') +
+      (page && c ? '' : '<div class="row wrap">') + (page && c ? '' : c ? '<button type="button" class="btn small" data-ppedit="' + esc(c.id) + '">Rediger</button>' + (page ? '' : '<button type="button" class="btn small ghost" data-ppgo="person/' + esc(c.id) + '">Åpne personsiden</button>') : '<button type="button" class="btn small" data-ppadd="' + esc(name) + '">Legg til i registeret</button>') + (page && c ? '' : '</div>');
+    var parts = [['gen', 'Generelt', gen],
+      ['spor', 'Spør' + (it.asks.length ? ' (' + it.asks.length + ')' : ''), it.asks.length ? list(it.asks, 'spor') + '<div class="row wrap"><button type="button" class="btn small" data-ppcopy="spor">Kopier listen</button></div>' : '<div class="empty">Ingenting å spørre ' + esc(shortPerson(name)) + ' om nå.</div>'],
+      ['venter', 'Venter på' + (it.waits.length ? ' (' + it.waits.length + ')' : ''), it.waits.length ? list(it.waits, 'venter') + '<div class="row wrap"><button type="button" class="btn small" data-ppcopy="venter">Kopier listen</button></div>' : '<div class="empty">Du venter ikke på noe fra ' + esc(shortPerson(name)) + ' nå.</div>']];
+    return { name: shown, c: c, parts: parts, texts: texts };
+  }
+  // v21: the person popup (tabs Generelt, Spør, Venter på). v22: the same parts as the person page.
+  function personPop(name, tab) {
+    var x = personParts(name, false);
     tab = tab || 'gen';
     popClose();
     var wrap = document.createElement('div');
     wrap.id = 'pp';
-    wrap.innerHTML = '<div class="pp-scrim" data-ppclose="1"></div><div class="pp" role="dialog" aria-label="' + esc(name) + '"><div class="pp-h"><h2>' + esc(name) + '</h2><button type="button" class="lk-x" data-ppclose="1" aria-label="Lukk">✕</button></div>' +
-      '<span class="seg pp-tabs">' + tabs.map(function (x) { return '<button type="button" data-pptabbtn="' + x[0] + '" aria-pressed="' + (x[0] === tab) + '">' + esc(x[1]) + '</button>'; }).join('') + '</span>' +
-      tabs.map(function (x) { return '<div class="pp-pane" data-pppane="' + x[0] + '"' + (x[0] === tab ? '' : ' hidden') + '>' + x[2] + '</div>'; }).join('') + '</div>';
+    wrap.innerHTML = '<div class="pp-scrim" data-ppclose="1"></div><div class="pp" role="dialog" aria-label="' + esc(x.name) + '"><div class="pp-h"><h2>' + esc(x.name) + '</h2><button type="button" class="lk-x" data-ppclose="1" aria-label="Lukk">✕</button></div>' +
+      '<span class="seg pp-tabs">' + x.parts.map(function (p) { return '<button type="button" data-pptabbtn="' + p[0] + '" aria-pressed="' + (p[0] === tab) + '">' + esc(p[1]) + '</button>'; }).join('') + '</span>' +
+      x.parts.map(function (p) { return '<div class="pp-pane" data-pppane="' + p[0] + '"' + (p[0] === tab ? '' : ' hidden') + '>' + p[2] + '</div>'; }).join('') + '</div>';
     document.body.appendChild(wrap);
-    state.ppTexts = texts; state.ppName = name;
-    wrap.addEventListener('change', function (e) {
-      var cb = e.target.closest('[data-ppfirst]'); if (!cb) return;
-      var m = firstMap(); m[String(cb.dataset.ppfirst).trim().toLowerCase()] = cb.checked ? 'ja' : 'nei';
-      state.d.Innstillinger.fornavn = JSON.stringify(m); state.keepScroll = true; render();
-      api('api_saveSettings', { fornavn: JSON.stringify(m) }).then(function (st) { if (st) state.d.Innstillinger = st; toast(cb.checked ? 'Bruker bare fornavnet' : 'Bruker hele navnet'); }).catch(fail);
-    });
+    state.ppTexts = x.texts;
   }
+  // "Bruk bare fornavn" (popup and person page): saved on the person in the register (else in the setting 'fornavn').
+  document.addEventListener('change', function (e) {
+    var cb = e.target.closest && e.target.closest('[data-ppfirst]'); if (!cb) return;
+    var name = cb.dataset.ppfirst, c = contactOf(name), v = cb.checked ? 'ja' : 'nei';
+    var done = function () { toast(cb.checked ? 'Bruker bare fornavnet' : 'Bruker hele navnet'); };
+    state.keepScroll = true;
+    if (c) { c.bare_fornavn = v; render(); save('Kontakter', [{ id: c.id, bare_fornavn: v }]).then(done); return; }
+    var m = firstMap(); m[String(name).trim().toLowerCase()] = v;
+    state.d.Innstillinger.fornavn = JSON.stringify(m); render();
+    api('api_saveSettings', { fornavn: JSON.stringify(m) }).then(function (st) { if (st) state.d.Innstillinger = st; done(); }).catch(fail);
+  });
+
+  // ---- v22: the register keeps everything in step ----
+  // Adds people who aren't in the register yet (and fills in an empty e-mail / allergy on those who are).
+  // list = [{navn, epost, allergier, enhet}]. Never changes a name or overwrites something already written.
+  function ensurePeople(list) {
+    var rows = [];
+    (list || []).forEach(function (x) {
+      var n = String(x && x.navn || '').trim(); if (!n || sameName(n, 'Meg')) return;
+      var c = contactOf(n);
+      if (!c) {
+        if (rows.some(function (y) { return !y.id && sameName(y.navn, n); })) return;
+        var nm = splitName(n), fm = firstMap()[n.toLowerCase()];
+        rows.push({ navn: n, fornavn: nm.fornavn, etternavn: nm.etternavn, epost: x.epost || '', allergier: x.allergier || '', enhet: x.enhet || '', bare_fornavn: fm || '' });
+        return;
+      }
+      var r = { id: c.id }, ch = false;
+      ['epost', 'allergier', 'enhet'].forEach(function (k) { if (!c[k] && x[k]) { r[k] = x[k]; ch = true; } });
+      if (ch && !rows.some(function (y) { return y.id === c.id; })) rows.push(r);
+    });
+    return rows.length ? save('Kontakter', rows) : Promise.resolve();
+  }
+  function namesOf() { var out = []; [].forEach.call(arguments, function (v) { whoList(v).forEach(function (n) { out.push({ navn: n }); }); }); return out; }
+  // After a person is changed in the register: the new name, e-mail and allergies are copied to every place
+  // that uses the old name (project leader, project people, applicants, panel, speakers, guests, tasks, agendas).
+  // before = the person as it was ({navn, epost, allergier}); c = the person now.
+  function propagatePerson(before, c) {
+    var d = state.d, old = String(before && before.navn || '').trim(), nn = personName(c) || c.navn;
+    if (!old) return Promise.resolve();
+    var ren = !sameName(old, nn), mE = c.epost !== undefined && (before.epost || '') !== (c.epost || '') && !!c.epost, mA = c.allergier !== undefined && (before.allergier || '') !== (c.allergier || '');
+    if (!ren && !mE && !mA) return Promise.resolve();
+    var hit = function (n) { return sameName(n, old); };
+    var swap = function (v) { var l = whoList(v), ch = false; l = l.map(function (n) { if (hit(n)) { ch = true; return nn; } return n; }); return ch ? l.join(', ') : null; };
+    var rows = { Prosjekter: [], 'Søkere': [], Runder: [], Oppgaver: [], Agendaer: [] };
+    d.Prosjekter.forEach(function (p) {
+      var r = { id: p.id }, ch = false;
+      if (hit(p.leder)) {
+        if (ren) { r.leder = nn; ch = true; }
+        if (mE && (!p.epost || p.epost === before.epost)) { r.epost = c.epost; ch = true; }
+        if (mA) { r.leder_allergier = c.allergier || ''; ch = true; }
+      }
+      var l = projContacts(p), lc = false;
+      l.forEach(function (x) { if (hit(x.navn)) { if (ren) x.navn = nn; if (mE) x.epost = c.epost; if (mA) x.allergier = c.allergier || ''; lc = true; } });
+      if (lc) { r.kontakter = JSON.stringify(l); ch = true; }
+      if (ch) rows.Prosjekter.push(r);
+    });
+    d.Søkere.forEach(function (a) {
+      if (!hit(a.leder)) return;
+      var r = { id: a.id }, ch = false;
+      if (ren) { r.leder = nn; ch = true; }
+      if (mE && (!a.epost || a.epost === before.epost)) { r.epost = c.epost; ch = true; }
+      if (ch) rows['Søkere'].push(r);
+    });
+    d.Runder.forEach(function (rr) {
+      var r = { id: rr.id }, ch = false, pl = panelOf(rr), gl = guestsOf(rr), pc = false, gc = false;
+      pl.forEach(function (x) { if (hit(x.navn)) { if (ren) x.navn = nn; if (mE) x.epost = c.epost; pc = true; } });
+      gl.forEach(function (x) { if (hit(x.navn)) { if (ren) x.navn = nn; if (mA) x.allergier = c.allergier || ''; gc = true; } });
+      if (pc) { r.panel = JSON.stringify(pl); ch = true; }
+      if (gc) { r.gjester = JSON.stringify(gl); ch = true; }
+      if (ch) rows.Runder.push(r);
+    });
+    if (ren) {
+      d.Oppgaver.forEach(function (t) {
+        var r = { id: t.id }, ch = false;
+        ['venter_paa', 'spoer', 'personer'].forEach(function (k) { var v = swap(t[k]); if (v !== null) { r[k] = v; ch = true; } });
+        if (t.gruppe === 'personer') { var tk = taskTicks(t); Object.keys(tk).forEach(function (k) { if (hit(k)) { tk[nn] = tk[k]; delete tk[k]; r.avkrysset = JSON.stringify(tk); ch = true; } }); }
+        if (ch) rows.Oppgaver.push(r);
+      });
+      (d.Agendaer || []).forEach(function (ag) {
+        var l = agRows(ag), ch = false;
+        l.forEach(function (x) { if (hit(x.ansvarlig)) { x.ansvarlig = nn; ch = true; } });
+        if (ch) rows.Agendaer.push({ id: ag.id, rader: JSON.stringify(l) });
+      });
+      var m = firstMap(); if (m[old.toLowerCase()]) { m[nn.toLowerCase()] = m[old.toLowerCase()]; delete m[old.toLowerCase()]; api('api_saveSettings', { fornavn: JSON.stringify(m) }).then(function (st) { if (st) state.d.Innstillinger = st; }).catch(fail); }
+    }
+    var n = 0;
+    return Object.keys(rows).reduce(function (pr, tab) {
+      if (!rows[tab].length) return pr;
+      n += rows[tab].length;
+      return pr.then(function () { return save(tab, rows[tab]); });
+    }, Promise.resolve()).then(function () { return n; });
+  }
+
   function popClose() { var p = $('pp'); if (p) p.remove(); }
   document.addEventListener('click', function (e) {
     var el = e.target.closest('[data-ppclose], [data-ppopen], [data-ppcopy], [data-person], [data-pptabbtn], [data-ppgo], [data-ppedit], [data-ppadd]');
@@ -5099,7 +5429,7 @@
         field('Svar', 'svar', '', 'select', options(['Venter', 'Ja', 'Nei'], x.svar || '', '–')) + field('E-post sendt', 'sendt', x.sendt, 'date') +
         field('Sist kontakt', 'sist', x.sist, 'date') + field('Purres', 'purres', x.purres, 'date') + '</div>' +
       field('Notat', 'notat', x.notat, 'textarea') +
-      '<datalist id="pkList">' + peopleNames().filter(function (n) { return n !== 'Meg'; }).map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join('') + '</datalist>' +
+      peopleDatalist() +
       actions(i >= 0 ? '<button type="button" class="btn danger" data-pandel="' + esc(r.id) + '|' + i + '">Slett</button>' : ''),
       function (form) {
         var row = { id: x.id || newKey(), rolle: x.rolle || '' };
@@ -5107,7 +5437,7 @@
         if (!row.navn) { toast('Skriv et navn'); return; }
         if (i >= 0) list[i] = Object.assign({}, x, row); else list.push(row);
         var tag = tal ? 'foredragsholder' : 'panel', c = contactOf(row.navn), crow = null;
-        if (!c) crow = { navn: row.navn, epost: row.epost, emner: row.kompetanse, tagger: tag };
+        if (!c) { var snm = splitName(row.navn); crow = { navn: row.navn, fornavn: snm.fornavn, etternavn: snm.etternavn, epost: row.epost, emner: row.kompetanse, tagger: tag }; }
         else if (tagsOf(c).indexOf(tag) < 0 || (!c.epost && row.epost)) { crow = { id: c.id, tagger: tagsOf(c).concat(tagsOf(c).indexOf(tag) < 0 ? [tag] : []).join(', ') }; if (!c.epost && row.epost) crow.epost = row.epost; }
         if (crow && tagList().indexOf(tag) < 0) api('api_saveSettings', { tagger: tagList().concat([tag]).join(', ') }).then(function (st) { if (st) state.d.Innstillinger = st; }).catch(fail);
         (crow ? save('Kontakter', [crow]) : Promise.resolve()).then(function () { return savePanel(r, list, crow && !c ? 'Lagret, og ' + row.navn + ' er lagt i Kontakter' : 'Lagret'); });
@@ -5536,7 +5866,8 @@
     if (ds.month !== undefined) { shiftMonth(Number(ds.month)); return; }
     if (ds.export) { makeDoc(ds.export, ds.id); return; }
     if (ds.ktab) { state.filters.ktab = ds.ktab; render(); return; }
-    if (ds.contact) { editContact(ds.contact); return; }
+    if (ds.contactEdit) { editContact(ds.contactEdit); return; }
+    if (ds.contact) { location.hash = '#person/' + ds.contact; return; }   // v22: the person page
     if (ds.note) { editNote(ds.note); return; }
     if (ds.hit) { openHit(ds.hit); return; }
     if (ds.contacttoday) { var inp = document.querySelector('#drawerForm [name="sist_kontakt"]'); if (inp) inp.value = today(); return; }
@@ -5643,6 +5974,8 @@
       case 'newtask': editTask(null, ds.project ? { prosjekt_id: ds.project, liste: '' } : ds.run ? { runde_id: ds.run, aar: (byId('Runder', ds.run) || {}).aar || today().slice(0, 4), liste: '', fase: 'Felles' } : null); break;
       case 'newseries': editSeries(null); break;
       case 'newcontact': editContact(null); break;
+      case 'edittags': editTags(); break;   // v22
+      case 'gather': gatherPeople(); break;
       case 'newnote': editNote(null); break;
       case 'csv': downloadCsv($('csvTab').value); break;
       case 'editseries': editSeries(ds.id); break;
@@ -5721,7 +6054,7 @@
     if (ds.rcplist) { var ro = rcp(), rl = splitList(ro[ds.rcplist]).filter(function (x) { return x !== e.target.value; }); if (e.target.checked) rl.push(e.target.value); ro[ds.rcplist] = rl.join(','); state.keepScroll = true; render(); return; }
     if (ds.pccc) { var cp = ds.pccc.split('|'), cl = projContacts(byId('Prosjekter', cp[0])); if (cl[Number(cp[1])]) { cl[Number(cp[1])].kopi = e.target.checked ? 'ja' : 'nei'; saveContacts(cp[0], cl); } return; }
     if (ds.promoteSel) { if (e.target.value) promote(ds.promoteSel, e.target.value); return; }
-    map.fTwhere = 'twhere';
+    map.fTwhere = 'twhere'; map.fPetag = 'petag'; map.fPekind = 'pekind'; map.fPeyear = 'peyear'; map.fPeopen = 'peopen';   // v22
     map.fMmonth = 'mmonth'; map.fMyear = 'myear'; map.fArchSeries = 'archSeries';
     map.fStYear = 'stYear'; map.fBYear = 'bYear'; map.fTlArch = 'tlArch'; map.fLocked = 'showLocked';
     if (e.target.id === 'fWf') { if (e.target.value === '__new') { e.target.value = state.filters.wfKey || ''; wfNew(); } else { state.filters.wfKey = e.target.value; state.filters.wfSel = []; render(); } return; }
@@ -5730,7 +6063,7 @@
     render();
   });
   document.addEventListener('input', function (e) {
-    var map = { fQ: 'q', fPq: 'pq', fKq: 'kq', fGq: 'gq', fTq: 'tq' }; var k = map[e.target.id]; if (!k) return;
+    var map = { fQ: 'q', fPq: 'pq', fKq: 'kq', fGq: 'gq', fTq: 'tq', fPeq: 'peq' }; var k = map[e.target.id]; if (!k) return;
     state.filters[k] = e.target.value;
     clearTimeout(state.typing);
     var id = e.target.id;
