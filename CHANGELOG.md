@@ -3,6 +3,23 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v23 – 14 November 2026 (page only)
+
+One Prosjekter page instead of Prosjekter + Rutenett + Status, and a new start on Statistikk. Only page files change; `Kode.gs` stays as in v22.
+
+### Changed
+- **Prosjekter:** the project cards come first, in one row per phase ("1. år", "2. år" …), without the phase tag on each card. The search, filters and the Kort / Rader switch are gone (Kort only). "Arkiverte (n)" at the top opens the archived projects, grouped by kull (`#prosjekter/arkiv`).
+- **Sjekkpunkter og milepæler** (on Prosjekter, replaces "Alle prosjekter" / Rutenett): per phase, the Årsplan checkpoints and the project goals (Milepæler) as columns, with "x/y ferdig" under each heading. Click a goal to tick it or undo it.
+- **Aktiviteter og frister** (on Prosjekter, new): for one year, each activity's attendance ("Med"), its deadlines for the projects and the group tasks as columns, with "x/y" under each heading. Every cell is a click (tick or undo); an empty grey cell means it doesn't apply to the project.
+- **Statistikk:** "Søkere og prosjekter per fakultet" under the key numbers (Søkere, % søkere, Prosjekter, % prosjekter; sorted by projects, then applicants), then "Søkere per år" and "Søkere per fakultet per år" (faculties grouped, one colour per year) side by side. "Søkere per fakultet" for one year and "Hvor langt søkerne kom" are gone.
+- **Every chart:** hold the mouse over a bar to see its number. The "Trykk på en søyle …" text is gone; tapping on the phone still shows the number under the chart.
+
+### Removed
+- **Status** (Mer → Status). Its parts moved: the project overview to Prosjekter, Søknadsrunden to the bottom of **Søkere**, Data og filer (open the sheet, Excel, CSV) to the bottom of **Innstillinger**. The old År for år table is replaced by the faculty table and charts on Statistikk. Old `#status` links open Prosjekter. No data is removed.
+
+### Fixed
+- **Tatt opp per år** (Statistikk: the key number, "Tatt opp per år" and "Opptaksrate"): kull is the year a project starts, the year after it applied, so admissions are now counted against kull + 1. Before, a round still in progress showed last year's projects as admitted.
+
 ## v22 – 13 November 2026 (page and back end)
 
 One person register. Needs the new `Kode.gs`, `setup()` once (four new columns in Kontakter) and a new deployment, plus these page files.

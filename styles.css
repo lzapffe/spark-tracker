@@ -891,3 +891,24 @@ body.fldragging, body.fldragging * { cursor: grabbing !important; user-select: n
 .ga-n { display: block; font-size: 13.5px; }
 .ga-n small { display: block; margin-left: 22px; }
 @media (max-width: 760px) { .ga-row { grid-template-columns: 1fr; } .ppage { grid-template-columns: 1fr; } .ppage .pp-gen { grid-row: auto; } }
+
+/* v23: Prosjekter (cards per phase, two status tables), Statistikk (faculty table, hover numbers) */
+.pd-row .group-h { margin: 0 0 8px; }
+.pd-row + .pd-row { margin-top: 4px; }
+.ps th, .ps td { padding: 6px 8px; vertical-align: middle; }
+.ps .ps-g { text-align: left; } .ps .ps-g a { color: inherit; }
+.ps .ps-c, .ps td.ps-p { font-weight: 600; }
+.ps small { display: block; font-weight: 400; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.ps .ps-p { position: sticky; left: 0; background: var(--card); z-index: 1; white-space: nowrap; }
+.ps th.ps-p { background: var(--head); }
+.ps th.ps-ms { background: var(--card2); }
+.ps td.ps-off { background: var(--s-na-bg); opacity: .45; }
+.psx { border: 0; cursor: pointer; font: inherit; font-size: 11.5px; }
+.psx:hover { outline: 1px solid currentColor; }
+.ps-bar { margin-bottom: 10px; }
+.ps-key { font-size: 12.5px; color: var(--muted); margin: 12px 0 0; line-height: 2; }
+.panel > .group-h + .tablewrap { margin-bottom: 14px; }
+.fx tr.fx-sum td { border-top: 2px solid var(--muted); font-weight: 600; }
+.st-two { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.ch-info:empty { display: none; }
+.charttip { position: fixed; z-index: 40; pointer-events: none; background: var(--side); color: var(--side-text); font-size: 12.5px; padding: 4px 9px; border-radius: 6px; white-space: nowrap; }
