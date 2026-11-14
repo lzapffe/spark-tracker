@@ -3,6 +3,23 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v25 – 15 November 2026 (page and back end)
+
+Årsplan as a list per phase, milepæl phases as tick boxes, and changes for one year only. Needs the new `Kode.gs`, `setup()` once and a new deployment, plus these page files.
+
+### Changed
+- **Årsplan is a list per phase** (Søknad, 1. år, 2. år, Avslutning, Felles), written like an activity's task list. Under "For hvert prosjekt" each Prosjekt milepæl of the phase is a heading with its steps under it ("+ Steg under", "Rediger milepæl"). Under "Generelle oppgaver" the steps sit under their heading (`spor`), which you can rename in place. Each row has the task, month, deadline type (per-project steps), "Etter", ↑ ↓ ✕ and "Mer" (the full step form). Changes are kept until you press **Lagre** (or **Angre endringer**). "+ Generell oppgave" starts a new heading first, so a step never lands under "Uten kategori".
+- The old Årsplan table, its two filters and the "Nytt steg" button are gone. "Flyttes ved forsinkelse" and "Aktiv" are in "Mer"; an inactive step is greyed with "ikke aktiv". No data is removed.
+- **Milepæl phases are tick boxes** for Type Prosjekt: Søknad (each applicant), 1. år, 2. år, Avslutning, in any combination. Type Program has no phase. A milepæl with several phases is ticked once per project per year.
+- The status **"Ikke aktuelt" is shown as "Ikke aktuelt i år"**. The saved value is still "Ikke aktuelt".
+- The 🎯 icon is removed everywhere.
+- `setup()` ends with just "Setup ferdig."
+
+### Added
+- **Milepæler for one year:** "Bare i <år>" in the milepæl form (only that year), and "Hopp over i <år>" / "Ta med i <år> igjen" when you open a milepæl in the year view. A skipped milepæl shows greyed as "Hoppet over i <år>" and isn't counted or late that year.
+- **Deleting a general task** (one made from a general Årsplan step) deletes it for that year only: it isn't made again that year (`Progress.hopp_aar`). You're then asked whether to also remove the step from Årsplan.
+- Columns `Progress.hopp_aar`, `Milepaeler.bare_aar` and `Milepaeler.hopp_aar`, added at the end by `setup()`.
+
 ## v24 – 14 November 2026 (page and back end)
 
 One Milepæler list: the Årsplan sjekkpunkter and the project milepæler are now the same thing. Needs the new `Kode.gs`, `setup()` once and a new deployment, plus these page files. Delmål stay in each activity's task list.

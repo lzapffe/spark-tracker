@@ -22,6 +22,7 @@
   var ACTIVE = ['1. år', '2. år', 'Avslutning'];
   var STEPS = ['Fase 1', 'Prioritert av fakultet', 'Fase 2', 'Pitch', 'Rektoratets vedtak', 'Takket ja'];
   var STATUSES = ['Ikke startet', 'Pågående', 'Venter på', 'Ferdig', 'Ikke aktuelt'];
+  function statusLabel(st) { return st === 'Ikke aktuelt' ? 'Ikke aktuelt i år' : st; }   // v25: shown text only
   var FACULTIES = ['HF', 'JUS', 'MED', 'MN', 'OD', 'SV', 'TF', 'UV', 'Museum', 'Senter', 'Annet'];
   var MONTHS = ['jan', 'feb', 'mar', 'apr', 'mai', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'des'];
   var MONTHS_LONG = ['januar', 'februar', 'mars', 'april', 'mai', 'juni', 'juli', 'august', 'september', 'oktober', 'november', 'desember'];
@@ -131,9 +132,9 @@
   // Tasks whose Milepæl (spor) is not in the list still show as their own checkpoint, as before.
   function checkpoints(pid, phase) {
     var p = byId('Prosjekter', pid); if (!p) return [];
-    var out = msAll().filter(function (m) { return m.nivaa === 'prosjekt' && m.fase === phase; }).map(function (m) {
-      var st = msProject(m, p); return { name: m.navn, m: m, ms: st, tasks: st.tasks, st: cpFromMs(st) };
-    });
+    var out = msAll().filter(function (m) { return m.nivaa === 'prosjekt' && msHas(m, phase); }).map(function (m) {
+      var st = msProject(m, p, phase); return { name: m.navn, m: m, ms: st, tasks: st.tasks, st: cpFromMs(st) };
+    }).filter(function (c) { return !c.ms.skipped; });
     var groups = {}, order = [];
     state.d.Oppgaver.forEach(function (t) {
       if (t.prosjekt_id !== pid || t.fase !== phase || !t.spor || t.type === 'notater' || msKeyOf(t.spor)) return;
@@ -166,7 +167,8 @@
   }
   // Column names for a phase: v24: the phase's Prosjekt milepæler in month order, then any extra names.
   function phaseColumns(phase, list) {
-    var cols = msAll().filter(function (m) { return m.nivaa === 'prosjekt' && m.fase === phase; }).map(function (m) { return m.navn; });
+    var cols = msAll().filter(function (m) { return m.nivaa === 'prosjekt' && msHas(m, phase); }).map(function (m) { return m.navn; });
+    cols = cols.filter(function (n) { return list.some(function (p) { return checkpoints(p.id, phase).some(function (c) { return c.name === n; }); }); });   // v25: not a column skipped for everyone
     list.forEach(function (p) { checkpoints(p.id, phase).forEach(function (c) { if (cols.indexOf(c.name) < 0) cols.push(c.name); }); });
     return cols;
   }
@@ -403,7 +405,7 @@
     return phases.map(function (ph) {
       var ps = list.filter(function (p) { return p.fase === ph; }), cols = phaseColumns(ph, ps), carry = ph !== '1. år';
       var mine = {}; ps.forEach(function (p) { mine[p.id] = {}; checkpoints(p.id, ph).forEach(function (c) { mine[p.id][c.name] = c; }); });
-      var phMs = msAll().filter(function (m) { return m.nivaa === 'prosjekt' && m.fase === ph; });
+      var phMs = msAll().filter(function (m) { return m.nivaa === 'prosjekt' && msHas(m, ph); });
       var msOf = {}; phMs.forEach(function (m) { msOf[m.navn] = m; });
       var hasKind = function (k) { return phMs.some(function (m) { return m.kilde === k; }); };
       var mentor = ph === '2. år' && !hasKind('mentormoter'), wsCol = !hasKind('workshops');
@@ -651,24 +653,128 @@
 
 
   // ---- Page: Progress (the year template) --------------------------------------------------
+  // v25: Årsplan as one list per phase, written like an activity's task list. The phase's Prosjekt milepæler are
+  // headings with the per-project steps that lead to them under; the general steps (once a year, for Linn) lie under
+  // their headings (the step's spor), which can be renamed in place. Each row: title, month, deadline type, "Etter",
+  // ↑ ↓ ✕ and "Mer" (the full step form). Changes are kept in state.yp until "Lagre".
+  var YP_PH = ['Søknad', '1. år', '2. år', 'Avslutning', 'Felles'];
+  var YP_TIMING = [['maaned', 'Månedsslutt'], ['dato', 'Fast dato'], ['etter', 'Etter opplåsing'], ['ingen', 'Ingen frist']];
+  function ypEd() {
+    var ph = state.filters.ypf || '1. år', E = state.yp;
+    if (!E || E.ph !== ph || !E.dirty) E = state.yp = { ph: ph, del: [], dirty: false, rows: state.d.Progress.filter(function (s) { return s.fase === ph; }).map(function (s) { return Object.assign({}, s); }) };
+    return E;
+  }
+  function ypByOrder(a, b) { return Number(a.rekkefolge || 0) - Number(b.rekkefolge || 0); }
+  function ypGroups(E) {
+    var ms = msAll().filter(function (m) { return m.nivaa === 'prosjekt' && msHas(m, E.ph); });
+    var proj = E.rows.filter(function (r) { return r.type === 'prosjekt'; }), gen = E.rows.filter(function (r) { return r.type !== 'prosjekt'; });
+    var out = ms.map(function (m) { return { kind: 'ms', m: m, key: m.kilde ? '' : msKey(m), rows: m.kilde ? [] : proj.filter(function (r) { return r.spor === msKey(m); }).sort(ypByOrder) }; });
+    var used = {}; out.forEach(function (g) { g.rows.forEach(function (r) { used[r.id] = 1; }); });
+    var other = {}, okeys = []; proj.forEach(function (r) { if (used[r.id]) return; var k = r.spor || ''; if (!other[k]) { other[k] = []; okeys.push(k); } other[k].push(r); });
+    okeys.forEach(function (k) { out.push({ kind: 'other', key: k, rows: other[k].sort(ypByOrder) }); });
+    var cats = {}, ckeys = []; gen.forEach(function (r) { var k = r.spor || ''; if (!cats[k]) { cats[k] = []; ckeys.push(k); } cats[k].push(r); });
+    return { proj: out, gen: ckeys.map(function (k) { return { kind: 'gen', key: k, rows: cats[k].sort(function (a, b) { return Number(a.maaned || 99) - Number(b.maaned || 99) || ypByOrder(a, b); }) }; }) };
+  }
+  function ypRow(E, r) {
+    var mon = '<select data-yk="maaned" data-id="' + esc(r.id) + '" aria-label="Måned">' + option('', String(r.maaned || ''), '–') + MONTHS_LONG.map(function (m, i) { return option(String(i + 1), String(r.maaned || ''), m); }).join('') + '</select>';
+    var tim = r.type === 'prosjekt' ? '<select data-yk="timing" data-id="' + esc(r.id) + '" aria-label="Frist">' + YP_TIMING.map(function (t) { return option(t[0], r.timing || 'maaned', t[1]); }).join('') + '</select>' : '<span class="yp-gen">hvert år</span>';
+    var others = E.rows.filter(function (x) { return x.id !== r.id; }), cur = ids(r.laases_opp_av);
+    var names = cur.map(function (id) { var x = E.rows.find(function (y) { return y.id === id; }) || byId('Progress', id); return x ? x.tittel : null; }).filter(Boolean);
+    var pick = '<details class="tl-after"><summary>' + esc(names.length ? 'Etter: ' + names.join(', ') : 'Kan starte med en gang') + '</summary><div class="tl-pick">' +
+      (others.length ? others.map(function (x) { return '<label><input type="checkbox" data-yk="etter" data-id="' + esc(r.id) + '" value="' + esc(x.id) + '"' + (cur.indexOf(x.id) >= 0 ? ' checked' : '') + '> ' + esc(x.tittel || '(uten navn)') + '</label>'; }).join('') : '<span class="empty">Ingen andre steg i fasen.</span>') + '</div></details>';
+    var skip = ids(r.hopp_aar).length ? ' <span class="chip c-na">hoppet over ' + esc(ids(r.hopp_aar).join(', ')) + '</span>' : '';
+    return '<div class="tl-row' + (r.aktiv === 'nei' ? ' yp-off' : '') + '"><span class="tl-ic">•</span><input type="text" class="tl-name" data-yk="tittel" data-id="' + esc(r.id) + '" value="' + esc(r.tittel) + '" placeholder="Hva skal gjøres" aria-label="Steg">' +
+      '<span class="tl-when">' + mon + tim + '</span>' + pick + (r.aktiv === 'nei' ? '<span class="chip c-na">ikke aktiv</span>' : '') + skip +
+      '<span class="tl-btns"><button type="button" class="btn small ghost" data-yp="up|' + esc(r.id) + '" aria-label="Flytt opp">↑</button><button type="button" class="btn small ghost" data-yp="down|' + esc(r.id) + '" aria-label="Flytt ned">↓</button><button type="button" class="btn small ghost" data-yp="del|' + esc(r.id) + '" aria-label="Slett">✕</button>' +
+      (r._new ? '' : '<button type="button" class="btn small ghost" data-yp="more|' + esc(r.id) + '">Mer</button>') + '</span></div>';
+  }
+  function ypHead(g) {
+    if (g.kind === 'ms') return '<div class="tl-row tl-g yp-g"><span class="yp-h">' + esc(g.m.navn) + '</span><span class="chip c-info">' + esc(dueText(g.m, 0)) + '</span>' +
+      (g.m.kilde ? '<span class="yp-gen">nås fra oppmøte, ingen steg</span>' : '<button type="button" class="btn small tl-addin" data-yp="add|' + esc(g.key) + '|prosjekt">+ Steg under</button>') + '<button type="button" class="btn small ghost" data-msedit="' + esc(g.m.id) + '">Rediger milepæl</button></div>';
+    if (g.kind === 'other') return '<div class="tl-row tl-g yp-g"><span class="yp-h">' + esc(g.key || 'Uten milepæl') + ' <span class="chip c-na">ikke en milepæl</span></span><button type="button" class="btn small tl-addin" data-yp="add|' + esc(g.key) + '|prosjekt">+ Steg under</button></div>';
+    return '<div class="tl-row tl-g yp-g yp-cat"><input type="text" class="yp-h yp-catin" data-ycat="' + esc(g.key) + '" value="' + esc(g.key) + '" placeholder="Skriv navnet på overskriften" aria-label="Overskrift"><button type="button" class="btn small tl-addin" data-yp="add|' + esc(g.key) + '|generell">+ Oppgave under</button></div>';
+  }
   function pageProgress() {
-    var d = state.d, f = state.filters;
-    var list = d.Progress.filter(function (s) { return (!f.gfase || s.fase === f.gfase) && (!f.gtype || s.type === f.gtype); })
-      .sort(function (a, b) { return Number(a.maaned || 99) - Number(b.maaned || 99) || Number(a.rekkefolge) - Number(b.rekkefolge); });
-    var tools = '<select id="fGfase">' + options(['Søknad', '1. år', '2. år', 'Avslutning', 'Felles'], f.gfase || '', 'Alle faser') + '</select>' +
-      '<select id="fGtype">' + option('', f.gtype || '', 'Alle typer') + option('generell', f.gtype || '', 'Generell') + option('prosjekt', f.gtype || '', 'Per prosjekt') + '</select>' +
-      '<button class="btn" data-act="makegeneral">Lag generelle oppgaver som mangler for ' + today().slice(0, 4) + '</button>' +
-      '<a class="btn" href="#gjennomgang">Gjennomgang ved årsskiftet</a>' +
-      '<button class="btn primary" data-act="newstep">Nytt steg</button>';
+    var E = ypEd(), G = ypGroups(E);
+    var tools = '<button class="btn" data-act="makegeneral">Lag generelle oppgaver som mangler for ' + today().slice(0, 4) + '</button>' +
+      '<a class="btn" href="#gjennomgang">Gjennomgang ved årsskiftet</a>';
+    var seg = '<span class="seg">' + YP_PH.map(function (p) { return '<button type="button" data-ypf="' + esc(p) + '" aria-pressed="' + (p === E.ph) + '">' + p + '</button>'; }).join('') + '</span>';
+    var list = (G.proj.length ? '<span class="group-h">' + (E.ph === 'Søknad' ? 'For hver søker' : 'For hvert prosjekt') + '</span>' + G.proj.map(function (g) { return ypHead(g) + g.rows.map(function (r) { return ypRow(E, r); }).join(''); }).join('') : '') +
+      (G.gen.length ? '<span class="group-h">Generelle oppgaver (én gang i året, for deg)</span>' + G.gen.map(function (g) { return ypHead(g) + g.rows.map(function (r) { return ypRow(E, r); }).join(''); }).join('') : '') +
+      (!G.proj.length && !G.gen.length ? '<div class="empty">Ingen steg i denne fasen ennå.</div>' : '');
     return head('Årsplan', 'Generelle oppgaver kommer hvert år, prosjektoppgaver når et prosjekt går inn i fasen', tools) +
       milestoneYear() +
-      '<div class="panel tablewrap"><table class="t"><tr><th>Måned</th><th>Fase</th><th>Milepæl</th><th>Steg</th><th>Type</th><th>Frist</th><th>Flyttes ved forsinkelse</th><th>Aktiv</th></tr>' +
-      list.map(function (s) {
-        var when = s.timing === 'maaned' ? 'Slutten av ' + monthName(s.maaned) : s.timing === 'dato' ? 'Fast ' + s.dato : s.timing === 'etter' ? (s.frist_dager || 7) + ' dager etter opplåsing' : 'Ingen';
-        return '<tr class="click" data-step-edit="' + esc(s.id) + '"><td>' + (s.maaned ? monthName(s.maaned) : '–') + '</td><td><span class="ph">' + esc(s.fase) + '</span></td><td>' + esc(msNameFor(s.spor)) + '</td><td class="strong">' + esc(s.tittel) + (s.notater_etter === 'ja' ? ' <span class="chip c-na">+ notater</span>' : '') + (s.laases_opp_av ? ' <span class="chip c-info">🔒 etter ' + ids(s.laases_opp_av).length + '</span>' : '') + '</td><td>' + (s.type === 'generell' ? 'Generell' : 'Per prosjekt') + '</td><td>' + esc(s.type === 'generell' && s.timing !== 'etter' ? '–' : when) + '</td><td>' + esc(s.flyttes_ved_forsinkelse) + '</td><td>' + (s.aktiv === 'nei' ? '<span class="chip c-na">av</span>' : 'ja') + '</td></tr>';
-      }).join('') + '</table></div>' +
-      '<p class="empty">Alle prosjekter starter i januar, så «mars» i 1. år er mars det første året. For generelle oppgaver er måneden bare et hint.</p>';
+      '<section class="panel"><h2>Steg i ' + esc(E.ph) + '</h2><div class="row wrap yp-bar">' + seg +
+        (E.ph !== 'Felles' ? '<button type="button" class="btn small" data-msedit="">+ Milepæl</button>' : '') +
+        '<button type="button" class="btn small" data-yp="add||generell">+ Generell oppgave</button></div>' +
+        '<div class="tled yp-ed">' + list + '</div>' +
+        '<div class="actions"><span class="yp-state">' + (E.dirty ? '<span class="chip c-prog">Ikke lagret</span>' : '') + '</span><span><button type="button" class="btn ghost" data-yp="undo|"' + (E.dirty ? '' : ' disabled') + '>Angre endringer</button> <button type="button" class="btn primary" data-yp="save|"' + (E.dirty ? '' : ' disabled') + '>Lagre</button></span></div></section>' +
+      '<p class="empty">Endringer her gjelder nye oppgaver. Oppgaver som allerede er laget for et år, endrer du der de ligger (for eksempel på Oppgaver). Alle prosjekter starter i januar, så «mars» i 1. år er mars det første året. For generelle oppgaver er måneden bare et hint.</p>';
   }
+  function initYearPlan() {
+    var main = $('main'), E = state.yp; if (!main || !E) return;
+    var redraw = function () { state.keepScroll = true; render(); };
+    var find = function (id) { return E.rows.find(function (r) { return r.id === id; }); };
+    var dirty = function () { E.dirty = true; var st = main.querySelector('.yp-state'); if (st) st.innerHTML = '<span class="chip c-prog">Ikke lagret</span>'; main.querySelectorAll('[data-yp="save|"], [data-yp="undo|"]').forEach(function (b) { b.disabled = false; }); };
+    main.querySelectorAll('[data-ypf]').forEach(function (b) { b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (E.dirty && !window.confirm('Du har endringer som ikke er lagret. Bytte fase og forkaste dem?')) return;
+      state.filters.ypf = b.dataset.ypf; state.yp = null; redraw();
+    }); });
+    var box = main.querySelector('.yp-ed'); if (!box) return;
+    box.addEventListener('change', function (e) {
+      var el = e.target;
+      if (el.dataset.ycat !== undefined) {   // rename a heading: every general step under it gets the new name
+        E.rows.forEach(function (x) { if (x.type !== 'prosjekt' && (x.spor || '') === el.dataset.ycat) { x.spor = el.value.trim(); x._ch = true; } });
+        var ab = el.closest('.yp-g') && el.closest('.yp-g').querySelector('[data-yp^="add|"]');   // "+ Steg under" follows the new name
+        if (ab) ab.dataset.yp = 'add|' + el.value.trim() + '|generell';
+        el.dataset.ycat = el.value.trim(); dirty(); return;
+      }
+      var r = find(el.dataset.id), k = el.dataset.yk; if (!r || !k) return;
+      if (k === 'etter') r.laases_opp_av = [].map.call(el.closest('.tl-pick').querySelectorAll('input:checked'), function (c) { return c.value; }).join(',');
+      else r[k] = el.value;
+      r._ch = true; dirty();
+      if (k === 'etter') { var names = ids(r.laases_opp_av).map(function (id) { var x = find(id); return x ? x.tittel : ''; }).filter(Boolean); el.closest('details').querySelector('summary').textContent = names.length ? 'Etter: ' + names.join(', ') : 'Kan starte med en gang'; }
+    });
+    main.querySelectorAll('[data-yp]').forEach(function (b) { b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var p = b.dataset.yp.split('|'), act = p[0], r = find(p[1]);
+      if (act === 'more' && r) { if (E.dirty) { toast('Lagre endringene først'); return; } editStep(r.id); return; }
+      if (act === 'undo') { state.yp = null; redraw(); return; }
+      if (act === 'save') {
+        if (E.rows.some(function (x) { return x.type !== 'prosjekt' && !(x.spor || '').trim(); })) { toast('Gi overskriften et navn'); return; }
+        if (E.rows.some(function (x) { return x._ch && !(x.tittel || '').trim(); })) { toast('Skriv hva som skal gjøres på alle nye steg'); return; }
+        var rows = E.rows.filter(function (x) { return x._ch; }).map(function (x) { var o = Object.assign({}, x); delete o._ch; if (o._new) { delete o.id; delete o._new; } return o; });
+        var newIds = {}; E.rows.forEach(function (x) { if (x._new) newIds[x.id] = 1; });
+        rows.forEach(function (o) { o.laases_opp_av = ids(o.laases_opp_av).filter(function (id) { return !newIds[id]; }).join(','); });   // a lock on a step that isn't saved yet is set after (Mer)
+        save('Progress', rows, E.del).then(function () { state.yp = null; toast('Lagret. Gjelder nye oppgaver.'); load(true); });
+        return;
+      }
+      if (act === 'del' && r) {
+        if (!r._new && !window.confirm('Fjerne «' + (r.tittel || 'steget') + '» fra Årsplan? Oppgaver som allerede er laget, beholdes.')) return;
+        E.rows.splice(E.rows.indexOf(r), 1); if (!r._new) E.del.push(r.id);
+        E.rows.forEach(function (x) { var l = ids(x.laases_opp_av); if (l.indexOf(r.id) >= 0) { x.laases_opp_av = l.filter(function (id) { return id !== r.id; }).join(','); x._ch = true; } });
+        E.dirty = true; redraw(); return;
+      }
+      if ((act === 'up' || act === 'down') && r) {
+        var G = ypGroups(E), grp = G.proj.concat(G.gen).find(function (g) { return g.rows.indexOf(r) >= 0; }), i = grp.rows.indexOf(r), j = act === 'up' ? i - 1 : i + 1;
+        if (j < 0 || j >= grp.rows.length) return;
+        var base = Number(grp.rows[0].rekkefolge) || 0;
+        grp.rows.forEach(function (x, k) { x.rekkefolge = String(base + k); x._ch = true; });
+        var o = grp.rows[j], a = r.rekkefolge; r.rekkefolge = o.rekkefolge; o.rekkefolge = a;
+        E.dirty = true; redraw(); return;
+      }
+      if (act === 'add') {
+        var m = p[2] === 'prosjekt' && msKeyOf(p[1]);
+        var nr = { id: 'ny' + Date.now(), _new: true, _ch: true, tittel: '', fase: E.ph, spor: p[1], type: p[2], timing: p[2] === 'prosjekt' ? 'maaned' : 'ingen', maaned: m ? String(m.maaned) : '',
+          aktiv: 'ja', flyttes_ved_forsinkelse: 'ja', notater_etter: 'nei', laases_opp_av: '', rekkefolge: String(state.d.Progress.concat(E.rows).reduce(function (n, x) { return Math.max(n, Number(x.rekkefolge) || 0); }, 0) + 10) };
+        E.rows.push(nr); E.dirty = true; redraw();
+        var focus = !p[1] && p[2] === 'generell' ? main.querySelector('.yp-catin[data-ycat=""]') : main.querySelector('.yp-ed input[data-id="' + nr.id + '"]');
+        if (focus) focus.focus();
+      }
+    }); });
+  }
+
 
 
   // ---- Page: Innboks --------------------------------------------------------------------------
@@ -857,7 +963,7 @@
       '<div id="gjPro"' + (gj === 'pro' ? '' : ' hidden') + '>' + field('Prosjekt', 'prosjekt_id', '', 'select', option('', t.prosjekt_id || '', '–') + projects.map(function (p) { return option(p.id, t.prosjekt_id || '', p.kortnavn); }).join('')) + '</div>' +
       '<div id="gjGrp"' + (gj === 'grp' ? '' : ' hidden') + '><div class="f"><span>Gruppe</span>' + grpSeg + '</div><div id="grpMembers">' + memberBox() + '</div>' +
         '<label class="f">Trenger (tom = alle)<input type="number" min="1" name="trenger" value="' + esc(t.trenger || '') + '"></label></div>' +
-      '<div class="grid2"><label class="f">Frist<input type="date" name="frist" value="' + esc(t.frist || '') + '"><span id="fristWarn" class="dm-m"></span></label>' + field('Status', 'status', '', 'select', options(STATUSES, t.status)) + '</div>' +
+      '<div class="grid2"><label class="f">Frist<input type="date" name="frist" value="' + esc(t.frist || '') + '"><span id="fristWarn" class="dm-m"></span></label>' + field('Status', 'status', '', 'select', STATUSES.map(function (x) { return option(x, t.status, statusLabel(x)); }).join('')) + '</div>' +
       unlockFields(t, id) +
       (openCands.length ? '<details class="unl"' + (opens.length ? ' open' : '') + '><summary class="group-h">Åpner' + (opens.length ? ' (' + opens.length + ')' : '') + '</summary><p class="empty">Oppgaver som er låst til denne er ferdig.</p><div class="cl scrollcl">' +
         openCands.map(function (x) { return '<label><input type="checkbox" name="opn_' + esc(x.id) + '"' + (opens.indexOf(x.id) >= 0 ? ' checked' : '') + '> ' + esc(x.tittel) + '</label>'; }).join('') + '</div></details>' : '') +
@@ -1041,9 +1147,10 @@
     var ms = msAll().filter(function (m) { return m.nivaa === 'prosjekt' && !m.kilde; });
     var other = [], add = function (v) { if (v && !msKeyOf(v) && other.indexOf(v) < 0) other.push(v); };
     add(value); state.d.Progress.forEach(function (s) { add(s.spor); });
-    var groups = ['1. år', '2. år', 'Avslutning'].map(function (ph) {
-      var l = ms.filter(function (m) { return m.fase === ph; });
-      return l.length ? '<optgroup label="' + esc(ph) + '">' + l.map(function (m) { return option(msKey(m), value, m.navn); }).join('') + '</optgroup>' : '';
+    var labels = []; ms.forEach(function (m) { var l = msPhaseText(m) || '–'; if (labels.indexOf(l) < 0) labels.push(l); });
+    var groups = labels.map(function (lb) {
+      var l = ms.filter(function (m) { return (msPhaseText(m) || '–') === lb; });
+      return '<optgroup label="' + esc(lb) + '">' + l.map(function (m) { return option(msKey(m), value, m.navn); }).join('') + '</optgroup>';
     }).join('');
     return '<label class="f">Milepæl<select name="spor" data-msf>' + option('', value, 'Ingen') + groups +
       (other.length ? '<optgroup label="Annet (ikke en milepæl)">' + other.map(function (v) { return option(v, value, v); }).join('') + '</optgroup>' : '') +
@@ -1062,7 +1169,7 @@
     var name = val(form, 'spor_ny') || '';
     var have = msKeyOf(name) || msAll().find(function (m) { return m.nivaa === 'prosjekt' && !m.kilde && m.navn === name; });
     row.spor = have ? msKey(have) : name;
-    if (have || !name || !ctx.project || !(ctx.fase in PHASE_OFFSET)) return Promise.resolve();
+    if (have || !name || !ctx.project || !(ctx.fase in PHASE_OFFSET || ctx.fase === 'Søknad')) return Promise.resolve();
     var maxR = (state.d.Milepaeler || []).reduce(function (n, x) { return Math.max(n, Number(x.rekkefolge) || 0); }, 0);
     return save('Milepaeler', [{ navn: name, nivaa: 'prosjekt', fase: ctx.fase, maaned: String(Number(ctx.month) || Number(today().slice(5, 7))), dag: '', gjelder: name,
       steg: '', serie_id: '', kilde: '', kilde_ref: '', auto: 'ja', aktiv: 'ja', rekkefolge: String(maxR + 10), merknader: '' }]).then(function () { toast('Ny milepæl: ' + name); });
@@ -1097,6 +1204,7 @@
       stepUnlockField(s, id) +
       field('Deloppgaver (én per linje, blir sjekkliste)', 'deloppgaver', s.deloppgaver, 'textarea') +
       field('Lenke til veiledning', 'guide', s.guide) + field('Merknader', 'merknader', s.merknader, 'textarea') +
+      (ids(s.hopp_aar).length ? '<p class="empty">Hoppet over i ' + esc(ids(s.hopp_aar).join(', ')) + ' (slettet det året).</p>' : '') +
       '<p class="empty">Endringer gjelder nye oppgaver. Oppgaver som allerede finnes, endres ikke.</p>' + actions(),
       function (form) {
         var row = {}; ['tittel', 'fase', 'spor', 'type', 'timing', 'maaned', 'dato', 'frist_dager', 'vises_dager_for', 'rekkefolge', 'flyttes_ved_forsinkelse', 'notater_etter', 'aktiv', 'deloppgaver', 'guide', 'merknader'].forEach(function (k) { row[k] = val(form, k); });
@@ -1551,7 +1659,7 @@
       var pct = g.tasks.length ? Math.round(g.done / g.tasks.length * 100) : (g.reached ? 100 : 0);
       var chipHtml = g.reached ? '<span class="chip c-done">Nådd' + (g.reached.length === 10 ? ' ' + esc(fmtDate(g.reached)) : '') + '</span>' : g.late ? '<span class="chip c-late">Ikke nådd</span>' : '';
       var btn = g.manual || g.ticked ? '<button type="button" class="btn small ghost" data-dmtick="' + esc(r.id) + '|' + esc(g.name) + '">' + (g.ticked ? 'Angre' : 'Merk som nådd') + '</button>' : '';
-      return '<div class="dmc"><div class="dmc-h"><span class="dm-n">🎯 ' + esc(g.name) + (g.shared ? ' <span class="chip c-info sh">felles</span>' : '') + '</span><span class="dm-m">' + g.done + '/' + g.tasks.length + '</span></div>' +
+      return '<div class="dmc"><div class="dmc-h"><span class="dm-n">' + esc(g.name) + (g.shared ? ' <span class="chip c-info sh">felles</span>' : '') + '</span><span class="dm-m">' + g.done + '/' + g.tasks.length + '</span></div>' +
         '<div class="dm-m">' + (g.days !== '' || g.from ? esc(daysText(g.days, g.from)) + (g.due ? ' (' + esc(fmtDate(g.due)) + ')' : '') : '') + '</div>' +
         '<div class="pbar" aria-hidden="true"><i style="width:' + pct + '%"></i></div>' + (chipHtml || btn ? '<div class="row wrap">' + chipHtml + btn + '</div>' : '') +
         expHtml(s, 'delmaal:' + g.name) +
@@ -2333,7 +2441,7 @@
     items.forEach(function (x) { level(x.key, 0); });
     var cardF = function (x) {
       var after = (x.after || []).map(function (k) { return by[k] ? by[k].name : ''; }).filter(Boolean);
-      return '<div class="fcard' + (x.done ? ' isdone' : '') + '"' + (x.task ? ' data-task="' + esc(x.task) + '"' : '') + '><b>' + esc(x.name) + '</b>' + (x.group ? ' <span class="chip c-info sh">🎯 ' + esc(x.group) + '</span>' : '') +
+      return '<div class="fcard' + (x.done ? ' isdone' : '') + '"' + (x.task ? ' data-task="' + esc(x.task) + '"' : '') + '><b>' + esc(x.name) + '</b>' + (x.group ? ' <span class="chip c-info sh">' + esc(x.group) + '</span>' : '') +
         (x.meta ? '<small>' + esc(x.meta) + '</small>' : '') + (after.length ? '<small>🔒 etter ' + esc(after.join(', ')) + '</small>' : '') + '</div>';
     };
     // v17: one row per separate chain; the unlinked tasks together at the end.
@@ -2592,10 +2700,24 @@
     if (m.kilde === 'delmaal') { var s = byId('Serier', m.serie_id); return 'nås når delmålet «' + (m.kilde_ref || '?') + '»' + (s ? ' i ' + s.navn : '') + ' er nådd'; }
     return m.nivaa === 'prosjekt' ? 'nås når oppgavene med Milepæl «' + m.navn + '» er ferdige' : 'nås når oppgavene fra stegene eller aktiviteten er ferdige';
   }
+  // v25: a Prosjekt milepæl can have several phases (fase = "1. år, 2. år"); Søknad = one per søker (year = søknadsår).
+  // bare_aar = only that year; hopp_aar = years it is skipped (comma list).
+  function msPhases(m) { return String(m.fase || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean); }
+  function msHas(m, ph) { return msPhases(m).indexOf(ph) >= 0; }
+  function msActiveIn(m, y) { return !(m.bare_aar && m.bare_aar !== String(y)) && ids(m.hopp_aar).indexOf(String(y)) < 0; }
+  function msSubjYear(p, ph) { return ph === 'Søknad' ? Number(p.soknadsaar) || 0 : projStartYear(p) ? projStartYear(p) + (PHASE_OFFSET[ph] || 0) : 0; }
+  // Which of the milepæl's phases applies to p: a phase name, a year (the phase that falls in it) or nothing (p's own phase).
+  function msPhaseOf(m, p, at) {
+    var phs = msPhases(m), isApp = !!p.soknadsaar && !p.kull && !p.startdato;
+    if (typeof at === 'string' && at) return at;
+    if (typeof at === 'number') return phs.find(function (ph) { return (ph === 'Søknad') === isApp && msSubjYear(p, ph) === at; }) || '';
+    return phs.indexOf(p.fase) >= 0 ? p.fase : phs.find(function (ph) { return (ph === 'Søknad') === isApp; }) || phs[0] || '';
+  }
+  function msPhaseText(m) { return msPhases(m).map(function (ph) { return ph === 'Søknad' ? 'søkere' : ph; }).join(', '); }
   function projStartYear(p) { return Number(String(p.startdato || '').slice(0, 4)) || Number(p.kull) || 0; }
   function monthEnd(y, m) { return new Date(Date.UTC(y, Number(m), 0)).toISOString().slice(0, 10); }
   function msTickRow(mid, pid, y) {
-    return (state.d.Milepaelstatus || []).find(function (x) { return x.milepael_id === mid && (pid ? x.prosjekt_id === pid : !x.prosjekt_id && x.aar === String(y)); }) || null;
+    return (state.d.Milepaelstatus || []).find(function (x) { return x.milepael_id === mid && (pid ? x.prosjekt_id === pid && (!y || !x.aar || x.aar === String(y)) : !x.prosjekt_id && x.aar === String(y)); }) || null;
   }
   function msState(m, y, due, tasks, tick) {
     var done = tasks.filter(function (t) { return !openTask(t); });
@@ -2603,8 +2725,9 @@
     var reached = tick ? (tick.dato || today()) : auto ? (done.map(function (t) { return t.ferdig_dato || ''; }).sort().pop() || today()) : '';
     return { m: m, y: y, due: due, tasks: tasks, done: done.length, reached: reached, tick: tick, late: !reached && !!due && due < today() };
   }
-  function msProject(m, p) {
-    var y = projStartYear(p) ? projStartYear(p) + (PHASE_OFFSET[m.fase] || 0) : 0, due = msDue(m, y), tick = msTickRow(m.id, p.id);
+  function msProject(m, p, at) {
+    var ph = msPhaseOf(m, p, at), y = msSubjYear(p, ph), due = msDue(m, y), tick = msTickRow(m.id, p.id, y);
+    if (y && !msActiveIn(m, y)) { var sk = msState(m, y, '', [], null); sk.skipped = true; sk.info = 'hoppet over i ' + y; return sk; }   // v25
     if (m.kilde === 'workshops' || m.kilde === 'mentormoter') {   // v24: from attendance
       var c = m.kilde === 'workshops' ? workshopStatus(p.id) : mentorStatus(p.id), st = msState(m, y, due, [], tick);
       if (!st.reached && m.auto !== 'nei' && c.n >= c.need) st.reached = 'ja';
@@ -2617,8 +2740,9 @@
   }
   function msProgram(m, y) {
     var tick = msTickRow(m.id, '', y), due = msDue(m, y), st;
+    if (!msActiveIn(m, y)) { st = msState(m, y, '', [], null); st.skipped = true; st.info = 'hoppet over i ' + y; return st; }   // v25
     if (m.kilde === 'prosjekter') {   // v24: every project has reached a Prosjekt milepæl
-      var pm = byId('Milepaeler', m.kilde_ref), sts = pm ? msProjects(pm, y).map(function (pr) { return msProject(pm, pr); }) : [];
+      var pm = byId('Milepaeler', m.kilde_ref), sts = pm ? msProjects(pm, y).map(function (pr) { return msProject(pm, pr, y); }) : [];
       var got = sts.filter(function (x) { return x.reached; });
       st = msState(m, y, due, [], tick);
       if (!st.reached && m.auto !== 'nei' && sts.length && got.length === sts.length) {
@@ -2645,9 +2769,13 @@
     st.late = !st.reached && !!due && due < today();
     return st;
   }
-  // The projects a project goal applies to in year y (archived projects too, for the count).
+  // The projects (and, for Søknad, the søkere) a project goal applies to in year y (archived projects too, for the count).
   function msProjects(m, y) {
-    return state.d.Prosjekter.filter(function (p) { return p.fase !== 'Søknad' && projStartYear(p) && projStartYear(p) + (PHASE_OFFSET[m.fase] || 0) === y; });
+    if (!msActiveIn(m, y)) return [];
+    var phs = msPhases(m).filter(function (ph) { return ph !== 'Søknad'; });
+    var out = state.d.Prosjekter.filter(function (p) { return p.fase !== 'Søknad' && projStartYear(p) && phs.some(function (ph) { return msSubjYear(p, ph) === y; }); });
+    if (msHas(m, 'Søknad')) out = out.concat(state.d.Søkere.filter(function (a) { return Number(a.soknadsaar) === y; }));
+    return out;
   }
   function msChip(st) {
     if (st.reached && isAltTick(st.tick)) return '<span class="chip c-alt" title="' + esc(altText(st.tick)) + '">◆ Nådd (alternativ)</span>';
@@ -2658,7 +2786,7 @@
       !st.reached ? '<button type="button" class="btn small ghost" data-mstick="' + esc(st.m.id) + '|' + esc(pid || '') + '|' + st.y + '">Merk som nådd</button>' +
         '<button type="button" class="btn small ghost" data-msalt="' + esc(st.m.id) + '|' + esc(pid || '') + '|' + st.y + '">Via alternativ</button>' : '';
     var first = pid && st.tasks.length ? (st.tasks.filter(openTask)[0] || st.tasks[0]) : null;   // v24: the text opens the task
-    return '<div class="task ms"><span class="ms-ic">🎯</span><div' + (first ? ' class="t" data-task="' + esc(first.id) + '"' : '') + '><div class="tt">' + esc(label || st.m.navn) + '</div><div class="meta">' +
+    return '<div class="task ms"><div' + (first ? ' class="t" data-task="' + esc(first.id) + '"' : '') + '><div class="tt">' + esc(label || st.m.navn) + '</div><div class="meta">' +
       (st.due ? esc(dueText(st.m, st.y)) + ' · ' : '') +
       (st.info ? esc(st.info) + (st.tasks.length ? ' · ' + st.done + ' av ' + st.tasks.length + ' oppgaver ferdig' : '') : st.tasks.length ? st.done + ' av ' + st.tasks.length + ' oppgaver ferdig' : 'ingen oppgaver, kryss av selv') + (st.m.auto === 'nei' && st.tasks.length ? ' · krysses av selv' : '') + (isAltTick(st.tick) ? ' · ◆ ' + esc(altText(st.tick)) : '') + '</div></div>' +
       '<span class="ms-r">' + msChip(st) + btn + '</span></div>';
@@ -2690,7 +2818,7 @@
     var row = function (c) {
       if (c.m) return msRow(c.ms, p.id);
       var t = c.tasks.filter(openTask)[0] || c.tasks[0];
-      return '<div class="task ms"><span class="ms-ic">🎯</span><div class="t" data-task="' + esc(t.id) + '"><div class="tt">' + esc(c.name) + '</div><div class="meta">' + esc(c.st.detail) + ' · ikke i Milepæler-listen</div></div><span class="ms-r">' + chip(c.st) + '</span></div>';
+      return '<div class="task ms"><div class="t" data-task="' + esc(t.id) + '"><div class="tt">' + esc(c.name) + '</div><div class="meta">' + esc(c.st.detail) + ' · ikke i Milepæler-listen</div></div><span class="ms-r">' + chip(c.st) + '</span></div>';
     };
     var parts = [], curBlock = '', co = cur > 0 ? carryOver(p) : [];
     phases.forEach(function (ph, i) {
@@ -2707,7 +2835,7 @@
       var pips = ''; for (var i = 0; i < st.need; i++) pips += '<i' + (i < st.n ? ' class="on"' : '') + '></i>';
       return '<div class="cpcount"><span class="dot ' + (st.n >= st.need ? 'done' : st.n ? 'prog' : '') + '"></span><div><b>' + label + '</b><small>' + st.n + ' av ' + st.need + (st.alt ? ' · ◆ ' + st.alt + ' alternativ' : '') + '</small><div class="pips">' + pips + '</div></div></div>';
     };
-    var hasKind = function (k) { return msAll().some(function (m) { return m.nivaa === 'prosjekt' && m.fase === p.fase && m.kilde === k; }); };
+    var hasKind = function (k) { return msAll().some(function (m) { return m.nivaa === 'prosjekt' && msHas(m, p.fase) && m.kilde === k; }); };
     var counters = cur < 0 ? '' : (hasKind('workshops') ? '' : counter('Workshops', workshopStatus(p.id))) + (p.fase === '2. år' && !hasKind('mentormoter') ? counter('Mentormøter', mentorStatus(p.id)) : '');
     return '<section class="panel"><h2>Milepæler</h2>' + (parts.join('') || '<div class="empty">Ingen milepæler for prosjektet ennå.</div>') +
       (counters ? '<div class="cpcounts">' + counters + '</div>' : '') + '<a class="plink" href="#progress">Alle milepæler</a></section>';
@@ -2720,30 +2848,47 @@
       var items = list.filter(function (m) { return Number(m.maaned) === k + 1; }).map(function (m) {
         if (m.nivaa === 'program') {
           var st = msProgram(m, Y);
-          return '<button type="button" class="msi" data-msopen="' + esc(m.id) + '|' + Y + '"><span class="msi-n">' + esc(m.navn) + '</span><small>Programmet' + (m.dag ? ' · ' + Number(m.dag) + '.' : '') + '</small>' + msChip(st) + '</button>';
+          if (m.bare_aar && m.bare_aar !== String(Y)) return '';
+          if (st.skipped) return '<button type="button" class="msi none" data-msopen="' + esc(m.id) + '|' + Y + '"><span class="msi-n">' + esc(m.navn) + '</span><small>Programmet</small><span class="chip c-na">Hoppet over i ' + Y + '</span></button>';
+          if (m.bare_aar && m.bare_aar !== String(Y)) return '';
+          return '<button type="button" class="msi" data-msopen="' + esc(m.id) + '|' + Y + '"><span class="msi-n">' + esc(m.navn) + '</span><small>Programmet' + (m.dag ? ' · ' + Number(m.dag) + '.' : '') + (m.bare_aar ? ' · bare i ' + esc(m.bare_aar) : '') + '</small>' + msChip(st) + '</button>';
         }
-        var who = msProjects(m, Y), n = who.filter(function (p) { return msProject(m, p).reached; }).length, late = msDue(m, Y) < today() && n < who.length;
-        var nAlt = who.filter(function (p) { var st = msProject(m, p); return st.reached && isAltTick(st.tick); }).length;
-        return '<button type="button" class="msi' + (who.length ? '' : ' none') + '" data-msopen="' + esc(m.id) + '|' + Y + '"><span class="msi-n">' + esc(m.navn) + '</span><small>' + esc(m.fase) + (m.dag ? ' · ' + Number(m.dag) + '.' : '') + '</small>' +
-          (who.length ? '<span class="chip ' + (n === who.length ? 'c-done' : late ? 'c-late' : 'c-info') + '">' + n + ' av ' + who.length + ' prosjekter' + (nAlt ? ' (◆ ' + nAlt + ')' : '') + '</span>' : '<span class="chip c-na">ingen prosjekter</span>') + '</button>';
+        if (m.bare_aar && m.bare_aar !== String(Y)) return '';
+        var small = '<small>' + esc(msPhaseText(m)) + (m.dag ? ' · ' + Number(m.dag) + '.' : '') + (m.bare_aar ? ' · bare i ' + esc(m.bare_aar) : '') + '</small>';
+        if (!msActiveIn(m, Y)) return '<button type="button" class="msi none" data-msopen="' + esc(m.id) + '|' + Y + '"><span class="msi-n">' + esc(m.navn) + '</span>' + small + '<span class="chip c-na">Hoppet over i ' + Y + '</span></button>';
+        var who = msProjects(m, Y), sts = who.map(function (p) { return msProject(m, p, Y); }), n = sts.filter(function (st) { return st.reached; }).length, late = msDue(m, Y) < today() && n < who.length;
+        var nAlt = sts.filter(function (st) { return st.reached && isAltTick(st.tick); }).length, word = msPhases(m).join() === 'Søknad' ? 'søkere' : 'prosjekter';
+        return '<button type="button" class="msi' + (who.length ? '' : ' none') + '" data-msopen="' + esc(m.id) + '|' + Y + '"><span class="msi-n">' + esc(m.navn) + '</span>' + small +
+          (who.length ? '<span class="chip ' + (n === who.length ? 'c-done' : late ? 'c-late' : 'c-info') + '">' + n + ' av ' + who.length + ' ' + word + (nAlt ? ' (◆ ' + nAlt + ')' : '') + '</span>' : '<span class="chip c-na">ingen ' + word + '</span>') + '</button>';
       });
+      items = items.filter(Boolean);
       return '<div class="mcell' + (Y === Number(today().slice(0, 4)) && k + 1 === Number(today().slice(5, 7)) ? ' now' : '') + '"><h3>' + esc(mn.charAt(0).toUpperCase() + mn.slice(1)) + '</h3>' + (items.join('') || '<span class="empty">–</span>') + '</div>';
     }).join('');
     return '<section class="panel"><h2>Milepæler ' + Y + ' <span class="row wrap"><button type="button" class="btn small" data-msyear="' + (Y - 1) + '">← ' + (Y - 1) + '</button><button type="button" class="btn small" data-msyear="' + (Y + 1) + '">' + (Y + 1) + ' →</button><button type="button" class="btn small primary" data-msedit="">+ Milepæl</button></span></h2>' +
       (list.length ? '<div class="mgrid">' + cells + '</div>' : '<div class="empty">Ingen milepæler ennå. Kjør migrateV12 i Apps Script, eller trykk «+ Milepæl».</div>') +
-      '<p class="empty">Trykk på en milepæl for å se prosjektene og krysse av. Prosjektmilepæler ligger i prosjektets 1., 2. eller 3. år; programmilepæler gjelder SPARK hvert år.</p></section>';
+      '<p class="empty">Trykk på en milepæl for å se prosjektene og krysse av, eller for å hoppe over den i ' + Y + '. Prosjektmilepæler ligger i prosjektets 1., 2. eller 3. år (søkere: søknadsåret); programmilepæler gjelder SPARK hvert år.</p></section>';
   }
   // One goal in one year: the projects (or the program) with status and a tick button.
   function msOpen(arg) {
     var p = arg.split('|'), m = byId('Milepaeler', p[0]), Y = Number(p[1]);
     if (!m) return;
-    var body = m.nivaa === 'program' ? msRow(msProgram(m, Y), '') :
-      (msProjects(m, Y).map(function (pr) { return msRow(msProject(m, pr), pr.id, pr.kortnavn); }).join('') || '<div class="empty">Ingen prosjekter har denne milepælen i ' + Y + '.</div>');
-    openDrawer('<h2>' + esc(m.navn) + ' ' + Y + '</h2><p class="empty">' + (m.nivaa === 'program' ? 'Programmet' : esc(m.fase)) + ' · ' + esc(dueText(m, 0)) + ' · ' + esc(msSourceText(m)) + '</p>' + body +
-      '<div class="actions"><span><button type="button" class="btn" data-msedit="' + esc(m.id) + '">Rediger milepælen</button></span><span><button type="button" class="btn ghost" data-close>Lukk</button></span></div>', function () { closeDrawer(); });
+    var skipped = !msActiveIn(m, Y);
+    var body = skipped ? '<div class="empty">Hoppet over i ' + Y + '. Den gjelder som vanlig andre år.</div>' : m.nivaa === 'program' ? msRow(msProgram(m, Y), '') :
+      (msProjects(m, Y).map(function (pr) { return msRow(msProject(m, pr, Y), pr.id, pr.kortnavn); }).join('') || '<div class="empty">Ingen prosjekter eller søkere har denne milepælen i ' + Y + '.</div>');
+    var skipBtn = m.bare_aar ? '' : '<button type="button" class="btn" data-msskip="' + esc(m.id) + '|' + Y + '">' + (skipped ? 'Ta med i ' + Y + ' igjen' : 'Hopp over i ' + Y) + '</button> ';
+    openDrawer('<h2>' + esc(m.navn) + ' ' + Y + '</h2><p class="empty">' + (m.nivaa === 'program' ? 'Programmet' : esc(msPhaseText(m))) + ' · ' + esc(dueText(m, 0)) + ' · ' + esc(msSourceText(m)) + (m.bare_aar ? ' · bare i ' + esc(m.bare_aar) : '') + '</p>' + body +
+      '<div class="actions"><span>' + skipBtn + '<button type="button" class="btn" data-msedit="' + esc(m.id) + '">Rediger milepælen</button></span><span><button type="button" class="btn ghost" data-close>Lukk</button></span></div>', function () { closeDrawer(); });
+  }
+  // v25: skip a milepæl in one year, or take it back.
+  function msSkip(arg) {
+    var p = arg.split('|'), m = byId('Milepaeler', p[0]); if (!m) return;
+    var years = ids(m.hopp_aar), i = years.indexOf(p[1]);
+    if (i >= 0) years.splice(i, 1); else years.push(p[1]);
+    save('Milepaeler', [{ id: m.id, hopp_aar: years.sort().join(',') }]).then(function () { toast(i >= 0 ? 'Tatt med i ' + p[1] + ' igjen' : 'Hoppet over i ' + p[1]); msOpen(arg); render(); });
   }
   function editMilestone(id) {
     var m = id ? byId('Milepaeler', id) : { nivaa: 'prosjekt', fase: '1. år', maaned: '1', auto: 'ja', aktiv: 'ja' };
+    var msY = String(Number(state.filters.msYear) || Number(today().slice(0, 4)));
     var spor = []; state.d.Progress.forEach(function (s) { if (s.spor && spor.indexOf(s.spor) < 0) spor.push(s.spor); });
     var general = state.d.Progress.filter(function (s) { return s.type === 'generell'; }).sort(function (a, b) { return Number(a.maaned || 99) - Number(b.maaned || 99); });
     var chosen = ids(m.steg);
@@ -2756,7 +2901,8 @@
       '<optgroup label="Program">' + option('prosjekter', k, 'Alle prosjektene har nådd en prosjektmilepæl') + option('delmaal', k, 'Et delmål i aktiviteten er nådd') + '</optgroup>';
     openDrawer('<h2>' + (id ? 'Rediger milepæl' : 'Ny milepæl') + '</h2>' + field('Navn', 'navn', m.navn) +
       '<div class="grid2">' + field('Type', 'nivaa', '', 'select', option('prosjekt', m.nivaa, 'Prosjekt (for hvert prosjekt)') + option('program', m.nivaa, 'Program (én per år)')) +
-        field('Fase (prosjekt)', 'fase', '', 'select', options(['1. år', '2. år', 'Avslutning'], m.fase)) +
+        '<div class="f" id="msPh"' + (m.nivaa === 'program' ? ' hidden' : '') + '><span>Faser</span><span class="row wrap">' + ['Søknad', '1. år', '2. år', 'Avslutning'].map(function (ph) {
+          return '<label class="check"><input type="checkbox" name="ph_' + esc(ph) + '"' + (msHas(m, ph) ? ' checked' : '') + '> ' + (ph === 'Søknad' ? 'Søknad (hver søker)' : esc(ph)) + '</label>'; }).join('') + '</span></div>' +
         field('Måned', 'maaned', '', 'select', MONTHS_LONG.map(function (mn, i) { return option(String(i + 1), String(m.maaned), mn); }).join('')) +
         '<label class="f">Dag (valgfritt, tom = slutten av måneden)<input type="number" min="1" max="31" name="dag" value="' + esc(m.dag || '') + '"></label>' +
         field('Nås når', 'kilde', '', 'select', kildeOpts) +
@@ -2768,12 +2914,16 @@
         general.map(function (s) { return '<label><input type="checkbox" name="st_' + esc(s.id) + '"' + (chosen.indexOf(s.id) >= 0 ? ' checked' : '') + '> ' + esc(s.tittel) + (s.maaned ? ' <small>(' + esc(monthName(s.maaned)) + ')</small>' : '') + '</label>'; }).join('') + '</div></details>' +
       '<label class="check"><input type="checkbox" name="auto"' + (m.auto !== 'nei' ? ' checked' : '') + '> Merk som nådd automatisk</label>' +
       '<label class="check"><input type="checkbox" name="aktiv"' + (m.aktiv !== 'nei' ? ' checked' : '') + '> Aktiv</label>' +
+      '<label class="check"><input type="checkbox" name="bare"' + (m.bare_aar ? ' checked' : '') + '> Bare i ' + esc(m.bare_aar || msY) + ' (ellers hvert år)</label>' +
+      (ids(m.hopp_aar).length ? '<p class="empty">Hoppet over i ' + esc(ids(m.hopp_aar).join(', ')) + '. Trykk på milepælen i kalenderen for å ta den med igjen.</p>' : '') +
       field('Merknader', 'merknader', m.merknader, 'textarea') +
       '<p class="empty">Uten dag er fristen slutten av måneden. Prosjekt: oppgavene som har denne milepælen i Milepæl-feltet fører hit, eller nok workshops / mentormøter. Program: oppgavene fra de valgte stegene og/eller aktiviteten det året, alle prosjektene har nådd en prosjektmilepæl, eller et delmål i aktiviteten. Du kan alltid krysse av selv.</p>' +
       actions(id ? '<button type="button" class="btn danger" data-delms="' + esc(id) + '">Slett</button>' : ''),
       function (form) {
         var niv = val(form, 'nivaa'), kil = val(form, 'kilde'), dag = val(form, 'dag');
-        var row = { navn: val(form, 'navn'), nivaa: niv, fase: niv === 'program' ? '' : val(form, 'fase'), maaned: val(form, 'maaned'), dag: dag ? String(Math.max(1, Math.min(31, Number(dag) || 1))) : '',
+        var phs = ['Søknad', '1. år', '2. år', 'Avslutning'].filter(function (ph) { var c = form.querySelector('[name="ph_' + ph + '"]'); return c && c.checked; });
+        if (niv === 'prosjekt' && !phs.length) { toast('Kryss av for minst én fase'); return; }
+        var row = { navn: val(form, 'navn'), nivaa: niv, fase: niv === 'program' ? '' : phs.join(', '), bare_aar: val(form, 'bare') === 'ja' ? (m.bare_aar || msY) : '', maaned: val(form, 'maaned'), dag: dag ? String(Math.max(1, Math.min(31, Number(dag) || 1))) : '',
           gjelder: niv === 'prosjekt' && !kil ? (val(form, 'gjelder') || val(form, 'navn')) : val(form, 'gjelder'), serie_id: val(form, 'serie_id'), auto: val(form, 'auto'), aktiv: val(form, 'aktiv'), merknader: val(form, 'merknader'),
           kilde: kil, kilde_ref: kil === 'prosjekter' ? val(form, 'ref_ms') : kil === 'delmaal' ? val(form, 'ref_dm') : '',
           steg: general.filter(function (s) { return form.querySelector('[name="st_' + s.id + '"]').checked; }).map(function (s) { return s.id; }).join(',') };
@@ -2785,15 +2935,17 @@
         if (id) row.id = id; else row.rekkefolge = String((state.d.Milepaeler || []).reduce(function (n, x) { return Math.max(n, Number(x.rekkefolge) || 0); }, 0) + 10);
         save('Milepaeler', [row]).then(function () { closeDrawer(); toast('Lagret'); render(); });
       });
+    var nivSel = document.querySelector('#drawerForm [name="nivaa"]');   // v25: no phases for Program
+    if (nivSel) nivSel.addEventListener('change', function () { $('msPh').hidden = nivSel.value === 'program'; });
   }
   // Oversikt: this year's goals whose month has passed without being reached.
   function lateMilestonesPanel() {
     var Y = Number(today().slice(0, 4)), out = [];
     msAll().forEach(function (m) {
-      if (m.nivaa === 'program') { var st = msProgram(m, Y); if (st.late) out.push('<div class="task ms"><span class="ms-ic">🎯</span><div class="t" data-msopen="' + esc(m.id) + '|' + Y + '"><div class="tt">' + esc(m.navn) + '</div><div class="meta">Programmet · frist ' + esc(dueText(m, 0)) + '</div></div><span class="chip c-late">Ikke nådd</span></div>'); return; }
+      if (m.nivaa === 'program') { var st = msProgram(m, Y); if (st.late && !st.skipped) out.push('<div class="task ms"><div class="t" data-msopen="' + esc(m.id) + '|' + Y + '"><div class="tt">' + esc(m.navn) + '</div><div class="meta">Programmet · frist ' + esc(dueText(m, 0)) + '</div></div><span class="chip c-late">Ikke nådd</span></div>'); return; }
       if (msDue(m, Y) >= today()) return;
-      var miss = msProjects(m, Y).filter(function (p) { return p.fase !== 'Arkivert' && !msProject(m, p).reached; });
-      if (miss.length) out.push('<div class="task ms"><span class="ms-ic">🎯</span><div class="t" data-msopen="' + esc(m.id) + '|' + Y + '"><div class="tt">' + esc(m.navn) + '</div><div class="meta">' + esc(m.fase) + ' · frist ' + esc(dueText(m, 0)) + ' · ' + esc(miss.map(function (p) { return p.kortnavn; }).join(', ')) + '</div></div><span class="chip c-late">' + miss.length + ' mangler</span></div>');
+      var miss = msProjects(m, Y).filter(function (p) { return p.fase !== 'Arkivert' && !msProject(m, p, Y).reached; });
+      if (miss.length) out.push('<div class="task ms"><div class="t" data-msopen="' + esc(m.id) + '|' + Y + '"><div class="tt">' + esc(m.navn) + '</div><div class="meta">' + esc(msPhaseText(m)) + ' · frist ' + esc(dueText(m, 0)) + ' · ' + esc(miss.map(function (p) { return p.kortnavn; }).join(', ')) + '</div></div><span class="chip c-late">' + miss.length + ' mangler</span></div>');
     });
     return out.length ? '<section class="panel"><h2>Milepæler som ikke er nådd <span class="hint"><a href="#progress">årsoversikt</a></span></h2><div class="tasklist">' + out.join('') + '</div></section>' : '';
   }
@@ -4894,7 +5046,7 @@
           var t = x.t, ear = x.kind === 'q' ? avkEarlier(t)[0] : null;
           lines.push('- ' + t.tittel);
           return '<button type="button" class="pp-item" data-ppopen="' + esc(t.id) + '"><span class="box' + (x.kind === 'q' ? ' q">?' : '">') + '</span><span><b>' + esc(t.tittel) + '</b>' +
-            (ear ? '<small class="was">I fjor: ' + esc(ear.svar) + '</small>' : x.kind === 'w' ? '<small class="was">' + (t.status === 'Venter på' ? 'Venter på svar' : esc(t.status)) + (t.oppfolging ? ' · minnes på ' + esc(fmtDateW(t.oppfolging)) : '') + '</small>' : '') + '</span></button>';
+            (ear ? '<small class="was">I fjor: ' + esc(ear.svar) + '</small>' : x.kind === 'w' ? '<small class="was">' + (t.status === 'Venter på' ? 'Venter på svar' : esc(statusLabel(t.status))) + (t.oppfolging ? ' · minnes på ' + esc(fmtDateW(t.oppfolging)) : '') + '</small>' : '') + '</span></button>';
         }).join('') + '</div>';
       }).join('');
       texts[key] = 'Til ' + shortPerson(name) + ':\n' + lines.join('\n');
@@ -5810,6 +5962,7 @@
   // After a page is drawn: arrows, the glide animation and the jump to a delmål.
   function afterRender() {
     if (state.view === 'runde') dmFlowDraw();
+    if (state.view === 'progress') initYearPlan();   // v25
     if (state.view !== 'rundeoppg') return;
     if (state.flOld && $('flCv')) flAnimate(state.flOld); else flDraw();
     state.flOld = null;
@@ -5951,7 +6104,22 @@
     }
     if (ds.start) { setTaskStatus(ds.start, 'Pågående'); return; }
     if (ds.task) { editTask(ds.task); return; }
-    if (ds.deltask) { var deps = dependents(ds.deltask).length; closeDrawer(); save('Oppgaver', [], [ds.deltask]).then(function () { toast('Slettet'); if (deps) load(true); else render(); }); return; }
+    if (ds.deltask) {
+      var dt = byId('Oppgaver', ds.deltask), dstep = dt && dt.progress_id && !dt.prosjekt_id && !dt.runde_id ? byId('Progress', dt.progress_id) : null;
+      var deps = dependents(ds.deltask).length;
+      if (dstep) {   // v25: a general task from Årsplan: delete this year's copy and remember to skip the step this year
+        if (!window.confirm('Dette sletter oppgaven for ' + dt.aar + '. Den kommer ikke tilbake i ' + dt.aar + ', men kommer som vanlig neste år.')) return;
+        closeDrawer();
+        var yrs = ids(dstep.hopp_aar); if (yrs.indexOf(dt.aar) < 0) yrs.push(dt.aar);
+        save('Progress', [{ id: dstep.id, hopp_aar: yrs.sort().join(',') }]).then(function () { return save('Oppgaver', [], [ds.deltask]); }).then(function () {
+          toast('Slettet for ' + dt.aar);
+          if (window.confirm('Vil du også fjerne «' + dstep.tittel + '» fra Årsplan, så den ikke kommer de neste årene heller?')) return save('Progress', [], [dstep.id]).then(function () { toast('Fjernet fra Årsplan'); load(true); });
+          if (deps) load(true); else render();
+        });
+        return;
+      }
+      closeDrawer(); save('Oppgaver', [], [ds.deltask]).then(function () { toast('Slettet'); if (deps) load(true); else render(); }); return;
+    }
     if (ds.deldoc) { save('Dokumenter', [], [ds.deldoc]).then(render); return; }
     if (ds.view) { store(VIEW_KEY, ds.view); render(); return; }
     if (ds.step) { var s = byId('Søkere', ds.step); var i = STEPS.indexOf(s.steg || STEPS[0]); save('Søkere', [{ id: s.id, steg: STEPS[i + 1] }]).then(render); return; }
@@ -6054,6 +6222,7 @@
     if (ds.altedit) { var ae = ds.altedit.split('|'); editAlternative(ae[0], ae[1]); return; }
     if (ds.altclear) { closeDrawer(); save('Deltakelse', [], [ds.altclear]).then(function () { toast('Fjernet'); render(); }); return; }
     if (ds.msopen) { msOpen(ds.msopen); return; }
+    if (ds.msskip) { msSkip(ds.msskip); return; }   // v25
     if (ds.msedit !== undefined) { editMilestone(ds.msedit || null); return; }
     if (ds.msyear) { state.filters.msYear = ds.msyear; state.keepScroll = true; render(); return; }
     if (ds.delms) { if (!window.confirm('Slette milepælen? Avkryssingene for den slettes ikke, men vises ikke lenger.')) return; closeDrawer(); save('Milepaeler', [], [ds.delms]).then(function () { toast('Slettet'); render(); }); return; }

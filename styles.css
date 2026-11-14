@@ -912,3 +912,15 @@ body.fldragging, body.fldragging * { cursor: grabbing !important; user-select: n
 .st-two { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
 .ch-info:empty { display: none; }
 .charttip { position: fixed; z-index: 40; pointer-events: none; background: var(--side); color: var(--side-text); font-size: 12.5px; padding: 4px 9px; border-radius: 6px; white-space: nowrap; }
+
+/* v25: Årsplan as a list */
+.yp-bar { margin-bottom: 10px; gap: 8px; }
+.yp-ed .yp-g { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; }
+.yp-ed .yp-g .tl-addin { margin: 0; }
+.yp-h { flex: 1 1 220px; font-weight: 600; }
+.yp-cat .yp-h { font-weight: 500; }
+.yp-catin { font: inherit; border: 1px dashed var(--line); background: transparent; padding: 4px 8px; border-radius: 6px; color: var(--text); }
+.yp-gen { font-size: 12.5px; color: var(--muted); align-self: center; }
+.yp-ed .tl-row select { max-width: 175px; }
+.yp-off { opacity: .6; }
+.yp-gen { white-space: nowrap; }
