@@ -3,6 +3,21 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v26 – 15 November 2026 (page and back end)
+
+One place for people on a project: the project's **Personer** list. Needs the new `Kode.gs`, `setup()` once and a new deployment, plus these page files.
+
+### Changed
+- **Mentor is a role in the project's Personer list.** A project can have several mentors. The project page shows the active ones under Mentor; the mentor invitation uses the first active one.
+- **"Ikke aktiv lenger" (+ optional date)** on every person in a project's list. Inactive people stay on the project, greyed under **Tidligere** ("Tidligere mentor · til …"), get no e-mails or copies, are not offered on guest lists, and show as "Tidligere mentor" on the person page.
+- The **Mentor** field in the project form is gone (the column `mentor_id` keeps its value but is no longer used).
+- The **"Andre prosjekter personen hører til"** ticks in the person form are gone (the column `Kontakter.prosjekter` keeps its value but is no longer used). Add a person to a project from the project's Personer.
+
+### Added (by `setup()`, once)
+- Each project's mentor is put into its Personer list with the role Mentor. If the person was already in the list, their role becomes Mentor.
+- Each tick on a person is put into that project's Personer list with the role Annet, unless someone with the same name is already there.
+- Runs only once (setting `v26_personer`), so someone you later remove is not put back. Nothing is deleted.
+
 ## v25.1 – 15 November 2026 (page only)
 
 ### Fixed

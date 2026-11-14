@@ -924,3 +924,6 @@ body.fldragging, body.fldragging * { cursor: grabbing !important; user-select: n
 .yp-ed .tl-row select { max-width: 175px; }
 .yp-off { opacity: .6; }
 .yp-gen { white-space: nowrap; }
+
+/* v26: people who are no longer active on a project */
+.pc-old { opacity: .6; }

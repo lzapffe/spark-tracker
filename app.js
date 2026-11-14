@@ -497,7 +497,7 @@
     var docs = d.Dokumenter.filter(function (x) { return x.prosjekt_id === p.id; });
     var delays = d.Forsinkelser.filter(function (x) { return x.prosjekt_id === p.id; });
     var hist = d.Historikk.filter(function (h) { return h.rad_id === p.id || tasks.some(function (t) { return t.id === h.rad_id; }); }).slice(-25).reverse();
-    var mentor = p.mentor_id ? byId('Kontakter', p.mentor_id) : null;
+    var mentors = projMentors(p).map(function (c) { return c.navn || c.epost; });   // v26
 
     var fact = function (l, v) { return '<div><span>' + l + '</span>' + (esc(v) || '–') + '</div>'; };
     var tools = '<button class="btn" data-act="editproject" data-id="' + esc(p.id) + '">Rediger</button>' +
@@ -513,7 +513,7 @@
       '<section class="panel"><div class="facts">' +
         '<div><span>Prosjektleder</span>' + (p.leder ? personLink(p.leder) : '–') + '</div>' + fact('E-post', p.epost || emailOf(p.leder)) + fact('Kull', p.kull) + fact('Startdato', fmtDate(p.startdato)) +
         fact('I fasen siden', fmtDate(p.fase_start)) + fact('Planlagt slutt', fmtDate(p.sluttdato)) + (p.ny_sluttdato ? fact('Ny slutt', fmtDate(p.ny_sluttdato)) : '') +
-        fact('Mentor', mentor ? mentor.navn : '') + fact('Samarbeid', p.partnere) +
+        '<div><span>Mentor</span>' + (mentors.length ? mentors.map(personLink).join(', ') : '–') + '</div>' + fact('Samarbeid', p.partnere) +
       '</div>' + (p.maal ? '<p>' + esc(p.maal) + '</p>' : '') + (p.forsinkelse_aarsak ? '<p class="empty">Forsinkelse: ' + esc(p.forsinkelse_aarsak) + '</p>' : '') + (p.merknader ? '<p class="empty">' + esc(p.merknader) + '</p>' : '') + '</section>' +
       milestonePanel(p) +
       planPanel(p) +
@@ -537,10 +537,14 @@
   // Prosjekter.kontakter (JSON [{navn, epost, rolle, kopi}]). kopi = 'ja': always on copy (cc)
   // when you e-mail the project from here. Templates are filled in with the leader's name.
   function projContacts(p) { var a = []; try { a = JSON.parse(p.kontakter || '[]'); } catch (e) { a = []; } return Array.isArray(a) ? a : []; }
-  function projCc(p) { return projContacts(p).filter(function (c) { return c.kopi !== 'nei' && c.epost; }).map(function (c) { return c.epost; }).join(','); }
+  // v26: a person on a project can be made inactive (aktiv = 'nei', til = date). Inactive people are kept under "Tidligere".
+  function pcActive(c) { return c.aktiv !== 'nei'; }
+  function projActive(p) { return projContacts(p).filter(pcActive); }
+  function projMentors(p, all) { return projContacts(p).filter(function (c) { return c.rolle === 'Mentor' && (all || pcActive(c)); }); }
+  function projCc(p) { return projActive(p).filter(function (c) { return c.kopi !== 'nei' && c.epost; }).map(function (c) { return c.epost; }).join(','); }
   // v14: people on a project: {navn, organisasjon, epost, rolle, tagger, kopi}. kopi = 'ja' (or missing, from
   // v11) = Kontaktperson: on copy when you e-mail the project leader. Tags come from the setting "tagger".
-  var PERSON_ROLES = ['Prosjektmedarbeider', 'Prosjektkoordinator', 'Samarbeidspartner', 'Annet'];
+  var PERSON_ROLES = ['Mentor', 'Prosjektmedarbeider', 'Prosjektkoordinator', 'Samarbeidspartner', 'Annet'];   // v26: + Mentor
   function splitList(t) { return String(t || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean); }
   function tagList() { return splitList(state.d.Innstillinger.tagger || 'foredragsholder, mentor, panel, samarbeidspartner'); }
   function tagsOf(x) { return splitList(x && x.tagger); }
@@ -568,9 +572,12 @@
       tagPicker(tagsOf(c)) +
       field('Allergier eller dietter', 'allergier', c.allergier) +
       '<label class="check"><input type="checkbox" name="kopi"' + (isKp(c) ? ' checked' : '') + '> Kontaktperson: tas med på kopi når du sender e-post til prosjektlederen</label>' +
+      '<div class="grid2"><label class="check"><input type="checkbox" name="inaktiv"' + (pcActive(c) ? '' : ' checked') + '> Ikke aktiv lenger</label>' +
+        '<label class="f">Fra dato (valgfritt)<input type="date" name="til" value="' + esc(c.til || '') + '"></label></div>' +
       actions(isNew ? '' : '<button type="button" class="btn danger" data-delpc="' + esc(pid) + '|' + esc(idx) + '">Fjern</button>'),
       function (form) {
         var row = { navn: val(form, 'navn'), organisasjon: val(form, 'organisasjon'), epost: val(form, 'epost'), rolle: val(form, 'rolle'), kopi: val(form, 'kopi'), allergier: val(form, 'allergier') };
+        row.aktiv = val(form, 'inaktiv') === 'ja' ? 'nei' : 'ja'; row.til = row.aktiv === 'nei' ? val(form, 'til') : '';   // v26
         if (!row.navn && !row.epost) { toast('Skriv navn eller e-post'); return; }
         if (row.epost && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.epost)) { toast('Sjekk e-postadressen'); return; }
         row.tagger = pickedTags(form);
@@ -587,9 +594,11 @@
     var v = { navn: p.leder || '', prosjekt: p.tittel || p.kortnavn, beskrivelse: p.maal || '' };
     return '<section class="panel"><h2>Personer</h2>' +
       '<div class="task"><span></span><div><div class="tt">' + (p.leder ? personLink(p.leder) : 'Prosjektleder ikke satt') + '</div><div class="meta">Prosjektleder' + (p.epost ? ' · ' + esc(p.epost) : '') + '</div></div></div>' +
-      list.map(function (c, i) {
-        return '<div class="task"><span></span><div class="t" data-pedit="' + esc(p.id) + '|' + i + '"><div class="tt">' + (c.navn ? personLink(c.navn) : esc(c.epost)) + (isKp(c) ? ' <span class="chip c-info">Kontaktperson</span>' : '') + '</div>' +
-          '<div class="meta">' + esc([c.rolle, c.organisasjon, c.epost].filter(Boolean).join(' · ')) + (tagsOf(c).length ? ' ' + tagChips(c) : '') + '</div></div>' +
+      list.map(function (c, i) { return { c: c, i: i }; }).filter(function (x) { return pcActive(x.c); }).concat([null], list.map(function (c, i) { return { c: c, i: i }; }).filter(function (x) { return !pcActive(x.c); })).map(function (x, k, all) {
+        if (!x) return all.length - 1 > k ? '<span class="group-h">Tidligere</span>' : '';
+        var c = x.c, i = x.i, old = !pcActive(c);
+        return '<div class="task' + (old ? ' pc-old' : '') + '"><span></span><div class="t" data-pedit="' + esc(p.id) + '|' + i + '"><div class="tt">' + (c.navn ? personLink(c.navn) : esc(c.epost)) + (isKp(c) && !old ? ' <span class="chip c-info">Kontaktperson</span>' : '') + '</div>' +
+          '<div class="meta">' + esc([old && c.rolle === 'Mentor' ? 'Tidligere mentor' : c.rolle, c.organisasjon, c.epost, old && c.til ? 'til ' + fmtDate(c.til) : ''].filter(Boolean).join(' · ')) + (tagsOf(c).length ? ' ' + tagChips(c) : '') + '</div></div>' +
           '<button class="btn ghost small" data-delpc="' + esc(p.id) + '|' + i + '" aria-label="Fjern ' + esc(c.navn || c.epost) + '">✕</button></div>';
       }).join('') +
       '<div class="row wrap"><button type="button" class="btn small" data-pedit="' + esc(p.id) + '|">+ Legg til person</button></div>' +
@@ -1189,13 +1198,12 @@
         field('Prosjektleders allergier eller dietter', 'leder_allergier', p.leder_allergier) +
         field('Startdato', 'startdato', p.startdato, 'date') + field('Planlagt slutt', 'sluttdato', p.sluttdato, 'date') +
         (id ? '' : field('Fase', 'fase', '', 'select', options(ACTIVE, p.fase))) +
-        field('Mentor', 'mentor_id', '', 'select', option('', p.mentor_id || '', '–') + contacts.map(function (c) { return option(c.id, p.mentor_id || '', personName(c)); }).join('')) +
       '</div>' +
       field('Andre samarbeidspartnere', 'partnere', p.partnere) +
       field('Mål / kort beskrivelse', 'maal', p.maal, 'textarea') +
       field('Merknader', 'merknader', p.merknader, 'textarea') + peopleDatalist() + actions(),
       function (form) {
-        var row = {}; ['kortnavn', 'kull', 'tittel', 'fakultet', 'enhet', 'leder', 'epost', 'leder_allergier', 'startdato', 'sluttdato', 'mentor_id', 'partnere', 'maal', 'merknader'].forEach(function (k) { row[k] = val(form, k); });
+        var row = {}; ['kortnavn', 'kull', 'tittel', 'fakultet', 'enhet', 'leder', 'epost', 'leder_allergier', 'startdato', 'sluttdato', 'partnere', 'maal', 'merknader'].forEach(function (k) { row[k] = val(form, k); });
         if (!row.kortnavn) { toast('Skriv et kortnavn'); return; }
         ensurePeople([{ navn: row.leder, epost: row.epost, allergier: row.leder_allergier, enhet: row.enhet }]);   // v22
         if (id) { row.id = id; save('Prosjekter', [row]).then(function () { closeDrawer(); toast('Lagret'); render(); }); return; }
@@ -1912,7 +1920,7 @@
   function dlMailList(f, r) {
     var out = [], seen = {};
     var add = function (navn, epost) { epost = String(epost || '').trim(); if (epost && !seen[epost.toLowerCase()]) { seen[epost.toLowerCase()] = 1; out.push(fmtAddr({ navn: navn, epost: epost })); } };
-    dlMissing(f, r).forEach(function (x) { add(x.leder, x.epost); if (x.kontakter !== undefined) projContacts(x).filter(isKp).forEach(function (c) { add(c.navn, c.epost); }); });
+    dlMissing(f, r).forEach(function (x) { add(x.leder, x.epost); if (x.kontakter !== undefined) projActive(x).filter(isKp).forEach(function (c) { add(c.navn, c.epost); }); });
     return out.join('; ');
   }
   // Reminders before (paminnelse, off until set) and after (purring, default the day after) a deadline,
@@ -2487,7 +2495,7 @@
     var out = [];
     signedUp(r).forEach(function (p) {
       if (p.leder) out.push({ navn: p.leder, hvor: p.kortnavn + ' (leder)', allergier: p.leder_allergier || (contactOf(p.leder) || {}).allergier || '' });
-      projContacts(p).forEach(function (c) { if (c.navn) out.push({ navn: c.navn, hvor: p.kortnavn + (c.rolle ? ' (' + c.rolle + ')' : ''), allergier: c.allergier || '' }); });
+      projActive(p).forEach(function (c) { if (c.navn) out.push({ navn: c.navn, hvor: p.kortnavn + (c.rolle ? ' (' + c.rolle + ')' : ''), allergier: c.allergier || '' }); });
     });
     state.d.Kontakter.forEach(function (c) { out.push({ navn: personName(c), hvor: 'Kontakt' + (c.rolle ? ': ' + c.rolle : ''), allergier: c.allergier || '' }); });
     return out;
@@ -3592,8 +3600,6 @@
     var c = id ? byId('Kontakter', id) : Object.assign({}, preset || {});
     if (!c) return;
     var nm = c.fornavn || c.etternavn ? { fornavn: c.fornavn || '', etternavn: c.etternavn || '' } : splitName(c.navn);
-    var projects = state.d.Prosjekter.filter(function (p) { return p.fase !== 'Arkivert'; });
-    var linked = (c.prosjekter || '').split(',');
     var before = id ? { navn: personName(c), epost: c.epost || '', allergier: c.allergier || '' } : null;
     openDrawer('<h2>' + (id ? esc(personName(c)) : 'Ny person') + '</h2>' +
       '<div class="grid2">' + field('Fornavn', 'fornavn', nm.fornavn) + field('Etternavn', 'etternavn', nm.etternavn) + '</div>' +
@@ -3604,9 +3610,8 @@
         field('Allergier eller dietter', 'allergier', c.allergier) + field('Sist kontakt', 'sist_kontakt', c.sist_kontakt, 'date') + '</div>' +
       field('Temaer (skill med komma)', 'emner', c.emner) + field('Kjenner via', 'kjenner_via', c.kjenner_via) +
       tagPicker(tagsOf(c)) +
-      (projects.length ? '<details class="unl"' + (c.prosjekter ? ' open' : '') + '><summary class="group-h">Andre prosjekter personen hører til</summary><div class="cl">' + projects.map(function (p) { return '<label><input type="checkbox" name="pr_' + esc(p.id) + '"' + (linked.indexOf(p.id) >= 0 ? ' checked' : '') + '> ' + esc(p.kortnavn) + '</label>'; }).join('') + '</div></details>' : '') +
       field('Notater (jobbrelatert)', 'notater', c.notater, 'textarea') +
-      '<p class="empty">Prosjektleder, panel, gjest og lignende kommer av seg selv fra der personen er brukt, med år.</p>' +
+      '<p class="empty">Prosjektleder, mentor, panel, gjest og lignende kommer av seg selv fra der personen er brukt, med år. Legg personen til i et prosjekt fra prosjektets Personer.</p>' +
       actions((id ? '<button type="button" class="btn danger" data-delcontact="' + esc(id) + '">Slett</button> ' : '') + '<button type="button" class="btn" data-contacttoday="1">Snakket med i dag</button>'),
       function (form) {
         var row = {}; ['fornavn', 'etternavn', 'rolle', 'enhet', 'epost', 'telefon', 'sist_kontakt', 'emner', 'kjenner_via', 'notater', 'allergier'].forEach(function (k) { row[k] = val(form, k); });
@@ -3615,7 +3620,6 @@
         var other = state.d.Kontakter.find(function (x) { return x.id !== id && sameName(personName(x), row.navn); });
         if (other) { toast(row.navn + ' finnes allerede i registeret'); return; }
         row.bare_fornavn = val(form, 'bare_fornavn'); row.meg = val(form, 'meg') === 'ja' ? 'ja' : '';
-        row.prosjekter = projects.filter(function (p) { var x = form.querySelector('[name="pr_' + p.id + '"]'); return x && x.checked; }).map(function (p) { return p.id; }).join(',');
         row.tagger = pickedTags(form);
         if (id) row.id = id;
         // Only one person can be "meg".
@@ -4790,16 +4794,16 @@
     apps.forEach(function (a) { add(to, a.leder, a.epost, 'søker: ' + a.kortnavn); });
     // 3. People on the chosen projects with a chosen role.
     var roles = splitList(o.roles);
-    if (roles.length) projects.forEach(function (p) { projContacts(p).forEach(function (c) { if (roles.indexOf(c.rolle) >= 0) add(to, c.navn, c.epost, p.kortnavn + ', ' + c.rolle); }); });
+    if (roles.length) projects.forEach(function (p) { projActive(p).forEach(function (c) { if (roles.indexOf(c.rolle) >= 0) add(to, c.navn, c.epost, p.kortnavn + ', ' + c.rolle); }); });
     // 4. Anyone with a chosen tag: contacts, and people on any project that isn't archived.
     var tags = splitList(o.tags), hasTag = function (x) { return tagsOf(x).some(function (t) { return tags.indexOf(t) >= 0; }); };
     if (tags.length) {
       d.Kontakter.forEach(function (c) { if (hasTag(c)) add(to, c.navn, c.epost, 'kontakt'); });
-      d.Prosjekter.filter(function (p) { return p.fase !== 'Arkivert'; }).forEach(function (p) { projContacts(p).forEach(function (c) { if (hasTag(c)) add(to, c.navn, c.epost, p.kortnavn); }); });
+      d.Prosjekter.filter(function (p) { return p.fase !== 'Arkivert'; }).forEach(function (p) { projActive(p).forEach(function (c) { if (hasTag(c)) add(to, c.navn, c.epost, p.kortnavn); }); });
     }
     // 5. The chosen projects' contact persons: asked once per selection (add, add as copy, or ignore).
     var kp = [], kpProjects = [];
-    projects.forEach(function (p) { projContacts(p).forEach(function (c) { if (isKp(c) && c.epost) { kp.push({ navn: c.navn, epost: c.epost, hvem: p.kortnavn + ', kontaktperson' }); if (kpProjects.indexOf(p) < 0) kpProjects.push(p); } }); });
+    projects.forEach(function (p) { projActive(p).forEach(function (c) { if (isKp(c) && c.epost) { kp.push({ navn: c.navn, epost: c.epost, hvem: p.kortnavn + ', kontaktperson' }); if (kpProjects.indexOf(p) < 0) kpProjects.push(p); } }); });
     var key = projects.map(function (p) { return p.id; }).sort().join(',');
     if (o.kpKey !== key) { o.kpKey = key; o.kp = ''; }
     if (o.kp === 'til') to = to.concat(kp); else if (o.kp === 'kopi') cc = cc.concat(kp);
@@ -4873,8 +4877,8 @@
       var next = d.Runder.filter(function (x) { var s = byId('Serier', x.serie_id); return s && s.type === 'mentormote' && x.status !== 'gjennomført' && x.status !== 'avlyst' && x.dato && x.dato >= today(); })
         .sort(function (a, b) { return a.dato < b.dato ? -1 : 1; })[0];
       if (next) { v.arrangement = seriesName(next.serie_id); date = next.dato; v.tid = next.tid || ''; v.sted = next.sted || ''; }
-      var mentor = p && p.mentor_id && byId('Kontakter', p.mentor_id);
-      if (mentor) { v.navn = mentor.navn; v.epost = mentor.epost; v.kontakt = mentor.id; }
+      var pm = p && projMentors(p)[0], mentor = pm && (contactOf(pm.navn) || {});   // v26: from the people list
+      if (pm) { v.navn = pm.navn; v.epost = pm.epost || mentor.epost || ''; v.kontakt = mentor.id || ''; }
     }
     var tpls = function (l) { return d.Maler.filter(function (m) { return m.type === kind && m.spraak === l; }); };
     openDrawer('<h2>' + esc(TPL_TYPES[kind]) + '</h2>' +
@@ -5088,14 +5092,17 @@
 
   // v22: where a person appears, each with a kind and a year: these show as automatic tags ("Panel 2026",
   // "Prosjektleder 2025"), so the register needs no tag per year. {k: kind, y: year, n: where, go: link}
-  var PERSON_KINDS = ['Prosjektleder', 'Prosjektmedarbeider', 'Mentor', 'Søker', 'Panel', 'Foredragsholder', 'Gjest', 'Agenda'];
+  var PERSON_KINDS = ['Prosjektleder', 'Prosjektmedarbeider', 'Mentor', 'Tidligere mentor', 'Søker', 'Panel', 'Foredragsholder', 'Gjest', 'Agenda'];
   function personWhere(name) {
     var d = state.d, out = [], c = contactOf(name);
     var is = function (n) { return sameName(n, name) || (c && (sameName(n, c.navn) || sameName(n, personName(c)) || (c.meg === 'ja' && sameName(n, 'Meg')))); };
     d.Prosjekter.filter(function (p) { return p.fase !== 'Arkivert'; }).forEach(function (p) {
       if (is(p.leder)) out.push({ k: 'Prosjektleder', y: p.kull || '', n: p.kortnavn, go: 'prosjekt/' + p.id });
-      if (c && p.mentor_id === c.id) out.push({ k: 'Mentor', y: p.kull || '', n: p.kortnavn, go: 'prosjekt/' + p.id });
-      projContacts(p).forEach(function (x) { if (is(x.navn)) out.push({ k: 'Prosjektmedarbeider', r: x.rolle || '', y: p.kull || '', n: p.kortnavn, go: 'prosjekt/' + p.id }); });
+      projContacts(p).forEach(function (x) {   // v26: Mentor is a role in the people list
+        if (!is(x.navn)) return;
+        var k = x.rolle === 'Mentor' ? (pcActive(x) ? 'Mentor' : 'Tidligere mentor') : 'Prosjektmedarbeider';
+        out.push({ k: k, r: (k === 'Prosjektmedarbeider' ? x.rolle || '' : '') + (k === 'Prosjektmedarbeider' && !pcActive(x) ? ' (tidligere)' : ''), y: p.kull || '', n: p.kortnavn, go: 'prosjekt/' + p.id });
+      });
     });
     d.Søkere.forEach(function (a) { if (is(a.leder)) out.push({ k: 'Søker', y: a.soknadsaar || '', n: a.kortnavn, go: 'sokere' }); });
     d.Runder.filter(function (r) { return r.arkivert !== 'ja'; }).forEach(function (r) {
