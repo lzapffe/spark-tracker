@@ -3,6 +3,11 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v25.1 – 15 November 2026 (page only)
+
+### Fixed
+- **Forms lost in v24 are back:** Rediger prosjekt / Nytt prosjekt, Endre fase, Ny søker / Rediger søker, Ta opp i programmet, and the project-person form (filling in e-mail etc. from the register). v24 removed them by mistake together with the old "Gjelder" field, so those buttons did nothing. The code is the same as in v23. `Kode.gs` is unchanged.
+
 ## v25 – 15 November 2026 (page and back end)
 
 Årsplan as a list per phase, milepæl phases as tick boxes, and changes for one year only. Needs the new `Kode.gs`, `setup()` once and a new deployment, plus these page files.

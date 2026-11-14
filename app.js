@@ -1175,6 +1175,108 @@
       steg: '', serie_id: '', kilde: '', kilde_ref: '', auto: 'ja', aktiv: 'ja', rekkefolge: String(maxR + 10), merknader: '' }]).then(function () { toast('Ny milepæl: ' + name); });
   }
 
+  // v25.1: put back (lost by mistake in v24): editProject, endFrom, changePhase, editApplicant, fillFromRegister, admit.
+  // Project editor (new or existing).
+  function editProject(id) {
+    var y0 = today().slice(0, 4);
+    var p = id ? byId('Prosjekter', id) : { fase: '1. år', forsinket: 'nei', kull: y0, startdato: y0 + '-01-01', sluttdato: endFrom(y0 + '-01-01') };
+    var contacts = state.d.Kontakter;
+    openDrawer('<h2>' + (id ? 'Rediger prosjekt' : 'Nytt prosjekt') + '</h2>' +
+      '<div class="grid2">' + field('Kortnavn', 'kortnavn', p.kortnavn) + field('Kull', 'kull', '', 'select', kullOptions(p.kull)) + '</div>' +
+      field('Full tittel', 'tittel', p.tittel) +
+      '<div class="grid2">' + field('Fakultet', 'fakultet', '', 'select', options(FACULTIES, p.fakultet || '', '–')) + field('Institutt/enhet', 'enhet', p.enhet) +
+        '<label class="f">Prosjektleder<input type="text" name="leder" list="pkList" autocomplete="off" value="' + esc(p.leder || '') + '"></label>' + field('E-post', 'epost', p.epost) +
+        field('Prosjektleders allergier eller dietter', 'leder_allergier', p.leder_allergier) +
+        field('Startdato', 'startdato', p.startdato, 'date') + field('Planlagt slutt', 'sluttdato', p.sluttdato, 'date') +
+        (id ? '' : field('Fase', 'fase', '', 'select', options(ACTIVE, p.fase))) +
+        field('Mentor', 'mentor_id', '', 'select', option('', p.mentor_id || '', '–') + contacts.map(function (c) { return option(c.id, p.mentor_id || '', personName(c)); }).join('')) +
+      '</div>' +
+      field('Andre samarbeidspartnere', 'partnere', p.partnere) +
+      field('Mål / kort beskrivelse', 'maal', p.maal, 'textarea') +
+      field('Merknader', 'merknader', p.merknader, 'textarea') + peopleDatalist() + actions(),
+      function (form) {
+        var row = {}; ['kortnavn', 'kull', 'tittel', 'fakultet', 'enhet', 'leder', 'epost', 'leder_allergier', 'startdato', 'sluttdato', 'mentor_id', 'partnere', 'maal', 'merknader'].forEach(function (k) { row[k] = val(form, k); });
+        if (!row.kortnavn) { toast('Skriv et kortnavn'); return; }
+        ensurePeople([{ navn: row.leder, epost: row.epost, allergier: row.leder_allergier, enhet: row.enhet }]);   // v22
+        if (id) { row.id = id; save('Prosjekter', [row]).then(function () { closeDrawer(); toast('Lagret'); render(); }); return; }
+        // A new project: save it, then set its phase so the phase's tasks are made.
+        var fase = val(form, 'fase');
+        row.forsinket = 'nei';
+        save('Prosjekter', [row]).then(function (saved) {
+          closeDrawer();
+          return run('api_setPhase', { id: saved[0].id, fase: fase, dato: row.startdato || today() }, 'Prosjektet er lagt til');
+        }).then(function () { location.hash = '#prosjekter'; });
+      });
+    // v11: Kull → start date 1 January that year (new projects); start date → planned end 2 years later.
+    // A date is only filled in when it is empty or still the value filled in automatically.
+    var form = $('drawerForm'), get = function (n) { return form.querySelector('[name="' + n + '"]'); };
+    fillFromRegister(get('leder'), { epost: get('epost'), allergier: get('leder_allergier') });   // v22
+    var autoStart = id ? '' : get('startdato').value, autoEnd = get('sluttdato').value === endFrom(get('startdato').value) || !get('sluttdato').value ? get('sluttdato').value : null;
+    get('kull').addEventListener('change', function () {
+      if (id || !/^\d{4}$/.test(this.value)) return;
+      if (!get('startdato').value || get('startdato').value === autoStart) { autoStart = get('startdato').value = this.value + '-01-01'; get('startdato').dispatchEvent(new Event('change', { bubbles: true })); }
+    });
+    get('startdato').addEventListener('change', function () {
+      var e = get('sluttdato');
+      if (autoEnd !== null && (e.value === autoEnd || !e.value) && this.value) autoEnd = e.value = endFrom(this.value);
+    });
+  }
+  // Planned end = 2 years after the start, the day before (start 1 Jan 2026 → end 31 Dec 2027).
+  function endFrom(start) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start || '')) return '';
+    var p = start.split('-').map(Number), t = new Date(Date.UTC(p[0] + 2, p[1] - 1, p[2]) - 86400000);
+    return t.toISOString().slice(0, 10);
+  }
+
+  // Phase change.
+  function changePhase(id) {
+    var p = byId('Prosjekter', id);
+    var next = PHASES[Math.min(PHASES.indexOf(p.fase) + 1, PHASES.length - 1)];
+    openDrawer('<h2>Endre fase: ' + esc(p.kortnavn) + '</h2><p class="empty">Nå: ' + esc(p.fase) + '. Oppgavene for den nye fasen lages med frister regnet fra datoen under. Velg «Arkivert» når prosjektet er helt ferdig.</p>' +
+      field('Ny fase', 'fase', '', 'select', options(PHASES.slice(1), next)) +
+      field('Fra dato', 'dato', next === '2. år' || next === 'Avslutning' ? (Number(today().slice(0, 4)) + (today().slice(5) > '06-30' ? 1 : 0)) + '-01-01' : today(), 'date') + actions(),
+      function (form) { closeDrawer(); run('api_setPhase', { id: id, fase: val(form, 'fase'), dato: val(form, 'dato') }, 'Fasen er endret').then(function (r) { if (r && r.summary) openDrawer('<h2>Prosjektet er arkivert</h2><p class="empty">En oppsummering er lagret i SPARK-eksport/Arkiv.</p><p><a class="btn primary" href="' + esc(safeUrl(r.summary)) + '" target="_blank" rel="noopener noreferrer">Åpne oppsummeringen</a></p><div class="actions"><span></span><button type="button" class="btn ghost" data-close>Lukk</button></div>', function () { closeDrawer(); }); }); });
+  }
+
+  // Applicant editor.
+  function editApplicant(id) {
+    var s = id ? byId('Søkere', id) : { soknadsaar: today().slice(0, 4), steg: STEPS[0], status: 'Aktiv' };
+    openDrawer('<h2>' + (id ? esc(s.kortnavn) : 'Ny søker') + '</h2>' +
+      '<div class="grid2">' + field('Kortnavn', 'kortnavn', s.kortnavn) + field('Søknadsår', 'soknadsaar', s.soknadsaar) + '</div>' +
+      field('Prosjekttittel', 'tittel', s.tittel) +
+      '<div class="grid2">' + field('Fakultet', 'fakultet', '', 'select', options(FACULTIES, s.fakultet || '', '–')) + field('Institutt/enhet', 'enhet', s.enhet) +
+        '<label class="f">Prosjektleder<input type="text" name="leder" list="pkList" autocomplete="off" value="' + esc(s.leder || '') + '"></label>' + field('E-post', 'epost', s.epost) +
+        field('Steg', 'steg', '', 'select', options(STEPS, s.steg || STEPS[0])) + field('Status', 'status', '', 'select', options(['Aktiv', 'Opptatt', 'Avslått', 'Trukket'], s.status || 'Aktiv')) + '</div>' +
+      field('Merknader', 'merknader', s.merknader, 'textarea') + peopleDatalist() + actions(),
+      function (form) {
+        var row = {}; ['kortnavn', 'soknadsaar', 'tittel', 'fakultet', 'enhet', 'leder', 'epost', 'steg', 'status', 'merknader'].forEach(function (k) { row[k] = val(form, k); });
+        if (!row.kortnavn) { toast('Skriv et kortnavn'); return; }
+        ensurePeople([{ navn: row.leder, epost: row.epost, enhet: row.enhet }]);   // v22
+        if (id) row.id = id;
+        save('Søkere', [row]).then(function () { closeDrawer(); toast('Lagret'); if (!id) load(true); else render(); });
+      });
+    var sf = $('drawerForm'); fillFromRegister(sf.querySelector('[name="leder"]'), { epost: sf.querySelector('[name="epost"]') });   // v22
+  }
+  // v22: picking a name from the register fills in empty fields (e-mail, allergies, organisation).
+  function fillFromRegister(input, targets) {
+    if (!input) return;
+    input.addEventListener('change', function () {
+      var c = contactOf(input.value); if (!c) return;
+      if (targets.epost && !targets.epost.value) targets.epost.value = c.epost || '';
+      if (targets.allergier && !targets.allergier.value) targets.allergier.value = c.allergier || '';
+      if (targets.enhet && !targets.enhet.value) targets.enhet.value = c.enhet || '';
+    });
+  }
+
+  // Admit an applicant.
+  function admit(id) {
+    var s = byId('Søkere', id);
+    openDrawer('<h2>Ta opp i programmet: ' + esc(s.kortnavn) + '</h2><p class="empty">Søkeren blir et fullt prosjekt i «1. år», med samme notater og oppgaver. Oppgavene for 1. år lages med frister regnet fra startdatoen.</p>' +
+      field('Startdato', 'start', (Number(today().slice(0, 4)) + 1) + '-01-01', 'date') +
+      '<div class="actions"><span></span><span><button type="button" class="btn ghost" data-close>Avbryt</button> <button class="btn primary" type="submit">Ta opp i programmet</button></span></div>',
+      function (form) { closeDrawer(); run('api_admit', { id: id, startdato: val(form, 'start') }, s.kortnavn + ' er tatt opp').then(function () { location.hash = '#prosjekt/' + id; }); });
+  }
+
   // Decline or withdraw an applicant.
   function decline(id) {
     var s = byId('Søkere', id);
