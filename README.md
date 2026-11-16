@@ -32,7 +32,7 @@ See [docs/workflow.md](docs/workflow.md) for the full list, limits and warnings.
 ## Setting it up from scratch
 
 1. Make a Google Sheet called "SPARK-tracker" in your own Drive. Open **Extensions → Apps Script**, paste `Kode.gs` into `Code.gs` and save.
-2. Run `setup()` once (allow the permissions). It makes every tab, the year plan, the event series, the guide Docs, the e-mail templates and the two timed triggers.
+2. Run `setup()` once (allow the permissions). It makes every tab, the year plan, the event series, the e-mail templates and the two timed triggers.
 3. Run `setupRemote()` once. The log shows the app key. Keep it out of files and chats.
 4. **Deploy → New deployment → Web app**, run as *me*, access *anyone*. Copy the link that ends in `/exec`.
 5. Put the page files in a GitHub repository with GitHub Pages turned on.

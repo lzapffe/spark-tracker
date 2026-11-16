@@ -3,6 +3,31 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v27 – 16 November 2026 (page and back end)
+
+Pitch times, things that tick each other, own deadlines for delayed projects, one search and a readable export. Needs the new `Kode.gs`, `setup()` once and a new deployment, plus these page files.
+
+### Added
+- **Tidspunkter (pitch only)** on an activity year: time from–to, project, note and **Digitalt** per row. "Hent tider fra agendaen" fills in the times. Giving a project a time signs it up (Påmeldt), with Angre. Digitalt shows as a tag in the list and on the agenda row. Each row has an **E-post** button; templates can use `{pitchtid}` (one project's time) and `{tidsplan}` (the whole list); "Kopier tidsplanen". The time shows on the project page, in the Prosjekter table and in the export.
+- **Milepæler reached from a deadline delivery or from attendance** ("Nås når" in the milepæl form). The year that counts is the activity year in the milepæl's phase for the project; delayed projects use the phase they were really in (Fasehistorikk).
+- **Group tasks linked to a deadline** ("Kobles til frist" in the task form). Ticks follow both ways; existing ticks are copied both ways when you link, and the notice says what was copied.
+- Every link is shown where it is set up and on the other side ("Krysser også av …"). When a tick also ticks something else, a notice says so, with **Angre**, for 7 seconds. If the project is only on one side, the notice says it wasn't ticked there. Automatic ticks go away when the source is unticked; ticks you set by hand are never undone.
+- **Utsett prosjektet** lists the open tasks and the unreached milepæler, each with its own new date (filled with +N months, editable, untick to leave it). Milepæler with **Flyttes ved forsinkelse** (new in the milepæl form) are ticked by default. Moved milepæl deadlines apply to that project only and show as "Frist flyttet til …"; change them later with **Endre frist** on the project page.
+- **Søknad <år>** in the project facts opens the applicant form.
+- **"Last ned alt" makes a readable set of Word files:** Les meg først, Status, Årsplan, E-postmaler, Personer, Kunnskapsbank, one file per activity year (all years) and one per project. Everything is included.
+
+### Changed
+- **Kull** on admission is the start year (was the application year). Existing projects are not changed.
+- **One search over everything:** Søk and the Kunnskapsbank box search the same places, now also Erfaringer and Dokumenter. Kunnskapsbank shows its notes first and hits from elsewhere under "Treff andre steder i SPARK".
+- The handover Doc is gone; its content is in the zip set.
+
+### Removed
+- The **Veiledninger** settings panel, the guide links on phase and activity pages, and the guide Docs. `setup()` no longer makes them; the weekly backup and the zip no longer copy them. The settings `guider` / `guide_mappe` stay in the sheet. "Egen veiledning" on an activity stays.
+
+### Added (by `setup()`, once)
+- New columns: Prosjekter `milepael_frister`, Oppgaver `kobling`, Runder `tidspunkter`, Milepaeler `flyttes`.
+- **Flyttes ved forsinkelse** is turned on for Kontrakt signert, Sluttrapportskjema sendt, Sluttrapport mottatt and Sluttintervju holdt (only where empty; runs once, setting `v27_flyttes`).
+
 ## v26 – 15 November 2026 (page and back end)
 
 One place for people on a project: the project's **Personer** list. Needs the new `Kode.gs`, `setup()` once and a new deployment, plus these page files.

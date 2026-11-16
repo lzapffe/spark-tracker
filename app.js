@@ -39,7 +39,15 @@
   function addDays(d, n) { var p = d.split('-').map(Number); var x = new Date(Date.UTC(p[0], p[1] - 1, p[2] + n)); return x.toISOString().slice(0, 10); }
   function fmtDate(d) { if (!d) return ''; var p = d.split('-').map(Number); return p[2] + '. ' + MONTHS[p[1] - 1] + (p[0] !== Number(today().slice(0, 4)) ? ' ' + p[0] : ''); }
   function daysBetween(a, b) { return Math.round((Date.parse(b) - Date.parse(a)) / 86400000); }
-  function toast(msg) { var t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(function () { t.hidden = true; }, 2200); }
+  // v27: toast(msg, undo): with an undo function the message gets an "Angre" button and stays for 7 seconds.
+  function toast(msg, undo) {
+    var t = $('toast'); clearTimeout(toast.t);
+    if (undo) {
+      t.innerHTML = '<span>' + esc(msg) + '</span> <button type="button" class="toast-undo">Angre</button>';
+      t.querySelector('.toast-undo').addEventListener('click', function (e) { e.stopPropagation(); t.hidden = true; undo(); });
+    } else t.textContent = msg;
+    t.hidden = false; toast.t = setTimeout(function () { t.hidden = true; }, undo ? 7000 : 2200);
+  }
   function byId(tab, id) { return (state.d[tab] || []).find(function (r) { return r.id === id; }) || null; }
   function option(v, cur, label) { return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(label == null ? v : label) + '</option>'; }
   function options(list, cur, blank) { return (blank != null ? option('', cur, blank) : '') + list.map(function (v) { return option(v, cur); }).join(''); }
@@ -149,10 +157,10 @@
   function cpFromMs(st) {
     var open = st.tasks.filter(openTask), lateT = open.filter(isLate).length;
     if (st.reached) return isAltTick(st.tick) ? { c: 'alt', label: '◆', state: 'done', detail: 'Nådd via alternativ' + (st.tick.alternativ ? ': ' + st.tick.alternativ : '') } :
-      { c: 'done', label: '✓', state: 'done', detail: 'Nådd' + (st.reached.length === 10 ? ' ' + fmtDate(st.reached) : '') };
+      { c: 'done', label: '✓', state: 'done', detail: 'Nådd' + (st.reached.length === 10 ? ' ' + fmtDate(st.reached) : '') + (st.via ? ' via ' + st.via : '') };
     if (!st.y) return { c: 'na', label: '–', state: 'open', detail: 'Prosjektet mangler startdato eller kull' };
     var wait = open.find(function (t) { return t.status === 'Venter på'; });
-    var det = 'Frist ' + fmtDate(st.due) + (st.info ? ' · ' + st.info : st.tasks.length ? ' · ' + st.done + ' av ' + st.tasks.length + ' oppgaver ferdig' : '') +
+    var det = (st.moved ? 'Frist flyttet til ' : 'Frist ') + fmtDate(st.due) + (st.info ? ' · ' + st.info : st.tasks.length ? ' · ' + st.done + ' av ' + st.tasks.length + ' oppgaver ferdig' : '') +
       (lateT ? ' · ' + lateT + (lateT > 1 ? ' oppgaver' : ' oppgave') + ' forfalt' : '') + (wait && wait.venter_paa ? ' · venter på ' + whoList(wait.venter_paa).map(shortPerson).join(', ') : '');
     if (st.late) return { c: 'late', label: 'Ikke nådd', state: 'late', detail: 'Ikke nådd · ' + det };
     if (st.count && st.count.n > 0) return { c: 'prog', label: st.count.n + '/' + st.count.need, state: 'prog', detail: det };
@@ -437,9 +445,10 @@
       list.push({ label: 'Med', sub: r.dato ? fmtDate(r.dato) : 'ingen dato', cell: function (p) {
         var a = d.Deltakelse.find(function (x) { return x.prosjekt_id === p.id && x.runde_id === r.id; }), st = a && a.status;
         var at = function (v) { return 'data-psatt="' + esc(p.id + '|' + r.id + '|' + v) + '"'; };
-        if (st === 'Deltatt') return { c: 'done', l: '✓ Deltatt', a: at(''), on: 1 };
+        var sl = slotOf(r, p.id), slt = sl ? ' · ' + slotText(sl) : '';   // v27: the pitch time
+        if (st === 'Deltatt') return { c: 'done', l: '✓ Deltatt' + slt, a: at(''), on: 1 };
         if (st === 'Alternativ') return { c: 'alt', l: '◆ Alternativ', a: 'data-psalt="' + esc(p.id + '|' + r.id) + '"', on: 1, t: altText(a) };
-        if (st === 'Påmeldt') return { c: 'info', l: 'Påmeldt', a: at('Deltatt'), on: r.dato && r.dato > t0 ? 1 : 0 };
+        if (st === 'Påmeldt') return { c: 'info', l: 'Påmeldt' + slt, a: at('Deltatt'), on: r.dato && r.dato > t0 ? 1 : 0 };
         return { c: 'na', l: '–', a: at(r.dato && r.dato < t0 ? 'Deltatt' : 'Påmeldt') };
       } });
       deadlineList(s).filter(function (f) { return f['for'] === 'prosjekter'; }).forEach(function (f) {
@@ -488,6 +497,11 @@
 
 
   // ---- Page: one project -------------------------------------------------------------
+  // v27: the project came from an application with the same ID: "Søknad 2026" opens the applicant form.
+  function appFact(p) {
+    var a = byId('Søkere', p.id);
+    return a ? '<div><span>Søknad</span><button type="button" class="plink" data-edit-applicant="' + esc(a.id) + '">Søknad ' + esc(a.soknadsaar || '') + '</button></div>' : '';
+  }
   function pageProject() {
     var d = state.d, p = byId('Prosjekter', state.param);
     if (!p) return head('Fant ikke prosjektet') + '<a href="#prosjekter">Tilbake til prosjektene</a>';
@@ -511,7 +525,7 @@
         '<div class="sub"><span class="ph">' + esc(p.fase) + '</span> ' + (p.forsinket === 'ja' ? '<span class="chip c-late">Forsinket</span> ' : '') + esc([p.fakultet, p.enhet].filter(Boolean).join(' · ')) + '</div></div>' +
         '<div class="tools">' + tools + '</div></div>' +
       '<section class="panel"><div class="facts">' +
-        '<div><span>Prosjektleder</span>' + (p.leder ? personLink(p.leder) : '–') + '</div>' + fact('E-post', p.epost || emailOf(p.leder)) + fact('Kull', p.kull) + fact('Startdato', fmtDate(p.startdato)) +
+        '<div><span>Prosjektleder</span>' + (p.leder ? personLink(p.leder) : '–') + '</div>' + fact('E-post', p.epost || emailOf(p.leder)) + fact('Kull', p.kull) + appFact(p) + slotFacts(p) + fact('Startdato', fmtDate(p.startdato)) +
         fact('I fasen siden', fmtDate(p.fase_start)) + fact('Planlagt slutt', fmtDate(p.sluttdato)) + (p.ny_sluttdato ? fact('Ny slutt', fmtDate(p.ny_sluttdato)) : '') +
         '<div><span>Mentor</span>' + (mentors.length ? mentors.map(personLink).join(', ') : '–') + '</div>' + fact('Samarbeid', p.partnere) +
       '</div>' + (p.maal ? '<p>' + esc(p.maal) + '</p>' : '') + (p.forsinkelse_aarsak ? '<p class="empty">Forsinkelse: ' + esc(p.forsinkelse_aarsak) + '</p>' : '') + (p.merknader ? '<p class="empty">' + esc(p.merknader) + '</p>' : '') + '</section>' +
@@ -802,7 +816,6 @@
   function pageSettings() { return pageSettingsMain() + dataFilesPanel(); }   // v23
   function pageSettingsMain() {
     var s = state.d.Innstillinger, theme = store(THEME_KEY) || 'system';
-    var guides = {}; try { guides = JSON.parse(s.guider || '{}'); } catch (e) { guides = {}; }
     return head('Innstillinger') +
       '<section class="panel"><h2>Utseende</h2><span class="seg">' + ['system', 'lys', 'mørk'].map(function (t) { return '<button data-theme-set="' + t + '" aria-pressed="' + (theme === t) + '">' + t.charAt(0).toUpperCase() + t.slice(1) + '</button>'; }).join('') + '</span></section>' +
       '<form class="panel" data-form="settings"><h2>Regler</h2><div class="facts">' +
@@ -816,8 +829,7 @@
         '<label class="f">Frist for «Få refusjon» (dager etter betalt)<input type="number" id="sRf" value="' + esc(s.refusjon_dager || '14') + '"></label>' +
         '<label class="f">Tagger for personer og kontakter (skill med komma)<input type="text" id="sTags" value="' + esc(tagList().join(', ')) + '"></label>' +
       '</div><div class="addrow"><button class="btn primary" type="submit">Lagre</button></div></form>' +
-      '<section class="panel"><h2>Veiledninger <span class="hint">Google Docs</span></h2><div class="hist">' + (Object.keys(guides).length ? Object.keys(guides).map(function (k) { return '<div><a href="' + esc(safeUrl(guides[k])) + '" target="_blank" rel="noopener noreferrer">' + esc(k) + '</a></div>'; }).join('') : 'Ingen ennå (kjør setup i Apps Script).') + '</div></section>' +
-      '<section class="panel"><h2>Sikkerhetskopi</h2><p class="empty">Hver søndag natt lagres en kopi av regnearket, veiledningene og eksportene i mappen SPARK-backup (de 8 nyeste beholdes). «Last ned alt» lager én zip-fil med regnearket som Excel og alle dokumentene som Word, til en kopi utenfor Google.</p>' +
+      '<section class="panel"><h2>Sikkerhetskopi</h2><p class="empty">Hver søndag natt lagres en kopi av regnearket og eksportene i mappen SPARK-backup (de 8 nyeste beholdes). «Last ned alt» lager én zip-fil med regnearket som Excel og et lesbart sett med Word-dokumenter (Les meg først, Årsplan, E-postmaler, ett dokument per aktivitetsår og per prosjekt, og status), til en kopi utenfor Google.</p>' +
         '<div class="addrow"><button class="btn primary" type="button" data-act="zipall">Last ned alt</button></div></section>' +
       (!(window.google && google.script && google.script.run) ? '<section class="panel"><h2>Denne enheten</h2><button class="btn danger" data-act="forget">Glem nøkkelen på denne enheten</button></section>' : '');
   }
@@ -898,17 +910,17 @@
   function groupLine(t) {
     var mem = taskMembers(t), tk = taskTicks(t), n = mem.filter(function (x) { return tk[x.id]; }).length, need = taskNeed(t, mem);
     var what = PANEL_GROUPS[t.gruppe] ? (t.teller === 'ja' ? 'har sagt ja' : 'har fått e-post') : 'ferdig';
-    if (!mem.length) return '<div class="gt"><span class="why">' + (PANEL_GROUPS[t.gruppe] ? 'Ingen på listen ennå' : 'Ingen valgt ennå') + '</span></div>';
+    if (!mem.length) return '<div class="gt"><span class="why">' + (PANEL_GROUPS[t.gruppe] ? 'Ingen på listen ennå' : 'Ingen valgt ennå') + '</span></div>' + koblingText(t);
     return '<div class="gt"><span class="gt-n">' + n + ' av ' + need + ' ' + what + '</span><span class="pbar gt-bar"><i data-w="' + (need ? Math.min(100, Math.round(n * 100 / need)) : 0) + '"></i></span></div>' +
       '<div class="gt-b">' + mem.map(function (x) {
         var on = !!tk[x.id], no = x.p && x.p.svar === 'Nei';
         return '<span class="gt-m"><button type="button" class="gt-btn' + (no ? ' no' : '') + '" data-gtick="' + esc(t.id + '|' + x.id) + '" aria-pressed="' + on + '"' + (no ? ' title="Har sagt nei"' : '') + '>' + (on ? '✓ ' : '') + esc(x.kortnavn) + '</button>' +
           (x.p && t.teller !== 'ja' && !on && x.p.epost ? '<button type="button" class="gt-mail" data-gmail="' + esc(t.id + '|' + x.id) + '" aria-label="Skriv e-post til ' + esc(x.p.navn) + '" title="Skriv e-post (merkes som sendt)">✉</button>' : '') + '</span>';
-      }).join('') + '</div>';
+      }).join('') + '</div>' + koblingText(t);
   }
   // A click on a member's button: tick / untick. For panel lists it notes "e-post sendt" or "Ja" in the list.
   // When enough are ticked, the task is done (with the animation).
-  function groupTick(tid, mid, mail) {
+  function groupTick(tid, mid, mail, quiet) {
     var t = byId('Oppgaver', tid); if (!t) return;
     state.keepScroll = true;
     if (PANEL_GROUPS[t.gruppe]) {
@@ -922,12 +934,18 @@
       savePanel(r, list, mail ? 'Merket som sendt' : 'Lagret');
       return;
     }
-    var tk = taskTicks(t); if (tk[mid]) delete tk[mid]; else tk[mid] = today();
+    var tk = taskTicks(t), on = !tk[mid]; if (tk[mid]) delete tk[mid]; else tk[mid] = today();
     t.avkrysset = Object.keys(tk).length ? JSON.stringify(tk) : '';
     var row = { id: tid, avkrysset: t.avkrysset }, fin = groupReached(t);
     if (fin) row.status = 'Ferdig';
-    Promise.all([save('Oppgaver', [row]), fin ? celebrate(tid) : null]).then(function () {
-      toast(fin ? 'Alle er ferdige, så oppgaven er merket som ferdig' : 'Lagret');
+    // v27 (d): a group task linked to a deadline ticks the deadline too (and the milepæler linked to it).
+    var k = t.kobling ? t.kobling.split('|') : null, lr = k && byId('Runder', k[0]);
+    var before = lr ? linkSnap(mid, lr, 'frist', k[1]) : [], sync = k ? syncDeadlineFromGroup(t, mid, on) : { msg: [] };
+    Promise.all([save('Oppgaver', [row]), sync.json ? save('Runder', [{ id: sync.r.id, frist_status: sync.json }]) : null, fin ? celebrate(tid) : null]).then(function () {
+      var msg = sync.msg.concat(lr ? linkDiff(before, linkSnap(mid, lr, 'frist', k[1]), on) : []);
+      if (quiet) toast('Angret');
+      else if (msg.length && !mail) toast(msg.join(' · '), function () { groupTick(tid, mid, '', true); });
+      else toast(fin ? 'Alle er ferdige, så oppgaven er merket som ferdig' : 'Lagret');
       if (fin && (dependents(tid).length || isRefundTask(tid))) load(true); else render();
     });
   }
@@ -971,7 +989,8 @@
       '<div class="f"><span>Gjelder</span>' + gjSeg + '</div>' +
       '<div id="gjPro"' + (gj === 'pro' ? '' : ' hidden') + '>' + field('Prosjekt', 'prosjekt_id', '', 'select', option('', t.prosjekt_id || '', '–') + projects.map(function (p) { return option(p.id, t.prosjekt_id || '', p.kortnavn); }).join('')) + '</div>' +
       '<div id="gjGrp"' + (gj === 'grp' ? '' : ' hidden') + '><div class="f"><span>Gruppe</span>' + grpSeg + '</div><div id="grpMembers">' + memberBox() + '</div>' +
-        '<label class="f">Trenger (tom = alle)<input type="number" min="1" name="trenger" value="' + esc(t.trenger || '') + '"></label></div>' +
+        '<label class="f">Trenger (tom = alle)<input type="number" min="1" name="trenger" value="' + esc(t.trenger || '') + '"></label>' +
+        '<label class="f" id="koblingF"' + (PROJECT_GROUPS[grp] && grp !== 'sokere' ? '' : ' hidden') + '>Kobles til frist (kryssene følger hverandre)<select name="kobling">' + koblingOptions(t) + '</select></label></div>' +
       '<div class="grid2"><label class="f">Frist<input type="date" name="frist" value="' + esc(t.frist || '') + '"><span id="fristWarn" class="dm-m"></span></label>' + field('Status', 'status', '', 'select', STATUSES.map(function (x) { return option(x, t.status, statusLabel(x)); }).join('')) + '</div>' +
       unlockFields(t, id) +
       (openCands.length ? '<details class="unl"' + (opens.length ? ' open' : '') + '><summary class="group-h">Åpner' + (opens.length ? ' (' + opens.length + ')' : '') + '</summary><p class="empty">Oppgaver som er låst til denne er ferdig.</p><div class="cl scrollcl">' +
@@ -1001,6 +1020,7 @@
         var row = { tittel: val(form, 'tittel'), prosjekt_id: gj === 'pro' ? val(form, 'prosjekt_id') : '', gruppe: gj === 'grp' ? grp : '', utenom: isProjGrp ? out.join(',') : '',
           avkrysset: gj === 'grp' && !PANEL_GROUPS[grp] && Object.keys(ticks).length ? JSON.stringify(ticks) : '',
           personer: gj === 'grp' && grp === 'personer' ? val(form, 'personer') : '', trenger: gj === 'grp' ? val(form, 'trenger') : '', teller: gj === 'grp' && PANEL_GROUPS[grp] ? teller : '',
+          kobling: isProjGrp && grp !== 'sokere' ? val(form, 'kobling') || '' : '',   // v27 (d)
           type: val(form, 'type'), status: val(form, 'status'), liste: val(form, 'liste'), spor: val(form, 'spor'),
           frist: val(form, 'frist'), fase: val(form, 'fase'), venter_paa: val(form, 'venter_paa'), oppfolging: val(form, 'oppfolging'), notat: val(form, 'notat'),
           sjekkliste: newCl.length ? JSON.stringify(newCl) : '' };
@@ -1028,8 +1048,9 @@
             if (has === want) return null;
             return { id: x.id, laases_opp_av: (want ? cur.concat([tid]) : cur.filter(function (k) { return k !== tid; })).join(',') };
           }).filter(Boolean);
-          return (upd.length ? save('Oppgaver', upd) : Promise.resolve()).then(function () {
-            closeDrawer(); toast(autoDone ? 'Alle er ferdige, så oppgaven er merket som ferdig' : 'Lagret'); if (reload || upd.length) load(true); else render();
+          var saved0 = tid && byId('Oppgaver', tid), linked = row.kobling && row.kobling !== (t.kobling || '') && saved0;
+          return (upd.length ? save('Oppgaver', upd) : Promise.resolve()).then(function () { return linked ? linkCopy(saved0, row.kobling) : ''; }).then(function (lmsg) {
+            closeDrawer(); toast(lmsg || (autoDone ? 'Alle er ferdige, så oppgaven er merket som ferdig' : 'Lagret')); if (reload || upd.length) load(true); else render();
           });
         });
       });
@@ -1052,6 +1073,7 @@
       b.addEventListener('click', function (e) {
         e.stopPropagation(); grp = b.dataset.grp; out = [];
         dr.querySelectorAll('[data-grp]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+        if ($('koblingF')) $('koblingF').hidden = !(PROJECT_GROUPS[grp] && grp !== 'sokere');
         $('grpMembers').innerHTML = memberBox(); initPeopleFields();
       });
     });
@@ -1335,11 +1357,6 @@
   var PHASE_SLUG = { soknad: 'Søknad', '1': '1. år', '2': '2. år', avslutning: 'Avslutning' };
   function phaseSlug(ph) { return Object.keys(PHASE_SLUG).find(function (k) { return PHASE_SLUG[k] === ph; }) || 'soknad'; }
 
-  // A guide Doc link for a phase or event type, from the settings.
-  function guideLink(key, label) {
-    var g = {}; try { g = JSON.parse(state.d.Innstillinger.guider || '{}'); } catch (e) { g = {}; }
-    return g[key] ? '<a href="' + esc(safeUrl(g[key])) + '" target="_blank" rel="noopener noreferrer">' + esc(label || 'Veiledning') + '</a>' : '';
-  }
 
 
   // ---- Workshops: how many obligatory workshops a project has attended ----
@@ -1368,7 +1385,6 @@
     var general = d.Oppgaver.filter(function (t) { return !t.prosjekt_id && t.aar === year && t.fase === ph && t.type !== 'notater' && (state.filters.showLocked || !isLocked(t)); })
       .sort(function (a, b) { var pa = progressOf(a), pb = progressOf(b); return Number(pa && pa.maaned || 99) - Number(pb && pb.maaned || 99); });
     var openGeneral = general.filter(openTask);
-    var guideKey = ph;
 
     // The application phase shows applicants; the others show projects.
     var members, grid;
@@ -1386,7 +1402,7 @@
     var delayed = members.filter(function (p) { return p.forsinket === 'ja'; }).length;
     var nowCount = projTasks.filter(function (t) { return !isLocked(t); }).length;
 
-    return head(ph, (ph === 'Søknad' ? 'Søknadsår ' + year : members.length + ' prosjekter') + (guideLink(guideKey) ? ' · ' + guideLink(guideKey, 'Veiledning for fasen') : ''), seg + lockedToggle()) +
+    return head(ph, (ph === 'Søknad' ? 'Søknadsår ' + year : members.length + ' prosjekter'), seg + lockedToggle()) +
       '<div class="kpis">' + kpi(ph === 'Søknad' ? 'Aktive søkere' : 'Prosjekter', members.length) + kpi('Generelle oppgaver igjen', openGeneral.length + ' av ' + general.length) +
         kpi('Prosjektoppgaver nå', nowCount) + kpi(ph === 'Søknad' ? 'Forfalt' : 'Forsinket', ph === 'Søknad' ? projTasks.filter(isLate).length : delayed, ph !== 'Søknad' && delayed > 0) + '</div>' +
       '<section class="panel"><h2>' + (ph === 'Søknad' ? 'Søkere' : 'Prosjektene i fasen') + '</h2>' + grid + '</section>' +
@@ -1478,7 +1494,7 @@
     };
     var arr = list.filter(function (s) { return artOf(s) === 'arrangement'; }), pro = list.filter(function (s) { return artOf(s) === 'prosess'; });
     var table = function (l, first, empty) { return '<div class="tablewrap">' + (l.length ? '<table class="t"><tr><th>' + first + '</th><th>Type</th><th>I år</th><th>Aktive prosjekter som ikke har vært med</th></tr>' + l.map(rowOf).join('') + '</table>' : '<div class="empty">' + empty + '</div>') + '</div>'; };
-    return head('Aktiviteter', 'Arrangementer og prosesser som kommer hvert år, med egne oppgavelister, e-postmaler og budsjett' + (guideLink('workshop') ? ' · ' + guideLink('workshop', 'Workshop-veiledning') : ''), tools) +
+    return head('Aktiviteter', 'Arrangementer og prosesser som kommer hvert år, med egne oppgavelister, e-postmaler og budsjett', tools) +
       '<section class="panel"><h2>Arrangementer <span class="hint">workshops, oppstartsmøte, mentormøter, pitch</span></h2>' + table(arr, 'Arrangement', 'Ingen arrangementer.') + '</section>' +
       '<section class="panel"><h2>Prosesser <span class="hint">utlysning, søknadsrunder, rapportering</span></h2>' + table(pro, 'Prosess', 'Ingen prosesser ennå. Trykk «Ny aktivitet» og velg Prosess.') + '</section>';
   }
@@ -1545,7 +1561,7 @@
       (s.status !== 'arkivert' ? '<button class="btn" data-act="newversion" data-id="' + esc(s.id) + '">Ny versjon</button><button class="btn primary" data-act="newrun" data-id="' + esc(s.id) + '">Nytt år</button>' : '');
 
     return '<div class="top"><div class="ptitle"><div class="short"><a href="#hendelser">Aktiviteter</a> / ' + esc(TYPE_NAMES[s.type] || s.type) + '</div><h1>' + esc(s.navn) + '</h1>' +
-        '<div class="sub">Versjon ' + esc(s.versjon || 1) + (s.status === 'arkivert' ? ' · <span class="chip c-na">arkivert</span>' : '') + (s.obligatorisk === 'ja' ? ' · obligatorisk' : '') + (guideLink(s.type) ? ' · ' + guideLink(s.type, 'Veiledning') : '') + (s.guide ? ' · <a href="' + esc(safeUrl(s.guide)) + '" target="_blank" rel="noopener noreferrer">Egen veiledning</a>' : '') + '</div></div>' +
+        '<div class="sub">Versjon ' + esc(s.versjon || 1) + (s.status === 'arkivert' ? ' · <span class="chip c-na">arkivert</span>' : '') + (s.obligatorisk === 'ja' ? ' · obligatorisk' : '') + (s.guide ? ' · <a href="' + esc(safeUrl(s.guide)) + '" target="_blank" rel="noopener noreferrer">Egen veiledning</a>' : '') + '</div></div>' +
         '<div class="tools">' + tools + '</div></div>' +
       '<section class="panel"><h2>Generell info</h2>' + (s.beskrivelse ? '<p class="pre">' + esc(s.beskrivelse) + '</p>' : '<div class="empty">Ingen beskrivelse ennå. Klikk Rediger.</div>') +
         expHtml(s, '') +
@@ -1581,7 +1597,7 @@
     var signed = att.filter(function (x) { return x.status === 'Påmeldt' || x.status === 'Deltatt'; }).map(function (x) { return byId('Prosjekter', x.prosjekt_id); }).filter(Boolean);
     var mentorFor = s && s.type === 'mentormote' ? (signed.length ? signed : d.Prosjekter.filter(function (p) { return ACTIVE.indexOf(p.fase) >= 0; })) : [];
     var post = budgetPosts(r.aar).find(function (p) { return p.serie_id === r.serie_id; });
-    var guides = [guideLink(s && s.type, 'Veiledning'), s && s.guide ? '<a href="' + esc(safeUrl(s.guide)) + '" target="_blank" rel="noopener noreferrer">Egen veiledning</a>' : ''].filter(Boolean);
+    var guides = [s && s.guide ? '<a href="' + esc(safeUrl(s.guide)) + '" target="_blank" rel="noopener noreferrer">Egen veiledning</a>' : ''].filter(Boolean);
     return '<section class="panel"><h2>Til denne aktiviteten</h2>' +
       '<span class="group-h">E-post</span><div class="row wrap">' +
         '<button class="btn small primary" data-invite="foredragsholder" data-id="' + esc(r.id) + '">Inviter foredragsholder</button>' +
@@ -1595,12 +1611,20 @@
   }
 
   // Save one attendance choice (creates, changes or removes the row).
-  function saveAttendance(pid, rid, status) {
+  function saveAttendance(pid, rid, status, quiet) {
     if (status === 'Alternativ') { render(); editAlternative(pid, rid); return; }   // v14: asks what was done instead
     var a = state.d.Deltakelse.find(function (x) { return x.prosjekt_id === pid && x.runde_id === rid; });
-    if (!status && a) return save('Deltakelse', [], [a.id]).then(render);
+    var r = byId('Runder', rid), before = linkSnap(pid, r, 'deltakelse'), old = a ? a.status : '';
+    // v27 (b): attendance can reach a milepæl; the notice says so, and Angre puts the old status back.
+    var after = function (msg) {
+      var m = linkDiff(before, linkSnap(pid, r, 'deltakelse'), status === 'Deltatt');
+      render();
+      if (quiet) { toast('Angret'); return; }
+      if (m.length) toast(m.join(' · '), function () { saveAttendance(pid, rid, old, true); }); else if (msg) toast(msg);
+    };
+    if (!status && a) return save('Deltakelse', [], [a.id]).then(function () { after(''); });
     if (!status) return;
-    save('Deltakelse', [a ? { id: a.id, status: status, alternativ: '', via_runde_id: '' } : { runde_id: rid, prosjekt_id: pid, status: status }]).then(function () { toast('Lagret'); render(); });
+    save('Deltakelse', [a ? { id: a.id, status: status, alternativ: '', via_runde_id: '' } : { runde_id: rid, prosjekt_id: pid, status: status }]).then(function () { after('Lagret'); });
   }
 
 
@@ -1953,10 +1977,19 @@
     var st = dlState(r); st[fid] = Object.assign({}, st[fid] || {}, change);
     save('Runder', [{ id: r.id, frist_status: JSON.stringify(st) }]).then(function () { if (msg) toast(msg); state.keepScroll = true; render(); });
   }
-  function dlToggleLevert(arg) {
+  // v27: a delivery also ticks the linked group tasks (d) and milepæler (a); a notice says what, with Angre.
+  function dlToggleLevert(arg, quiet) {
     var p = arg.split('|'), r = byId('Runder', p[0]), st = dlState(r), lev = Object.assign({}, (st[p[1]] || {}).levert || {});
+    var on = !lev[p[2]], before = linkSnap(p[2], r, 'frist', p[1]);
     if (lev[p[2]]) delete lev[p[2]]; else lev[p[2]] = today();
-    dlSaveState(r, p[1], { levert: lev });
+    st[p[1]] = Object.assign({}, st[p[1]] || {}, { levert: lev });
+    var g = syncGroupsFromDeadline(r, p[1], p[2], on);
+    save('Runder', [{ id: r.id, frist_status: JSON.stringify(st) }]).then(function () { return g.rows.length ? save('Oppgaver', g.rows) : null; }).then(function () {
+      var msg = g.msg.concat(linkDiff(before, linkSnap(p[2], r, 'frist', p[1]), on));
+      state.keepScroll = true; render();
+      if (msg.length && !quiet) toast(msg.join(' · '), function () { dlToggleLevert(arg, true); });
+      else if (quiet) toast('Angret');
+    });
   }
   function dlReminderDone(arg) {
     var p = arg.split('|'), r = byId('Runder', p[0]), ch = {};
@@ -2004,7 +2037,7 @@
         }).join(' ') + '</div>' : '';
         return '<div class="dl-item"><div class="dl-date"><b>' + esc(fmtDateW(dt) || '–') + '</b>' + (f.tid ? '<small>kl. ' + esc(f.tid) + '</small>' : '') + '</div>' +
           '<div class="dl-main"><b>' + esc(f.navn) + '</b>' + changed + ' ' + dlForChip(f) + weekendWarn(dt) +
-          '<small class="dl-note">' + esc(ruleText(f, s)) + (own[f.id] && std[f.id] ? ' · standard: ' + esc(fmtDateW(std[f.id])) : '') + (f.notat ? ' · ' + esc(f.notat) : '') + '</small>' + ticks + '</div>' +
+          '<small class="dl-note">' + esc(ruleText(f, s)) + (own[f.id] && std[f.id] ? ' · standard: ' + esc(fmtDateW(std[f.id])) : '') + (f.notat ? ' · ' + esc(f.notat) : '') + '</small>' + linksToDeadline(s, f.id, r.id) + ticks + '</div>' +
           '<div class="dl-side">' + dlStatus(dt) + '<button type="button" class="btn small ghost" data-dledit="' + esc(s.id + '|' + f.id + '|' + r.id) + '">Rediger</button></div></div>';
       }).map(function (html, i) { var f = sortedDeadlines(s, dates)[i]; return { dt: dates[f.id], html: html }; }), eventMarks(r, s).map(function (m) { return { dt: m.dt, html: eventLine(m) }; })) + '</div>' : '<div class="empty">Ingen frister ennå.</div>') +
       '<div class="row wrap"><button type="button" class="btn small" data-dledit="' + esc(s.id + '||' + r.id) + '">+ Ny frist</button></div></section>';
@@ -2264,7 +2297,7 @@
     }
     var table = rows.length ? '<div class="tablewrap"><table class="t ag"><tr><th>Tid</th><th>Hva</th><th>Ansvarlig</th></tr>' + rows.map(function (x) {
       var from = hhmm(start, at); at += Number(x.min) || 0;
-      return '<tr class="' + (isBreak(x) ? 'brk' : '') + '"><td class="agt">' + from + '–' + hhmm(start, at) + '</td><td>' + (isBreak(x) ? '<span class="chip c-brk">Pause</span> ' : '') + esc(x.hva) + expHtml(s, 'agenda:' + x.id) + '</td><td>' + (x.ansvarlig ? personLink(x.ansvarlig) : '') + '</td></tr>';
+      return '<tr class="' + (isBreak(x) ? 'brk' : '') + '"><td class="agt">' + from + '–' + hhmm(start, at) + '</td><td>' + (isBreak(x) ? '<span class="chip c-brk">Pause</span> ' : '') + esc(x.hva) + (isPitch(s) && a === picked ? agendaSlotNote(r, from) : '') + expHtml(s, 'agenda:' + x.id) + '</td><td>' + (x.ansvarlig ? personLink(x.ansvarlig) : '') + '</td></tr>';
     }).join('') + '</table></div>' : '<div class="empty">Ingen bolker ennå. Klikk «Rediger agendaen».</div>';
     return '<section class="panel"><h2>Agenda</h2>' + (seg || note ? '<div class="agbar"><div class="row wrap">' + seg + '</div><div class="row wrap">' + note + '</div></div>' : '') + span + table +
       (a.merknad ? '<p class="pre ag-note">' + esc(a.merknad) + '</p>' : '') +
@@ -2729,7 +2762,7 @@
   }
   function docsPanel(s, r) {
     var docs = docsOf(s, r), fixed = docs.filter(function (x) { return !x.runde_id; }), yearly = docs.filter(function (x) { return x.runde_id; });
-    var v = Object.assign({ arrangement: s.navn, dato: '', tid: r ? r.tid || '' : '', sted: r ? r.sted || '' : '' }, avkVars(r));   // v19: + answers to avklaringer
+    var v = Object.assign({ arrangement: s.navn, dato: '', tid: r ? r.tid || '' : '', sted: r ? r.sted || '' : '' }, avkVars(r), r && slotsOf(r).length ? { tidsplan: scheduleText(r) } : {});   // v19: + answers to avklaringer; v27: + {tidsplan}
     var tpls = templatesOf(s);
     var tplRow = function (m) {
       var vv = Object.assign({}, v, { dato: r ? longDate(r.dato, m.spraak) : '' });
@@ -2806,6 +2839,7 @@
     if (m.auto === 'nei') return 'krysses av selv';
     if (m.kilde === 'workshops') return 'nås når prosjektet har vært på nok workshops';
     if (m.kilde === 'mentormoter') return 'nås når prosjektet har hatt nok mentormøter';
+    if (m.kilde === 'frist' || m.kilde === 'deltakelse') return msLinkText(m);   // v27
     if (m.kilde === 'prosjekter') { var pm = byId('Milepaeler', m.kilde_ref); return pm ? 'nås når alle prosjektene har nådd «' + pm.navn + '»' : 'velg prosjektmilepælen den følger'; }
     if (m.kilde === 'delmaal') { var s = byId('Serier', m.serie_id); return 'nås når delmålet «' + (m.kilde_ref || '?') + '»' + (s ? ' i ' + s.navn : '') + ' er nådd'; }
     return m.nivaa === 'prosjekt' ? 'nås når oppgavene med Milepæl «' + m.navn + '» er ferdige' : 'nås når oppgavene fra stegene eller aktiviteten er ferdige';
@@ -2835,7 +2869,13 @@
     var reached = tick ? (tick.dato || today()) : auto ? (done.map(function (t) { return t.ferdig_dato || ''; }).sort().pop() || today()) : '';
     return { m: m, y: y, due: due, tasks: tasks, done: done.length, reached: reached, tick: tick, late: !reached && !!due && due < today() };
   }
+  // v27: a project's own deadline for a milepæl (from "Utsett prosjektet" or "Endre frist") replaces the usual one.
   function msProject(m, p, at) {
+    var st = msProjectBase(m, p, at), own = st.y && !st.skipped ? msOwnDue(p, m.id, st.y) : '';
+    if (own) { st.due = own; st.moved = true; st.late = !st.reached && own < today(); }
+    return st;
+  }
+  function msProjectBase(m, p, at) {
     var ph = msPhaseOf(m, p, at), y = msSubjYear(p, ph), due = msDue(m, y), tick = msTickRow(m.id, p.id, y);
     if (y && !msActiveIn(m, y)) { var sk = msState(m, y, '', [], null); sk.skipped = true; sk.info = 'hoppet over i ' + y; return sk; }   // v25
     if (m.kilde === 'workshops' || m.kilde === 'mentormoter') {   // v24: from attendance
@@ -2844,6 +2884,12 @@
       st.late = !st.reached && !!due && due < today();
       st.count = { n: c.n, need: c.need }; st.info = c.n + ' av ' + c.need + (m.kilde === 'workshops' ? ' workshops' : ' mentormøter');
       return st;
+    }
+    if (m.kilde === 'frist' || m.kilde === 'deltakelse') {   // v27 (a, b): from a deadline delivery or attendance
+      var ls = msState(m, y, due, [], tick), hit = !ls.reached && m.auto !== 'nei' ? msLinkReached(m, p, ph) : null;
+      if (hit) { ls.reached = hit.date; ls.via = hit.via; ls.late = false; }
+      ls.info = ls.via ? 'nådd via ' + ls.via : msLinkText(m);
+      return ls;
     }
     var key = msKey(m), tasks = key ? state.d.Oppgaver.filter(function (t) { return t.prosjekt_id === p.id && t.spor === key; }) : [];
     return msState(m, y, due, tasks, tick);
@@ -2897,9 +2943,9 @@
         '<button type="button" class="btn small ghost" data-msalt="' + esc(st.m.id) + '|' + esc(pid || '') + '|' + st.y + '">Via alternativ</button>' : '';
     var first = pid && st.tasks.length ? (st.tasks.filter(openTask)[0] || st.tasks[0]) : null;   // v24: the text opens the task
     return '<div class="task ms"><div' + (first ? ' class="t" data-task="' + esc(first.id) + '"' : '') + '><div class="tt">' + esc(label || st.m.navn) + '</div><div class="meta">' +
-      (st.due ? esc(dueText(st.m, st.y)) + ' · ' : '') +
+      (st.due ? (st.moved ? 'Frist flyttet til ' + esc(fmtDate(st.due)) : esc(dueText(st.m, st.y))) + ' · ' : '') +
       (st.info ? esc(st.info) + (st.tasks.length ? ' · ' + st.done + ' av ' + st.tasks.length + ' oppgaver ferdig' : '') : st.tasks.length ? st.done + ' av ' + st.tasks.length + ' oppgaver ferdig' : 'ingen oppgaver, kryss av selv') + (st.m.auto === 'nei' && st.tasks.length ? ' · krysses av selv' : '') + (isAltTick(st.tick) ? ' · ◆ ' + esc(altText(st.tick)) : '') + '</div></div>' +
-      '<span class="ms-r">' + msChip(st) + btn + '</span></div>';
+      '<span class="ms-r">' + msChip(st) + btn + (pid && !st.reached && st.due && byId('Prosjekter', pid) ? '<button type="button" class="btn small ghost" data-msdue="' + esc(st.m.id) + '|' + esc(pid) + '|' + st.y + '">Endre frist</button>' : '') + '</span></div>';
   }
   // v14: "Via alternativ": reached through something else (an activity year and/or a short text).
   function msAlt(arg) {
@@ -3006,8 +3052,13 @@
     var projMs = msAll().filter(function (x) { return x.nivaa === 'prosjekt' && x.id !== id; });
     var dmNames = []; series.forEach(function (s) { fullTaskList(s).forEach(function (x) { if (x.g && dmNames.indexOf(x.name) < 0) dmNames.push(x.name); }); });
     var k = m.kilde || '';
+    // v27: every named deadline for projects, as "activity|deadline".
+    var frOpts = option('', k === 'frist' ? (m.serie_id || '') + '|' + (m.kilde_ref || '') : '', '–') + series.map(function (s) {
+      return deadlineList(s).filter(function (f) { return f['for'] === 'prosjekter'; }).map(function (f) { return option(s.id + '|' + f.id, k === 'frist' ? (m.serie_id || '') + '|' + (m.kilde_ref || '') : '', s.navn + ': ' + f.navn); }).join('');
+    }).join('');
     var kildeOpts = option('', k, 'Oppgavene er ferdige') +
-      '<optgroup label="Prosjekt">' + option('workshops', k, 'Nok workshops') + option('mentormoter', k, 'Nok mentormøter') + '</optgroup>' +
+      '<optgroup label="Prosjekt">' + option('workshops', k, 'Nok workshops') + option('mentormoter', k, 'Nok mentormøter') +
+        option('frist', k, 'Prosjektet har levert til en frist') + option('deltakelse', k, 'Prosjektet har vært med på aktiviteten') + '</optgroup>' +
       '<optgroup label="Program">' + option('prosjekter', k, 'Alle prosjektene har nådd en prosjektmilepæl') + option('delmaal', k, 'Et delmål i aktiviteten er nådd') + '</optgroup>';
     openDrawer('<h2>' + (id ? 'Rediger milepæl' : 'Ny milepæl') + '</h2>' + field('Navn', 'navn', m.navn) +
       '<div class="grid2">' + field('Type', 'nivaa', '', 'select', option('prosjekt', m.nivaa, 'Prosjekt (for hvert prosjekt)') + option('program', m.nivaa, 'Program (én per år)')) +
@@ -3019,15 +3070,17 @@
         '<label class="f">Navn i oppgavenes Milepæl-felt (prosjekt)<input type="text" name="gjelder" list="msSpor" value="' + esc(m.gjelder) + '" placeholder="tom = samme som navnet"><datalist id="msSpor">' + spor.map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist></label>' +
         field('Prosjektmilepælen den følger (program)', 'ref_ms', '', 'select', option('', k === 'prosjekter' ? m.kilde_ref || '' : '', '–') + projMs.map(function (x) { return option(x.id, k === 'prosjekter' ? m.kilde_ref || '' : '', x.navn + ' (' + x.fase + ')'); }).join('')) +
         '<label class="f">Delmål (program, i aktiviteten under)<input type="text" name="ref_dm" list="msDm" value="' + esc(k === 'delmaal' ? m.kilde_ref || '' : '') + '"><datalist id="msDm">' + dmNames.map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist></label></div>' +
-      field('Aktivitet (program)', 'serie_id', '', 'select', option('', m.serie_id || '', 'Ingen') + series.map(function (s) { return option(s.id, m.serie_id || '', s.navn); }).join('')) +
+      field('Fristen (prosjekt: «levert til en frist»)', 'ref_fr', '', 'select', frOpts) +
+      field('Aktivitet (program, og prosjekt: «vært med på aktiviteten»)', 'serie_id', '', 'select', option('', m.serie_id || '', 'Ingen') + series.map(function (s) { return option(s.id, m.serie_id || '', s.navn); }).join('')) +
       '<details' + (chosen.length ? ' open' : '') + '><summary class="group-h">Steg i Årsplan som fører hit (program)</summary><div class="cl scrollcl">' +
         general.map(function (s) { return '<label><input type="checkbox" name="st_' + esc(s.id) + '"' + (chosen.indexOf(s.id) >= 0 ? ' checked' : '') + '> ' + esc(s.tittel) + (s.maaned ? ' <small>(' + esc(monthName(s.maaned)) + ')</small>' : '') + '</label>'; }).join('') + '</div></details>' +
       '<label class="check"><input type="checkbox" name="auto"' + (m.auto !== 'nei' ? ' checked' : '') + '> Merk som nådd automatisk</label>' +
       '<label class="check"><input type="checkbox" name="aktiv"' + (m.aktiv !== 'nei' ? ' checked' : '') + '> Aktiv</label>' +
+      '<label class="check"><input type="checkbox" name="flyttes"' + (m.flyttes === 'ja' ? ' checked' : '') + '> Flyttes ved forsinkelse (krysset av når du utsetter et prosjekt)</label>' +
       '<label class="check"><input type="checkbox" name="bare"' + (m.bare_aar ? ' checked' : '') + '> Bare i ' + esc(m.bare_aar || msY) + ' (ellers hvert år)</label>' +
       (ids(m.hopp_aar).length ? '<p class="empty">Hoppet over i ' + esc(ids(m.hopp_aar).join(', ')) + '. Trykk på milepælen i kalenderen for å ta den med igjen.</p>' : '') +
       field('Merknader', 'merknader', m.merknader, 'textarea') +
-      '<p class="empty">Uten dag er fristen slutten av måneden. Prosjekt: oppgavene som har denne milepælen i Milepæl-feltet fører hit, eller nok workshops / mentormøter. Program: oppgavene fra de valgte stegene og/eller aktiviteten det året, alle prosjektene har nådd en prosjektmilepæl, eller et delmål i aktiviteten. Du kan alltid krysse av selv.</p>' +
+      '<p class="empty">Uten dag er fristen slutten av måneden. Prosjekt: oppgavene som har denne milepælen i Milepæl-feltet fører hit, eller nok workshops / mentormøter. Program: oppgavene fra de valgte stegene og/eller aktiviteten det året, alle prosjektene har nådd en prosjektmilepæl, eller et delmål i aktiviteten. Levert til en frist / vært med på aktiviteten: det aktivitetsåret som faller i milepælens fase for prosjektet teller (for et forsinket prosjekt: fasen det faktisk var i). Det krysses av automatisk, og du får beskjed når det skjer. Du kan alltid krysse av selv.</p>' +
       actions(id ? '<button type="button" class="btn danger" data-delms="' + esc(id) + '">Slett</button>' : ''),
       function (form) {
         var niv = val(form, 'nivaa'), kil = val(form, 'kilde'), dag = val(form, 'dag');
@@ -3035,10 +3088,13 @@
         if (niv === 'prosjekt' && !phs.length) { toast('Kryss av for minst én fase'); return; }
         var row = { navn: val(form, 'navn'), nivaa: niv, fase: niv === 'program' ? '' : phs.join(', '), bare_aar: val(form, 'bare') === 'ja' ? (m.bare_aar || msY) : '', maaned: val(form, 'maaned'), dag: dag ? String(Math.max(1, Math.min(31, Number(dag) || 1))) : '',
           gjelder: niv === 'prosjekt' && !kil ? (val(form, 'gjelder') || val(form, 'navn')) : val(form, 'gjelder'), serie_id: val(form, 'serie_id'), auto: val(form, 'auto'), aktiv: val(form, 'aktiv'), merknader: val(form, 'merknader'),
-          kilde: kil, kilde_ref: kil === 'prosjekter' ? val(form, 'ref_ms') : kil === 'delmaal' ? val(form, 'ref_dm') : '',
+          kilde: kil, kilde_ref: kil === 'prosjekter' ? val(form, 'ref_ms') : kil === 'delmaal' ? val(form, 'ref_dm') : kil === 'frist' ? String(val(form, 'ref_fr') || '').split('|')[1] || '' : '',
+          flyttes: val(form, 'flyttes') === 'ja' ? 'ja' : '',
           steg: general.filter(function (s) { return form.querySelector('[name="st_' + s.id + '"]').checked; }).map(function (s) { return s.id; }).join(',') };
         if (!row.navn) { toast('Skriv et navn'); return; }
-        if ((kil === 'workshops' || kil === 'mentormoter') && niv !== 'prosjekt') { toast('Workshops og mentormøter gjelder prosjektmilepæler'); return; }
+        if ((kil === 'workshops' || kil === 'mentormoter' || kil === 'frist' || kil === 'deltakelse') && niv !== 'prosjekt') { toast('Dette valget gjelder prosjektmilepæler'); return; }
+        if (kil === 'frist') { if (!row.kilde_ref) { toast('Velg fristen'); return; } row.serie_id = String(val(form, 'ref_fr')).split('|')[0]; row.gjelder = val(form, 'gjelder'); }   // v27
+        if (kil === 'deltakelse') { if (!row.serie_id) { toast('Velg aktiviteten'); return; } row.gjelder = val(form, 'gjelder'); }
         if ((kil === 'prosjekter' || kil === 'delmaal') && niv !== 'program') { toast('Dette valget gjelder programmilepæler'); return; }
         if (kil === 'prosjekter' && !row.kilde_ref) { toast('Velg prosjektmilepælen den følger'); return; }
         if (kil === 'delmaal' && (!row.kilde_ref || !row.serie_id)) { toast('Velg aktivitet og skriv delmålet'); return; }
@@ -3054,7 +3110,7 @@
     msAll().forEach(function (m) {
       if (m.nivaa === 'program') { var st = msProgram(m, Y); if (st.late && !st.skipped) out.push('<div class="task ms"><div class="t" data-msopen="' + esc(m.id) + '|' + Y + '"><div class="tt">' + esc(m.navn) + '</div><div class="meta">Programmet · frist ' + esc(dueText(m, 0)) + '</div></div><span class="chip c-late">Ikke nådd</span></div>'); return; }
       if (msDue(m, Y) >= today()) return;
-      var miss = msProjects(m, Y).filter(function (p) { return p.fase !== 'Arkivert' && !msProject(m, p, Y).reached; });
+      var miss = msProjects(m, Y).filter(function (p) { var st = msProject(m, p, Y); return p.fase !== 'Arkivert' && !st.reached && (!st.moved || st.late); });   // v27: a moved deadline counts
       if (miss.length) out.push('<div class="task ms"><div class="t" data-msopen="' + esc(m.id) + '|' + Y + '"><div class="tt">' + esc(m.navn) + '</div><div class="meta">' + esc(msPhaseText(m)) + ' · frist ' + esc(dueText(m, 0)) + ' · ' + esc(miss.map(function (p) { return p.kortnavn; }).join(', ')) + '</div></div><span class="chip c-late">' + miss.length + ' mangler</span></div>');
     });
     return out.length ? '<section class="panel"><h2>Milepæler som ikke er nådd <span class="hint"><a href="#progress">årsoversikt</a></span></h2><div class="tasklist">' + out.join('') + '</div></section>' : '';
@@ -3135,21 +3191,39 @@
 
 
   // ---- Postpone (Utsett) --------------------------------------------------------------------
+  // v27: each row (tasks and, new, the project's milepæler not yet reached) has its own date, filled in with
+  // N months later. Change a date, or untick a row to leave it. Milepæler with "Flyttes ved forsinkelse" are ticked.
   function postpone(pid) {
     var p = byId('Prosjekter', pid);
     var open = sortTasks(state.d.Oppgaver.filter(function (t) { return t.prosjekt_id === pid && openTask(t) && t.frist; }));
     var moves = function (t) { var s = progressOf(t); return s ? s.flyttes_ved_forsinkelse !== 'nei' : true; };
-    openDrawer('<h2>Utsett ' + esc(p.kortnavn) + '</h2><p class="empty">Flytter de avkryssede fristene og sluttdatoen, merker prosjektet som forsinket og lagrer det i forsinkelsesloggen. Fasen endres ikke: prosjektet blir der det er til du flytter det.</p>' +
+    var mss = postponeMilestones(p);
+    var later = function (d, n) { return d ? monthEnd(Number(addMonthsC(d, n).slice(0, 4)), Number(addMonthsC(d, n).slice(5, 7))) : ''; };
+    var row = function (kind, key, on, label, from) {
+      return '<div class="pz-row"><label><input type="checkbox" name="' + kind + '_' + esc(key) + '"' + (on ? ' checked' : '') + '> ' + esc(label) + ' <span class="when">' + esc(fmtDate(from)) + '</span></label>' +
+        '<input type="date" name="d' + kind + '_' + esc(key) + '" data-from="' + esc(from) + '" value="' + esc(later(from, 6)) + '" aria-label="Ny frist for ' + esc(label) + '"></div>';
+    };
+    openDrawer('<h2>Utsett ' + esc(p.kortnavn) + '</h2><p class="empty">Flytter de avkryssede fristene og sluttdatoen, merker prosjektet som forsinket og lagrer det i forsinkelsesloggen. Fasen endres ikke: prosjektet blir der det er til du flytter det. Hver frist får antall måneder lagt til; du kan skrive en annen dato på hver rad.</p>' +
       '<div class="grid2">' + field('Antall måneder', 'mnd', '6', 'number') + field('Årsak', 'aarsak', '') + '</div>' +
-      '<div class="cl"><span class="group-h">Frister som flyttes</span>' + (open.length ? open.map(function (t) { return '<label><input type="checkbox" name="mv_' + esc(t.id) + '"' + (moves(t) ? ' checked' : '') + '> ' + esc(t.tittel) + ' <span class="when">' + esc(fmtDate(t.frist)) + '</span></label>'; }).join('') : '<span class="empty">Ingen åpne oppgaver med frist.</span>') + '</div>' +
+      '<div class="cl"><span class="group-h">Frister som flyttes</span>' + (open.length ? open.map(function (t) { return row('mv', t.id, moves(t), t.tittel, t.frist); }).join('') : '<span class="empty">Ingen åpne oppgaver med frist.</span>') + '</div>' +
+      '<div class="cl"><span class="group-h">Milepæler som flyttes (bare for dette prosjektet)</span>' + (mss.length ? mss.map(function (x) { return row('ms', x.m.id + '|' + x.y, x.m.flyttes === 'ja', x.m.navn + ' (' + x.ph + ')', x.due); }).join('') : '<span class="empty">Ingen milepæler som ikke er nådd.</span>') + '</div>' +
       '<div class="actions"><span></span><span><button type="button" class="btn ghost" data-close>Avbryt</button> <button class="btn primary" type="submit">Utsett</button></span></div>',
       function (form) {
         var months = Number(val(form, 'mnd'));
         if (!months) { toast('Skriv antall måneder'); return; }
-        var ids = open.filter(function (t) { return form.querySelector('[name="mv_' + t.id + '"]').checked; }).map(function (t) { return t.id; });
+        var on = function (name) { var c = form.querySelector('[name="' + name + '"]'); return c && c.checked; };
+        var dateOf = function (name) { var el = form.querySelector('[name="' + name + '"]'); return el ? { v: el.value, auto: el.dataset.auto !== 'nei' } : { v: '', auto: true }; };
+        var ids = [], datoer = {}, msd = {};
+        open.forEach(function (t) { if (!on('mv_' + t.id)) return; ids.push(t.id); var d = dateOf('dmv_' + t.id); if (d.v && !d.auto) datoer[t.id] = d.v; });
+        mss.forEach(function (x) { var k = x.m.id + '|' + x.y; if (!on('ms_' + k)) return; var d = dateOf('dms_' + k); if (d.v) msd[k] = d.v; });
         closeDrawer();
-        run('api_postpone', { id: pid, maaneder: months, aarsak: val(form, 'aarsak'), oppgaver: ids }, 'Utsatt ' + months + ' mnd');
+        run('api_postpone', { id: pid, maaneder: months, aarsak: val(form, 'aarsak'), oppgaver: ids, datoer: datoer, milepaeler: msd }, 'Utsatt ' + months + ' mnd' + (Object.keys(msd).length ? ', og ' + Object.keys(msd).length + ' milepæler flyttet' : ''));
       });
+    // The dates follow the number of months until you change one by hand.
+    var form = $('drawerForm'), mnd = form.querySelector('[name="mnd"]');
+    var dates = form.querySelectorAll('.pz-row input[type="date"]');
+    dates.forEach(function (el) { el.dataset.auto = 'ja'; el.addEventListener('input', function () { el.dataset.auto = 'nei'; }); });
+    mnd.addEventListener('input', function () { var n = Number(mnd.value) || 0; dates.forEach(function (el) { if (el.dataset.auto !== 'nei') el.value = later(el.dataset.from, n); }); });
   }
 
 
@@ -3411,7 +3485,7 @@
 
   // "Last ned alt": the server makes one zip (Excel + Word) and we show its links.
   function downloadAll() {
-    toast('Lager zip-filen … det kan ta et halvt minutt');
+    toast('Lager zip-filen … det kan ta et par minutter');   // v27: many Word files now
     api('api_downloadAll').then(function (r) {
       openDrawer('<h2>Zip-filen er klar</h2><p class="empty">' + esc(r.files) + ' filer. Lagret i SPARK-backup/Nedlasting (de 3 nyeste beholdes). Last den ned og legg den på PC-en eller OneDrive.</p>' +
         '<p class="addrow"><a class="btn primary" href="' + esc(safeUrl(r.download)) + '" target="_blank" rel="noopener noreferrer">Last ned zip</a>' +
@@ -3570,28 +3644,18 @@
 
   // ---- Page: Kunnskap (contacts, notes, guides) ---------------------------------------
   function pageKnowledge() {
-    var d = state.d, f = state.filters, tab = f.ktab && f.ktab !== 'kontakter' ? f.ktab : 'notater', q = (f.kq || '').toLowerCase();   // v22: people are on Personer
+    var d = state.d, f = state.filters, q = (f.kq || '').trim().toLowerCase();   // v27: notes only (Veiledninger removed); the box searches everything
     var match = function (o, keys) { return !q || keys.some(function (k) { return String(o[k] || '').toLowerCase().indexOf(q) >= 0; }); };
-    var seg = '<span class="seg">' + [['notater', 'Notater'], ['veiledninger', 'Veiledninger']].map(function (t) { return '<button data-ktab="' + t[0] + '" aria-pressed="' + (tab === t[0]) + '">' + t[1] + '</button>'; }).join('') + '</span>';
-    var tools = '<input type="text" class="search" id="fKq" placeholder="Søk i kunnskapsbanken" value="' + esc(f.kq || '') + '">' + seg +
-      (tab === 'kontakter' ? '<button class="btn primary" data-act="newcontact">Ny kontakt</button>' : tab === 'notater' ? '<button class="btn primary" data-act="newnote">Nytt notat</button>' : '');
-    var body;
-    if (tab === 'kontakter') {
-      var cs = d.Kontakter.filter(function (c) { return match(c, ['navn', 'rolle', 'enhet', 'emner', 'kjenner_via', 'notater', 'tagger']); }).sort(function (a, b) { return a.navn < b.navn ? -1 : 1; });
-      body = cs.length ? '<div class="panel tablewrap"><table class="t"><tr><th>Navn</th><th>Rolle</th><th>Enhet</th><th>Temaer</th><th>Kjenner via</th><th>Sist kontakt</th></tr>' + cs.map(function (c) {
-        return '<tr class="click" data-contact="' + esc(c.id) + '"><td class="strong">' + esc(c.navn) + (tagsOf(c).length ? ' ' + tagChips(c) : '') + '</td><td>' + esc(c.rolle) + '</td><td>' + esc(c.enhet) + '</td><td>' + esc(c.emner) + '</td><td>' + esc(c.kjenner_via) + '</td><td>' + esc(fmtDate(c.sist_kontakt)) + '</td></tr>';
-      }).join('') + '</table></div>' : '<div class="panel empty">Ingen kontakter' + (q ? ' som passer søket' : ' ennå') + '.</div>';
-    } else if (tab === 'notater') {
-      var ns = d.Kunnskap.filter(function (k) { return match(k, ['tittel', 'emne', 'tekst', 'tagger']); }).sort(function (a, b) { return (a.emne + a.tittel) < (b.emne + b.tittel) ? -1 : 1; });
-      body = ns.length ? '<div class="cards">' + ns.map(function (k) {
-        return '<button class="pcard" type="button" data-note="' + esc(k.id) + '"><div class="h"><b>' + esc(k.tittel) + '</b>' + (k.emne ? '<span class="ph">' + esc(k.emne) + '</span>' : '') + '</div><div class="who">' + esc(String(k.tekst || '').slice(0, 160)) + (String(k.tekst || '').length > 160 ? ' …' : '') + '</div>' + (k.tagger ? '<div class="who">' + esc(k.tagger) + '</div>' : '') + '</button>';
-      }).join('') + '</div>' : '<div class="panel empty">Ingen notater' + (q ? ' som passer søket' : ' ennå') + '.</div>';
-    } else {
-      var g = {}; try { g = JSON.parse(d.Innstillinger.guider || '{}'); } catch (e) { g = {}; }
-      var names = { 'Søknad': 'Søknadsfasen', '1. år': '1. år', '2. år': '2. år', 'Avslutning': 'Avslutning', workshop: 'Workshops', mentormote: 'Mentormøter', intervju: 'Intervjuer', pitch: 'Pitch', kunnskap: 'Kunnskapsbank' };
-      body = '<div class="panel"><div class="hist">' + Object.keys(g).map(function (k) { return '<div><a href="' + esc(safeUrl(g[k])) + '" target="_blank" rel="noopener noreferrer">' + esc(names[k] || k) + '</a></div>'; }).join('') + '</div><p class="empty">Hver veiledning har overskriftene «Slik gjør du det», «E-postmaler», «Erfaringer» og «Husk til neste gang».</p></div>';
-    }
-    return head('Kunnskapsbank', 'Notater og veiledninger · personene er under <a href="#personer">Personer</a>', tools) + body;
+    var tools = '<input type="text" class="search" id="fKq" placeholder="Søk i alt" value="' + esc(f.kq || '') + '">' +
+      '<button class="btn primary" data-act="newnote">Nytt notat</button>';
+    var ns = d.Kunnskap.filter(function (k) { return match(k, ['tittel', 'emne', 'tekst', 'tagger']); }).sort(function (a, b) { return (a.emne + a.tittel) < (b.emne + b.tittel) ? -1 : 1; });
+    var body = ns.length ? '<div class="cards">' + ns.map(function (k) {
+      return '<button class="pcard" type="button" data-note="' + esc(k.id) + '"><div class="h"><b>' + esc(k.tittel) + '</b>' + (k.emne ? '<span class="ph">' + esc(k.emne) + '</span>' : '') + '</div><div class="who">' + esc(String(k.tekst || '').slice(0, 160)) + (String(k.tekst || '').length > 160 ? ' …' : '') + '</div>' + (k.tagger ? '<div class="who">' + esc(k.tagger) + '</div>' : '') + '</button>';
+    }).join('') + '</div>' : '<div class="panel empty">Ingen notater' + (q ? ' som passer søket' : ' ennå') + '.</div>';
+    // v27: with two or more letters, hits from the rest of SPARK come under the notes.
+    var other = q.length >= 2 ? searchPanels(searchGroups(q).filter(function (g) { return g[0] !== 'Kunnskap'; })) : '';
+    return head('Kunnskapsbank', 'Notater · personene er under <a href="#personer">Personer</a>', tools) + body +
+      (other ? '<h2 class="group-h">Treff andre steder i SPARK</h2>' + other : '');
   }
 
   // v22: the person form. Fornavn and Etternavn are separate (double first names), plus "Bruk bare fornavn" and
@@ -3648,12 +3712,11 @@
 
 
   // ---- Page: Søk (everything) -----------------------------------------------------------------
-  function pageSearch() {
-    var d = state.d, q = (state.filters.gq || '').trim().toLowerCase();
-    var box = '<input type="text" class="search" id="fGq" placeholder="Søk i alt: prosjekter, søkere, oppgaver, kontakter, notater, logg, hendelser" value="' + esc(state.filters.gq || '') + '">';
-    if (q.length < 2) return head('Søk', '', box) + '<div class="panel empty">Skriv minst to bokstaver.</div>';
-    var has = function (o, keys) { return keys.some(function (k) { return String(o[k] || '').toLowerCase().indexOf(q) >= 0; }); };
-    var groups = [
+  // v27: one search over everything (Søk and the Kunnskapsbank box use the same list).
+  function searchGroups(q) {
+    var d = state.d, has = function (o, keys) { return keys.some(function (k) { return String(o[k] || '').toLowerCase().indexOf(q) >= 0; }); };
+    var serName = function (id) { var s = byId('Serier', id); return s ? s.navn : ''; };
+    return [
       ['Prosjekter', d.Prosjekter.filter(function (p) { return has(p, ['kortnavn', 'tittel', 'leder', 'enhet', 'maal', 'merknader']); }).map(function (p) { return ['prosjekt/' + p.id, p.kortnavn, p.fase]; })],
       ['Søkere', d.Søkere.filter(function (s) { return has(s, ['kortnavn', 'tittel', 'leder', 'enhet', 'merknader']); }).map(function (s) { return ['@app:' + s.id, s.kortnavn, s.soknadsaar + ' · ' + (s.status || 'Aktiv')]; })],
       ['Oppgaver', d.Oppgaver.filter(function (t) { return has(t, ['tittel', 'notat', 'venter_paa']); }).map(function (t) { return ['@task:' + t.id, t.tittel, (t.prosjekt_id ? shortName(t.prosjekt_id) + ' · ' : '') + t.status]; })],
@@ -3662,15 +3725,25 @@
       ['Logg', d.Logg.filter(function (l) { return has(l, ['tekst']); }).map(function (l) { return ['prosjekt/' + l.prosjekt_id, String(l.tekst).slice(0, 90), shortName(l.prosjekt_id) + ' · ' + fmtDate(l.dato)]; })],
       ['Aktiviteter', d.Serier.filter(function (s) { return has(s, ['navn', 'beskrivelse']); }).map(function (s) { return ['serie/' + s.id, s.navn, s.status]; })
         .concat(d.Runder.filter(function (r) { return has(r, ['notater', 'sted']); }).map(function (r) { var s = byId('Serier', r.serie_id); return ['runde/' + r.id, (s ? s.navn : 'Runde') + ' ' + r.aar, String(r.notater || '').slice(0, 60)]; }))],
+      ['Erfaringer', (d.Erfaringer || []).filter(function (x) { return x.skjult !== 'ja' && has(x, ['tekst', 'hvorfor', 'endring']); }).map(function (x) { return [x.runde_id && byId('Runder', x.runde_id) ? 'runde/' + x.runde_id : 'serie/' + x.serie_id, String(x.tekst || '').slice(0, 90), [serName(x.serie_id), x.aar].filter(Boolean).join(' ')]; })],
+      ['Dokumenter', d.Dokumenter.filter(function (x) { return has(x, ['tittel', 'lenke', 'type']); }).map(function (x) { return [x.prosjekt_id ? 'prosjekt/' + x.prosjekt_id : x.serie_id ? 'serie/' + x.serie_id : x.runde_id ? 'runde/' + x.runde_id : 'sok', x.tittel || x.lenke, x.prosjekt_id ? shortName(x.prosjekt_id) : serName(x.serie_id)]; })],
       ['Årsplan', d.Progress.filter(function (s) { return has(s, ['tittel', 'deloppgaver', 'merknader']); }).map(function (s) { return ['@step:' + s.id, s.tittel, s.fase]; })]
     ];
-    var total = groups.reduce(function (n, g) { return n + g[1].length; }, 0);
-    return head('Søk', total + ' treff', box) + groups.filter(function (g) { return g[1].length; }).map(function (g) {
+  }
+  function searchPanels(groups) {
+    return groups.filter(function (g) { return g[1].length; }).map(function (g) {
       return '<section class="panel"><h2>' + g[0] + ' <span class="hint">' + g[1].length + '</span></h2>' + g[1].slice(0, 30).map(function (r) {
         var attr = r[0].charAt(0) === '@' ? 'data-hit="' + esc(r[0]) + '"' : 'data-go="' + esc(r[0]) + '"';
         return '<div class="task"><span></span><div class="t" ' + attr + '><div class="tt">' + esc(r[1]) + '</div><div class="meta">' + esc(r[2] || '') + '</div></div><span></span></div>';
       }).join('') + '</section>';
-    }).join('') || '<div class="panel empty">Ingen treff.</div>';
+    }).join('');
+  }
+  function pageSearch() {
+    var q = (state.filters.gq || '').trim().toLowerCase();
+    var box = '<input type="text" class="search" id="fGq" placeholder="Søk i alt: prosjekter, søkere, oppgaver, personer, notater, logg, aktiviteter, erfaringer, dokumenter" value="' + esc(state.filters.gq || '') + '">';
+    if (q.length < 2) return head('Søk', '', box) + '<div class="panel empty">Skriv minst to bokstaver.</div>';
+    var groups = searchGroups(q), total = groups.reduce(function (n, g) { return n + g[1].length; }, 0);
+    return head('Søk', total + ' treff', box) + (searchPanels(groups) || '<div class="panel empty">Ingen treff.</div>');
   }
   function openHit(h) {
     var kind = h.slice(1, h.indexOf(':')), id = h.slice(h.indexOf(':') + 1);
@@ -4766,7 +4839,7 @@
       types.map(function (t) { return group(typeAll(t), list.filter(function (m) { return m.serie_type === t; })); }).join('') +
       acts.map(function (r) { return group(actName(r), list.filter(function (m) { return m.serie_id && seriesRootId(m.serie_id) === r; })); }).join('');
     return bar + (body || '<div class="panel empty">Ingen maler' + (q || where || lang ? ' som passer.' : ' ennå.') + '</div>') +
-      '<p class="empty">«Åpne i e-post» lager et utkast i e-postprogrammet ditt, «Kopier» legger teksten på utklippstavlen. Felt i {krøllparenteser} fylles ut: {navn}, {arrangement}, {dato}, {tid}, {sted}, {prosjekt}, {beskrivelse}.</p>';
+      '<p class="empty">«Åpne i e-post» lager et utkast i e-postprogrammet ditt, «Kopier» legger teksten på utklippstavlen. Felt i {krøllparenteser} fylles ut: {navn}, {arrangement}, {dato}, {tid}, {sted}, {prosjekt}, {beskrivelse}, og for pitch {pitchtid} og {tidsplan}.</p>';
   }
 
   // Mottakere: pick groups, get "Navn <epost>; …" to paste into Outlook. Duplicates are removed.
@@ -4852,7 +4925,7 @@
         field('Knyttet til aktivitet (vises på aktiviteten)', 'serie_id', '', 'select', option('', m.serie_id || '', '– Ingen (vises overalt)') + acts.map(function (x) { return option(x.id, m.serie_id || '', x.navn); }).join('')) +
         field('Eller felles for en type', 'serie_type', '', 'select', option('', m.serie_type || '', '– Ingen') + Object.keys(TYPE_NAMES).map(function (k) { return option(k, m.serie_type || '', typeAll(k)); }).join('')) + '</div>' +
       field('Emne', 'emne', m.emne) + '<label class="f">Tekst<textarea name="tekst" class="tall">' + esc(m.tekst) + '</textarea></label>' +
-      '<p class="empty">Felt som fylles ut: {navn} {arrangement} {dato} {tid} {sted} {prosjekt} {beskrivelse}</p>' +
+      '<p class="empty">Felt som fylles ut: {navn} {arrangement} {dato} {tid} {sted} {prosjekt} {beskrivelse}, og for pitch {pitchtid} (prosjektets tid, fra Tidspunkter) og {tidsplan} (hele listen)</p>' +
       actions(id ? '<button type="button" class="btn danger" data-deltpl="' + esc(id) + '">Slett</button>' : ''),
       function (form) {
         var row = { navn: val(form, 'navn'), type: val(form, 'type'), spraak: val(form, 'spraak'), serie_id: val(form, 'serie_id'), serie_type: val(form, 'serie_type'), emne: val(form, 'emne'), tekst: form.querySelector('[name="tekst"]').value };
@@ -5521,6 +5594,7 @@
     { k: 'talere', n: 'Foredragsholdere', on: 0, w: 'v' },   // v21
     { k: 'frister', n: 'Frister', on: 0, w: 'h' },
     { k: 'agenda', n: 'Agenda', on: 0, w: 'h' },
+    { k: 'tider', n: 'Tidspunkter (bare pitch)', on: 1, w: 'h' },   // v27: shown on Pitch activities only
     { k: 'docs', n: 'Dokumenter og e-post', on: 0, w: 'hel' },
     { k: 'gjester', n: 'Gjesteliste', on: 0, w: 'v' },
     { k: 'mat', n: 'Mat og servering', on: 0, w: 'h' },
@@ -5558,6 +5632,7 @@
       case 'talere': return panelOf(r).some(function (p) { return p.rolle === 'taler'; });
       case 'frister': return !!s && (deadlineList(s).length > 0 || Object.keys(ownDeadlines(r)).length > 0);
       case 'agenda': return !!s && agendasOf(s).length > 0;
+      case 'tider': return isPitch(s) && slotsOf(r).length > 0;
       case 'docs': return !!s && (docsOf(s, r).length > 0 || templatesOf(s).length > 0);
       case 'gjester': return guestsOf(r).length > 0;
       case 'mat': return !!matOf(r).pa;
@@ -5575,6 +5650,7 @@
       case 'talere': return panelPanel(r, 'taler');
       case 'frister': return s ? runDeadlinesPanel(r, s) : '';
       case 'agenda': return s ? agendaPanel(s, r) : '';
+      case 'tider': return isPitch(s) ? slotsPanel(r, s) : '';
       case 'docs': return s ? docsPanel(s, r) : '';
       case 'gjester': return guestPanel(r);
       case 'mat': return s ? matPanel(r, s) : '';
@@ -5622,7 +5698,8 @@
   }
   // "Hvem var med?" (moved out of pageRun in v20 so it can be ticked on and off).
   function attendPanel(r, att, candidates) {
-    return '<section class="panel"><h2>Hvem var med?</h2>' + (candidates.length ? candidates.map(function (p) {
+    var as = byId('Serier', r.serie_id);
+    return '<section class="panel"><h2>Hvem var med?</h2>' + (as ? linksToAttendance(as) : '') + (candidates.length ? candidates.map(function (p) {
       var a = att.find(function (x) { return x.prosjekt_id === p.id; });
       var isAlt = a && a.status === 'Alternativ';
       return '<div class="task"><span></span><div><div class="tt">' + esc(p.kortnavn) + '</div><div class="meta"><span class="ph">' + esc(p.fase) + '</span>' +
@@ -5638,7 +5715,7 @@
     return '<div class="f"><span class="group-h">Paneler på årssiden</span>' +
       '<p class="empty">Kryss av det du vil ha på hvert år. «Kan gjøres nå», «Venter på noen» og delmålene er alltid øverst. Hel bredde går over hele siden. Venstre og Høyre: paneler som står etter hverandre i listen, legges i to kolonner. Et panel som ikke er valgt, vises likevel hvis det står noe i det.</p>' +
       '<p class="empty" id="pnSrc">' + (s.paneler ? 'Egne valg for denne aktiviteten.' : 'Følger standarden for typen.') + '</p>' +
-      '<div class="pn-list" id="pnList">' + seriesPanels(s).map(pnRow).join('') + '</div>' +
+      '<div class="pn-list" id="pnList">' + seriesPanels(s).filter(function (p) { return p.k !== 'tider' || isPitch(s); }).map(pnRow).join('') + '</div>' +
       '<div class="row wrap"><button type="button" class="btn small ghost" id="pnType">Lagre som standard for typen</button><button type="button" class="btn small ghost" id="pnReset">Bruk standarden for typen</button></div></div>';
   }
   function pnRow(p) {
@@ -6180,6 +6257,291 @@
     });
   }
 
+
+  // =====================================================================
+  // Version 27: pitch slots, things that tick each other, milepæl deadlines per project
+  // =====================================================================
+
+  // ---- Pitch slots (Runder.tidspunkter, only on Pitch activities) ----
+  // A slot: {id, fra, til, prosjekt_id, merknad, digitalt ('ja')}. The times come from outside SPARK; you type them in.
+  function slotsOf(r) { var l = jsonOf(r && r.tidspunkter, []); return (Array.isArray(l) ? l : []).slice().sort(function (a, b) { return String(a.fra || '') < String(b.fra || '') ? -1 : 1; }); }
+  function slotTime(x) { return (x.fra || '') + (x.til ? '–' + x.til : ''); }
+  function slotText(x) { return slotTime(x) + (x.digitalt === 'ja' ? ' (digitalt)' : ''); }
+  function slotOf(r, pid) { return slotsOf(r).find(function (x) { return x.prosjekt_id === pid; }) || null; }
+  function isPitch(s) { return !!s && s.type === 'pitch'; }
+  // {tidsplan}: the whole list, one line per slot.
+  function scheduleText(r) { return slotsOf(r).map(function (x) { return slotTime(x) + ' ' + (shortName(x.prosjekt_id) || '?') + (x.digitalt === 'ja' ? ' (digitalt)' : '') + (x.merknad ? ' – ' + x.merknad : ''); }).join('\n'); }
+  function digitalChip() { return '<span class="chip c-info">Digitalt</span>'; }
+  function slotsPanel(r, s) {
+    var list = slotsOf(r);
+    var rows = list.map(function (x) {
+      return '<tr><td class="agt">' + esc(slotTime(x) || '–') + '</td><td>' + (x.prosjekt_id ? '<button type="button" class="plink" data-go="prosjekt/' + esc(x.prosjekt_id) + '">' + esc(shortName(x.prosjekt_id) || '?') + '</button>' : '<span class="empty">ingen prosjekt</span>') +
+        (x.digitalt === 'ja' ? ' ' + digitalChip() : '') + (x.merknad ? '<div class="meta">' + esc(x.merknad) + '</div>' : '') + '</td>' +
+        '<td class="slot-b">' + (x.prosjekt_id ? '<button type="button" class="btn small ghost" data-slotmail="' + esc(r.id + '|' + x.id) + '" aria-label="E-post til ' + esc(shortName(x.prosjekt_id)) + '">✉ E-post</button>' : '') + '</td></tr>';
+    }).join('');
+    return '<section class="panel"><h2>Tidspunkter</h2>' +
+      (list.length ? '<div class="tablewrap"><table class="t ag"><tr><th>Tid</th><th>Prosjekt</th><th></th></tr>' + rows + '</table></div>' :
+        '<div class="empty">Ingen tidspunkter ennå. Legg inn tidene prosjektene har fått, så kan du sende hvert prosjekt sin tid med en e-postmal ({pitchtid}), eller hele listen ({tidsplan}).</div>') +
+      '<div class="row wrap"><button type="button" class="btn small" data-slotedit="' + esc(r.id) + '">' + (list.length ? 'Rediger tidspunktene' : '+ Legg inn tidspunkter') + '</button>' +
+      (list.length ? '<button type="button" class="btn small ghost" data-slotcopy="' + esc(r.id) + '">Kopier tidsplanen</button>' : '') + '</div></section>';
+  }
+  // The agenda rows that are pitches (not breaks; "pitch" in the text), else every row that isn't a break.
+  function agendaSlotTimes(r, s) {
+    var a = pickedVariant(agendasOf(s), r, s) || agendasOf(s)[0]; if (!a) return [];
+    var start = agStart(a, r), at = 0, all = agRows(a).map(function (x) { var f = hhmm(start, at); at += Number(x.min) || 0; return { fra: f, til: hhmm(start, at), x: x }; }).filter(function (o) { return !isBreak(o.x); });
+    var pit = all.filter(function (o) { return /pitch/i.test(o.x.hva || ''); });
+    return (pit.length ? pit : all).map(function (o) { return { fra: o.fra, til: o.til }; });
+  }
+  function editSlots(rid) {
+    var r = byId('Runder', rid), s = r && byId('Serier', r.serie_id); if (!r || !s) return;
+    var list = slotsOf(r).map(function (x) { return Object.assign({}, x); });
+    var signed = state.d.Deltakelse.filter(function (x) { return x.runde_id === r.id && ['Påmeldt', 'Deltatt'].indexOf(x.status) >= 0; }).map(function (x) { return x.prosjekt_id; });
+    var projs = state.d.Prosjekter.filter(function (p) { return ACTIVE.indexOf(p.fase) >= 0 || signed.indexOf(p.id) >= 0 || list.some(function (x) { return x.prosjekt_id === p.id; }); })
+      .sort(function (a, b) { return (signed.indexOf(a.id) < 0) - (signed.indexOf(b.id) < 0) || (a.kortnavn < b.kortnavn ? -1 : 1); });
+    var pOpts = function (cur) {
+      var on = projs.filter(function (p) { return signed.indexOf(p.id) >= 0; }), off = projs.filter(function (p) { return signed.indexOf(p.id) < 0; });
+      return option('', cur || '', '–') + (on.length ? '<optgroup label="Påmeldt">' + on.map(function (p) { return option(p.id, cur || '', p.kortnavn); }).join('') + '</optgroup>' : '') +
+        (off.length ? '<optgroup label="Ikke påmeldt (meldes på når du lagrer)">' + off.map(function (p) { return option(p.id, cur || '', p.kortnavn); }).join('') + '</optgroup>' : '');
+    };
+    var rowHtml = function (x, i) {
+      return '<div class="slot-row" data-i="' + i + '"><input type="time" name="fra_' + i + '" value="' + esc(x.fra || '') + '" aria-label="Fra"><input type="time" name="til_' + i + '" value="' + esc(x.til || '') + '" aria-label="Til">' +
+        '<select name="pr_' + i + '" aria-label="Prosjekt">' + pOpts(x.prosjekt_id) + '</select>' +
+        '<label class="check"><input type="checkbox" name="dg_' + i + '"' + (x.digitalt === 'ja' ? ' checked' : '') + '> Digitalt</label>' +
+        '<input type="text" name="me_' + i + '" value="' + esc(x.merknad || '') + '" placeholder="Merknad" aria-label="Merknad">' +
+        '<button type="button" class="btn small ghost" data-slotdel="' + i + '" aria-label="Fjern raden">✕</button></div>';
+    };
+    var read = function (form) {
+      return list.map(function (x, i) {
+        var g = function (k) { var el = form.querySelector('[name="' + k + '_' + i + '"]'); return el ? (el.type === 'checkbox' ? (el.checked ? 'ja' : '') : el.value.trim()) : ''; };
+        return x.gone ? null : { id: x.id || ('t' + Date.now().toString(36) + i), fra: g('fra'), til: g('til'), prosjekt_id: g('pr'), digitalt: g('dg'), merknad: g('me') };
+      }).filter(function (x) { return x && (x.fra || x.prosjekt_id); });
+    };
+    var draw = function () { $('slotRows').innerHTML = list.map(function (x, i) { return x.gone ? '' : rowHtml(x, i); }).join('') || '<div class="empty">Ingen rader.</div>'; };
+    openDrawer('<h2>Tidspunkter: ' + esc(runName(r)) + '</h2>' +
+      '<p class="empty">Skriv inn tidene og velg prosjekt. «Digitalt» vises som et merke i listen og i agendaen. Et prosjekt som ikke er påmeldt ennå, blir meldt på når du lagrer.</p>' +
+      '<div id="slotRows" class="slot-rows"></div>' +
+      '<div class="row wrap"><button type="button" class="btn small" id="slotAdd">+ Rad</button><button type="button" class="btn small ghost" id="slotAg">Hent tider fra agendaen</button></div>' +
+      actions(),
+      function (form) {
+        var out = read(form), d = state.d;
+        var add = [];
+        out.forEach(function (x) { if (x.prosjekt_id && !d.Deltakelse.some(function (a) { return a.runde_id === r.id && a.prosjekt_id === x.prosjekt_id; }) && !add.some(function (a) { return a.prosjekt_id === x.prosjekt_id; })) add.push({ runde_id: r.id, prosjekt_id: x.prosjekt_id, status: 'Påmeldt' }); });
+        save('Runder', [{ id: r.id, tidspunkter: out.length ? JSON.stringify(out) : '' }]).then(function () { return add.length ? save('Deltakelse', add) : null; }).then(function (made) {
+          closeDrawer(); state.keepScroll = true; render();
+          if (!add.length) { toast('Lagret'); return; }
+          // v27 (c): a slot signs the project up. Angre takes the sign-ups back (the slots stay).
+          toast('Lagret. Også meldt på ' + runName(r) + ': ' + add.map(function (a) { return shortName(a.prosjekt_id); }).join(', '), function () {
+            save('Deltakelse', [], (made || []).map(function (x) { return x.id; })).then(function () { toast('Påmeldingene er tatt bort igjen'); render(); });
+          });
+        });
+      });
+    $('drawer').classList.add('wide');
+    draw();
+    var form = $('drawerForm');
+    var keep = function () { var cur = read(form); list = cur.map(function (x) { return x; }); };
+    $('slotAdd').addEventListener('click', function () { keep(); list.push({ fra: '', til: '', prosjekt_id: '', digitalt: '', merknad: '' }); draw(); });
+    $('slotAg').addEventListener('click', function () {
+      keep();
+      var times = agendaSlotTimes(r, s);
+      if (!times.length) { toast('Fant ingen agenda for ' + runName(r)); return; }
+      var have = list.map(function (x) { return x.fra; });
+      times.forEach(function (t) { if (have.indexOf(t.fra) < 0) list.push({ fra: t.fra, til: t.til, prosjekt_id: '', digitalt: '', merknad: '' }); });
+      list.sort(function (a, b) { return String(a.fra || '') < String(b.fra || '') ? -1 : 1; });
+      draw(); toast(times.length + ' tider fra agendaen');
+    });
+    $('slotRows').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-slotdel]'); if (!b) return;
+      e.stopPropagation(); keep();
+      var i = Number(b.dataset.slotdel), live = list.filter(function (x) { return !x.gone; });
+      if (live[i]) live[i].gone = true;
+      list = list.filter(function (x) { return !x.gone; }); draw();
+    });
+  }
+  // One project's e-mail with its time: the activity's templates filled in, or a short plain e-mail.
+  function slotMail(arg) {
+    var p = arg.split('|'), r = byId('Runder', p[0]), s = r && byId('Serier', r.serie_id), x = r && slotsOf(r).find(function (y) { return y.id === p[1]; });
+    var pr = x && byId('Prosjekter', x.prosjekt_id); if (!pr) return;
+    var to = pr.epost || emailOf(pr.leder) || '', cc = projCc(pr);
+    var base = Object.assign({ arrangement: s.navn, tid: r.tid || '', sted: r.sted || '' }, avkVars(r), { prosjekt: pr.kortnavn, navn: firstName(pr.leder || ''), pitchtid: slotText(x), tidsplan: scheduleText(r) });
+    var tpls = templatesOf(s);
+    var links = tpls.map(function (m) {
+      var v = Object.assign({}, base, { dato: longDate(r.dato, m.spraak) });
+      return '<div class="drow"><div><b>' + esc(m.navn) + '</b> <span class="chip c-na">' + esc((m.spraak || 'no').toUpperCase()) + '</span>' + (/\{pitchtid\}|\{tidsplan\}/.test(m.emne + m.tekst) ? '' : ' <span class="chip c-na">uten {pitchtid}</span>') + '</div>' +
+        '<span class="row wrap"><a class="btn small primary" href="' + esc(mailto(to, fillTpl(m.emne, v), fillTpl(m.tekst, v), cc)) + '">Åpne i e-post</a></span></div>';
+    }).join('');
+    var plain = mailto(to, runName(r) + ': tidspunkt for ' + pr.kortnavn, 'Hei ' + firstName(pr.leder || '') + ',\n\n' + pr.kortnavn + ' pitcher ' + longDate(r.dato) + ' kl. ' + slotText(x) + (r.sted && x.digitalt !== 'ja' ? ', ' + r.sted : '') + '.\n', cc);
+    openDrawer('<h2>E-post til ' + esc(pr.kortnavn) + '</h2><p class="empty">Til ' + esc(to || '(ingen e-post)') + (cc ? ', kopi ' + esc(cc) : '') + '. {pitchtid} blir «' + esc(slotText(x)) + '».</p>' +
+      (links || '<div class="empty">Ingen e-postmaler på aktiviteten.</div>') +
+      '<div class="row wrap"><a class="btn small" href="' + esc(plain) + '">Kort e-post uten mal</a></div>' +
+      '<div class="actions"><span></span><span><button type="button" class="btn ghost" data-close>Lukk</button></span></div>', function () { closeDrawer(); });
+  }
+  function firstName(n) { return String(n || '').trim().split(/\s+/)[0] || ''; }
+  // In the agenda: which projects pitch in a row (same start time), with the Digitalt mark.
+  function agendaSlotNote(r, from) {
+    if (!r) return '';
+    var here = slotsOf(r).filter(function (x) { return x.fra === from && x.prosjekt_id; });
+    return here.length ? ' · ' + here.map(function (x) { return esc(shortName(x.prosjekt_id)) + (x.digitalt === 'ja' ? ' ' + digitalChip() : ''); }).join(', ') : '';
+  }
+  // On the project page: the pitch times it has.
+  function slotFacts(p) {
+    return state.d.Runder.filter(function (r) { return slotOf(r, p.id); }).sort(function (a, b) { return a.aar < b.aar ? 1 : -1; }).slice(0, 2).map(function (r) {
+      return '<div><span>Pitch ' + esc(r.aar) + '</span><button type="button" class="plink" data-go="runde/' + esc(r.id) + '">' + esc(slotText(slotOf(r, p.id))) + '</button></div>';
+    }).join('');
+  }
+
+  // ---- Which phase an activity year counts for, for one project ----
+  // Normally the calendar year (the same years the milepæl table uses). For a delayed project: the phase it
+  // was actually in on the activity's date, from the phase changes in Historikk (Fasehistorikk).
+  function phaseAtRun(p, r) {
+    var date = r.dato || (r.aar + '-07-01'), y = Number(date.slice(0, 4));
+    var byYear = ['1. år', '2. år', 'Avslutning'].find(function (ph) { return msSubjYear(p, ph) === y; }) || '';
+    if (p.forsinket !== 'ja') return byYear;
+    var h = (state.d.Fasehistorikk || []).filter(function (x) { return x.id === p.id; }).sort(function (a, b) { return a.tid < b.tid ? -1 : 1; });
+    if (!h.length) return byYear;
+    var before = h.filter(function (x) { return String(x.tid).slice(0, 10) <= date; }).pop();
+    var ph = before ? before.til : h[0].fra;
+    return ACTIVE.indexOf(ph) >= 0 ? ph : byYear;
+  }
+  // The activity years of the milepæl's activity that count for this project in this phase.
+  function linkRuns(m, p, ph) {
+    var s = byId('Serier', m.serie_id); if (!s) return [];
+    return state.d.Runder.filter(function (r) { return sameAct(r.serie_id, s) && phaseAtRun(p, r) === ph; });
+  }
+  // v27 (a, b): a milepæl reached from a deadline delivery or from attendance. Returns {date, via} or null.
+  function msLinkReached(m, p, ph) {
+    var best = null;
+    linkRuns(m, p, ph).forEach(function (r) {
+      var hit = '';
+      if (m.kilde === 'frist') { var lev = (dlState(r)[m.kilde_ref] || {}).levert || {}; if (lev[p.id]) hit = String(lev[p.id]).length === 10 ? lev[p.id] : (r.dato || today()); }
+      if (m.kilde === 'deltakelse') { var a = state.d.Deltakelse.find(function (x) { return x.runde_id === r.id && x.prosjekt_id === p.id; }); if (a && (a.status === 'Deltatt' || a.status === 'Alternativ')) hit = r.dato || today(); }
+      if (hit && (!best || hit < best.date)) best = { date: hit, via: (m.kilde === 'frist' ? 'Frister, ' : 'Deltatt, ') + runName(r) };
+    });
+    return best;
+  }
+  function msLinkText(m) {
+    var s = byId('Serier', m.serie_id), sn = s ? s.navn : '(velg aktivitet)';
+    if (m.kilde === 'frist') return 'nås når prosjektet har levert til fristen «' + (s ? dlNameOf(s, m.kilde_ref) || '?' : '?') + '» i ' + sn;
+    return 'nås når prosjektet har vært med på ' + sn;
+  }
+  // What links to a deadline / an activity's attendance (shown on the year page, "the other side").
+  function linksToDeadline(s, fid, rid) {
+    var out = msAll().filter(function (m) { return m.nivaa === 'prosjekt' && m.kilde === 'frist' && m.kilde_ref === fid && sameAct(m.serie_id, s); }).map(function (m) { return 'milepæl «' + m.navn + '»'; });
+    state.d.Oppgaver.filter(function (t) { return t.kobling === rid + '|' + fid; }).forEach(function (t) { out.push('gruppeoppgave «' + t.tittel + '»'); });
+    return out.length ? '<small class="dl-note link-note">Krysser også av: ' + esc(out.join(', ')) + '</small>' : '';
+  }
+  function linksToAttendance(s) {
+    var out = msAll().filter(function (m) { return m.nivaa === 'prosjekt' && m.kilde === 'deltakelse' && sameAct(m.serie_id, s); }).map(function (m) { return '«' + m.navn + '»'; });
+    return out.length ? '<p class="empty link-note">Deltatt krysser også av milepæl ' + esc(out.join(', ')) + '.</p>' : '';
+  }
+
+  // ---- Notices: what a tick also changed, with Angre ----
+  // The milepæler a delivery / attendance can reach for one project, and whether each is reached now.
+  function linkSnap(pid, r, kind, fid) {
+    var p = byId('Prosjekter', pid), s = r && byId('Serier', r.serie_id), out = [];
+    if (!p || !s) return out;
+    msAll().filter(function (m) { return m.nivaa === 'prosjekt' && m.kilde === kind && sameAct(m.serie_id, s) && (kind !== 'frist' || m.kilde_ref === fid); }).forEach(function (m) {
+      var ph = phaseAtRun(p, r);
+      if (!ph || !msHas(m, ph)) { out.push({ m: m, p: p, skip: ph ? p.kortnavn + ' var i ' + ph + ' i ' + r.aar : p.kortnavn + ' var ikke i 1. år, 2. år eller Avslutning i ' + r.aar }); return; }
+      out.push({ m: m, p: p, ph: ph, on: !!msProject(m, p, ph).reached });
+    });
+    return out;
+  }
+  function linkDiff(before, after, turnedOn) {
+    var msg = [];
+    after.forEach(function (a, i) {
+      var b = before[i] || {};
+      if (a.skip) { if (turnedOn) msg.push('«' + a.m.navn + '» ble ikke krysset av: ' + a.skip); return; }
+      if (a.on && !b.on) msg.push('Også krysset av: «' + a.m.navn + '» for ' + a.p.kortnavn);
+      if (!a.on && b.on) msg.push('Også tatt bort: «' + a.m.navn + '» for ' + a.p.kortnavn);
+    });
+    return msg;
+  }
+  // (d) a delivery ticked → the linked group tasks follow. Returns the messages and the rows to save.
+  function syncGroupsFromDeadline(r, fid, pid, on) {
+    var msg = [], rows = [];
+    state.d.Oppgaver.filter(function (t) { return t.kobling === r.id + '|' + fid; }).forEach(function (t) {
+      if (!taskMembers(t).some(function (x) { return x.id === pid; })) { if (on) msg.push(shortName(pid) + ' er ikke med i «' + t.tittel + '», så den ble ikke krysset av der'); return; }
+      var tk = taskTicks(t), has = !!tk[pid];
+      if (has === on) return;
+      if (on) tk[pid] = today(); else delete tk[pid];
+      var row = { id: t.id, avkrysset: Object.keys(tk).length ? JSON.stringify(tk) : '' };
+      if (on && openTask(t) && groupReached(Object.assign({}, t, row))) row.status = 'Ferdig';
+      rows.push(row);
+      msg.push((on ? 'Også krysset av: ' : 'Også tatt bort: ') + '«' + t.tittel + '» for ' + shortName(pid));
+    });
+    return { msg: msg, rows: rows };
+  }
+  // (d) a group task ticked → the linked deadline follows.
+  function syncDeadlineFromGroup(t, pid, on) {
+    var k = String(t.kobling || '').split('|'), r = byId('Runder', k[0]), s = r && byId('Serier', r.serie_id), f = s && deadlineList(s).find(function (x) { return x.id === k[1]; });
+    if (!f) return { msg: [] };
+    if (!dlMembers(f, r).some(function (x) { return x.id === pid; })) return { msg: on ? [shortName(pid) + ' er ikke med i fristen «' + f.navn + '», så den ble ikke krysset av der'] : [] };
+    var st = dlState(r), lev = Object.assign({}, (st[f.id] || {}).levert || {});
+    if (!!lev[pid] === on) return { msg: [] };
+    if (on) lev[pid] = today(); else delete lev[pid];
+    st[f.id] = Object.assign({}, st[f.id] || {}, { levert: lev });
+    return { msg: [(on ? 'Også krysset av under Frister: «' : 'Også tatt bort under Frister: «') + f.navn + '» for ' + shortName(pid)], r: r, f: f, json: JSON.stringify(st) };
+  }
+  // Linking a group task to a deadline: copy the ticks that are already there, both ways, for those on both lists.
+  function linkCopy(t, kobling) {
+    var k = String(kobling || '').split('|'), r = byId('Runder', k[0]), s = r && byId('Serier', r.serie_id), f = s && deadlineList(s).find(function (x) { return x.id === k[1]; });
+    if (!f) return Promise.resolve('');
+    var mem = taskMembers(t).map(function (x) { return x.id; }), dm = dlMembers(f, r).map(function (x) { return x.id; });
+    var both = mem.filter(function (id) { return dm.indexOf(id) >= 0; });
+    var tk = taskTicks(t), st = dlState(r), lev = Object.assign({}, (st[f.id] || {}).levert || {}), toTask = 0, toDl = 0;
+    both.forEach(function (id) { if (lev[id] && !tk[id]) { tk[id] = lev[id]; toTask++; } else if (tk[id] && !lev[id]) { lev[id] = String(tk[id]).length === 10 ? tk[id] : today(); toDl++; } });
+    var only = mem.filter(function (id) { return dm.indexOf(id) < 0; }).concat(dm.filter(function (id) { return mem.indexOf(id) < 0; }));
+    st[f.id] = Object.assign({}, st[f.id] || {}, { levert: lev });
+    var row = { id: t.id, avkrysset: Object.keys(tk).length ? JSON.stringify(tk) : '' };
+    return Promise.all([toTask ? save('Oppgaver', [row]) : null, toDl ? save('Runder', [{ id: r.id, frist_status: JSON.stringify(st) }]) : null]).then(function () {
+      var m = ['Koblet til «' + f.navn + '» (' + runName(r) + ')'];
+      if (toTask || toDl) m.push('kopierte ' + (toTask ? toTask + ' kryss til oppgaven' : '') + (toTask && toDl ? ' og ' : '') + (toDl ? toDl + ' kryss til fristen' : ''));
+      if (only.length) m.push('ikke på begge listene, så de følger ikke: ' + only.map(shortName).join(', '));
+      return m.join(' · ');
+    });
+  }
+  // The deadlines a group task can be linked to: deadlines for projects on that year's activity years.
+  function koblingOptions(t) {
+    var y = t.aar || today().slice(0, 4), out = option('', t.kobling || '', 'Ingen');
+    state.d.Runder.filter(function (r) { return r.aar === y; }).forEach(function (r) {
+      var s = byId('Serier', r.serie_id); if (!s) return;
+      deadlineList(s).filter(function (f) { return f['for'] === 'prosjekter'; }).forEach(function (f) { out += option(r.id + '|' + f.id, t.kobling || '', runName(r) + ': ' + f.navn); });
+    });
+    return out;
+  }
+  function koblingText(t) {
+    var k = String(t.kobling || '').split('|'), r = byId('Runder', k[0]), s = r && byId('Serier', r.serie_id), f = s && deadlineList(s).find(function (x) { return x.id === k[1]; });
+    return f ? '<div class="gt link-note"><span class="why">Koblet til fristen «' + esc(f.navn) + '» (' + esc(runName(r)) + '): kryssene følger hverandre</span></div>' : '';
+  }
+
+  // ---- Milepæl deadlines per project (Prosjekter.milepael_frister) ----
+  function msOwnDue(p, mid, y) { var o = jsonOf(p && p.milepael_frister, {}); return (o && o[mid + '|' + y]) || ''; }
+  function msDueEdit(arg) {
+    var a = arg.split('|'), m = byId('Milepaeler', a[0]), p = byId('Prosjekter', a[1]), y = a[2]; if (!m || !p) return;
+    var own = msOwnDue(p, m.id, y), std = msDue(m, Number(y));
+    openDrawer('<h2>' + esc(m.navn) + ': ' + esc(p.kortnavn) + '</h2><p class="empty">Vanlig frist: ' + esc(fmtDate(std)) + '. En egen frist gjelder bare dette prosjektet.</p>' +
+      field('Egen frist', 'dato', own || std, 'date') + actions(own ? '<button type="button" class="btn ghost" id="msDueReset">Bruk vanlig frist</button>' : ''),
+      function (form) { putOwnDue(p, m.id + '|' + y, val(form, 'dato') === std ? '' : val(form, 'dato')); });
+    var rs = $('msDueReset'); if (rs) rs.addEventListener('click', function () { putOwnDue(p, m.id + '|' + y, ''); });
+  }
+  function putOwnDue(p, key, date) {
+    var o = jsonOf(p.milepael_frister, {}); if (!o || typeof o !== 'object') o = {};
+    if (date) o[key] = date; else delete o[key];
+    save('Prosjekter', [{ id: p.id, milepael_frister: Object.keys(o).length ? JSON.stringify(o) : '' }]).then(function () { closeDrawer(); toast(date ? 'Fristen er flyttet for ' + p.kortnavn : 'Vanlig frist igjen'); render(); });
+  }
+  // The milepæler "Utsett prosjektet" can move: not reached, from the project's current phase on.
+  function postponeMilestones(p) {
+    var phases = ['1. år', '2. år', 'Avslutning'], from = Math.max(0, phases.indexOf(p.fase)), out = [];
+    phases.slice(from).forEach(function (ph) {
+      msAll().filter(function (m) { return m.nivaa === 'prosjekt' && msHas(m, ph); }).forEach(function (m) {
+        var st = msProject(m, p, ph);
+        if (st.reached || st.skipped || !st.due) return;
+        out.push({ m: m, y: st.y, due: st.due, ph: ph });
+      });
+    });
+    return out;
+  }
+
   // v21: hold a task's circle (about half a second) = Shift-click: marks it as Pågående.
   var longPressed = false, pressTimer = null;
   document.addEventListener('pointerdown', function (e) {
@@ -6341,6 +6703,11 @@
     if (ds.fladd) { var fa = ds.fladd.split('|'), far = byId('Runder', fa[0]); editTask(null, { runde_id: fa[0], aar: far ? far.aar : '', delmaal: fa.slice(1).join('|'), liste: '', fase: 'Felles' }); return; }
     if (ds.avknew) { var anr = byId('Runder', ds.avknew); editTask(null, { type: 'avklaring', runde_id: ds.avknew, aar: anr ? anr.aar : '', liste: '' }); return; }
     if (ds.panedit !== undefined) { editPanelist(ds.panedit); return; }
+    // v27: pitch slots and per-project milepæl deadlines
+    if (ds.slotedit) { editSlots(ds.slotedit); return; }
+    if (ds.slotmail) { slotMail(ds.slotmail); return; }
+    if (ds.slotcopy) { copyText(scheduleText(byId('Runder', ds.slotcopy))); return; }
+    if (ds.msdue) { msDueEdit(ds.msdue); return; }
     if (ds.gtick) { var gtp = ds.gtick.split('|'); groupTick(gtp[0], gtp.slice(1).join('|')); return; }   // v21
     if (ds.gmail) { var gmp = ds.gmail.split('|'); groupTick(gmp[0], gmp.slice(1).join('|'), true); return; }
     if (ds.pandel) { var pdl = ds.pandel.split('|'), pdr = byId('Runder', pdl[0]), pls = panelOf(pdr); pls.splice(Number(pdl[1]), 1); savePanel(pdr, pls, 'Fjernet'); return; }
