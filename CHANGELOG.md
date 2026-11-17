@@ -3,6 +3,55 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v28 – 17 November 2026 (page and back end)
+
+Linn's comments from 16 November (points 1–29, except the menu, which comes later). Needs the new `Kode.gs`, `setup()` once and a new deployment, plus these page files.
+
+### Faster
+- The back end reads each tab only once per call, writes Historikk lines in one go, reads only the newest 1,000 Historikk lines when the app opens, and keeps the phase history (Fasehistorikk) up to date bit by bit instead of reading all of Historikk each time.
+- A save sends back every row it changed, so the page no longer reloads everything after ticking a task, saving a deadline, a group tick, an expense and similar.
+- (The save lock that stops two saves from colliding was already there.)
+
+### E-post
+- **Dokumenter** and **E-postmaler** are two panels (they were one). "Egen veiledning" is in Dokumenter.
+- **Variants of a template:** the main text is number 1; "+ Ny variant" copies the one shown, each variant can have a comment (for example the year it was used), and ← 1 2 3 → step between them in the template form. In E-postmaler, ← → choose which variant "Åpne i e-post" uses; the invitation and "Send til de neste" lists show each variant.
+- **"Vises på" tick boxes** in the template form (Generell = every activity, or the activities you tick) replace the two link fields, and the activity form has the same ticks ("E-postmaler på aktiviteten").
+- The e-mail text is tidied before it goes to the e-mail program (no spaces at line ends, no double empty lines).
+
+### Activity year page
+- Gjesteliste is **Deltakere** (+ Deltaker); "Hvem var med?" is **Prosjekter**, ticked by default on Pitch.
+- The **"Til denne aktiviteten"** panel is gone. Its buttons moved: general templates → E-postmaler; budget → Utgifter; "Rediger oppgaver og delmål" → the top of the page; "Inviter foredragsholder" → Foredragsholdere; "Inviter mentor" → each project in Prosjekter (Mentormøte); "Egen veiledning" → Dokumenter.
+- **Panels fill the gaps:** in a two-column block each panel goes into the shorter column, in list order (Venstre/Høyre decides when they are even). Hel bredde still spans the page; a phone has one column.
+
+### Agenda and pitch times
+- The **Tidspunkter** panel is gone; pitch times are part of the **agenda**. A row can be Bolk, Pause or **Pitch** ("+ Pitch", 30 minutes by default; change it in Innstillinger). On a year page each Pitch row shows its project, Digitalt and ✉ E-post; "Velg prosjekter til pitchene" picks them, "Kopier tidsplanen" copies the list. `{pitchtid}` and `{tidsplan}` use the agenda times.
+- Times entered before v28 are matched to the agenda row that starts at the same time; any that don't match are listed ("Tider som ikke passer agendaen") until you remove them.
+- When the agenda has variants by number, saving pitches picks the variant for the year, so signing up one more project doesn't move the times.
+- **Bug fix:** the agenda form now counts the times from the year's Klokkeslett when opened from a year (it used 09:00), and a new agenda no longer saves 09:00.
+
+### Panelet
+- "Panel (kandidatliste)" is **Panelet** (+ Panelmedlem). Name over organisation, left aligned; no empty last column; cards on a phone.
+- **Sorting:** Ja, then Venter, then not e-mailed (Førstevalg first, then the other Valg options in order), then Nei; A–Å within each.
+- **Dager siden kontakt** ("12 d", the date on hover), yellow after 7 days (setting). Sist kontakt uses the e-mail date when empty; e-mailed without an answer counts as **Venter**.
+- **Click a cell** (Valg, E-post sendt, Svar, Dager siden kontakt) to change just that value. Click the row for the form ("Se personsiden" at the top); right-click (PC) or a long press (phone) opens the person.
+- **Valg** is a list you edit in Innstillinger → Panelet. **Kompetanse** is tags from a list in Innstillinger (add, rename, delete), saved on the person in Personer. The form has small grey links to both lists. **Organisasjon** is in the form and the list.
+
+### People and the whole app
+- **SPARK's own drop-down** under fields with suggestions (names, Ansvarlig, milepæl names …) replaces the browser's bubbles. A name already in Personer says "✓ I Personer"; a new one says "Ny person". A new Ansvarlig in the agenda is added to Personer.
+- **Samle personer** shows each place a name is used as a link to that page.
+- **Times are typed as text in 24-hour time** (tt:mm; "815" and "8.15" become 08:15) instead of the browser's clock box.
+- **Drag the left edge of a form** to make it wider (PC). The width isn't remembered.
+
+### Frister
+- A weekday rule can be "samme uke", "uka før/etter" or **N uker før/etter** (number box).
+- **Oppfølging:** a deadline can make a task the morning after it has passed when someone hasn't delivered (title and days in the deadline form). The task lists who is missing, updates as more deliver, and closes itself (Ikke aktuelt) when everyone has.
+
+### Added (by `setup()`, once, setting `v28_migrert`)
+- New columns at the end: Maler `serier`, `varianter`; Kontakter `kompetanse`. New settings `pitch_min`, `panel_dager`, `panel_valg`, `kompetanse`.
+- Maler `serier` is filled from the old links (activity → that activity; type → the activities of that type now; a general template without links → Generell). `serie_id` / `serie_type` keep their values but aren't used.
+- The panel's Kompetanse text is split on commas into the Kompetanse list and onto the people in Personer; the Valg values in use go into the Valg list.
+- Pitch activities (and the Pitch standard) with their own panel choice get Prosjekter ticked.
+
 ## v27 – 16 November 2026 (page and back end)
 
 Pitch times, things that tick each other, own deadlines for delayed projects, one search and a readable export. Needs the new `Kode.gs`, `setup()` once and a new deployment, plus these page files.
