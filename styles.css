@@ -975,10 +975,12 @@ body.fldragging, body.fldragging * { cursor: grabbing !important; user-select: n
 /* 24-hour time boxes (text, normalised to tt:mm) */
 input.tm { width: 7.5em; max-width: 100%; font-variant-numeric: tabular-nums; }
 input.tm.bad { border-color: var(--warn); }
+input.dt { width: 9.5em; max-width: 100%; font-variant-numeric: tabular-nums; }   /* v29: dd.mm.åååå */
+input.dt.bad { border-color: var(--warn); }
 /* Small grey link inside a form, e.g. "Endre standardlengden", "Rediger listen" */
 .muted-link { color: var(--muted); font-size: 12.5px; }
 /* The agenda on a year page: who pitches in a Pitch row */
-.ag-slot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 2px; }
+.ag-slot { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-left: 8px; vertical-align: middle; }   /* v29: on the same line as the pitch text */
 .slot-row .agt small { display: block; color: var(--muted); font-size: 11.5px; font-weight: normal; }
 .slot-row.old { opacity: .8; }
 /* Panelet / Foredragsholdere: name over organisation, left aligned; cells you can click to change */

@@ -3,6 +3,24 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v29 – 18 November 2026 (page and back end)
+
+Linn's comments from 17 November. Needs the new `Kode.gs` and a new deployment (no `setup()`), plus these page files.
+
+### Panelet
+- **Dates are typed as dd.mm.åååå** in the cells and in the panel form (the browser's date box showed mm/dd/yyyy). "5.11", "05.11.2026" and "5/11/26" all work; a date that doesn't exist is marked and not saved. Stored as before.
+- **The page stays where you are** after changing a cell (it jumped to the top because the panels are laid out after the scroll was restored).
+- **Purres is no longer filled in by itself** (cell edits, "Send til de neste", "Purr dem som venter" and the ✉ on group tasks).
+- **Dager siden kontakt** only shows for Venter.
+- **Safety:** "Slett" in the panel form asks first. A panel save now sends only the people you changed, added or deleted, and the back end puts them into the list as it is in the sheet, so a save can never remove someone it didn't touch (`api_panelSave`). People who say Ja are still put on Deltakere.
+
+### Agenda
+- "+ Pitch" names the rows **Pitch 1, Pitch 2 …**
+- On the year page the project (or "velg prosjekt"), Digitalt and ✉ E-post sit on the **same line** as the pitch text.
+
+### E-post
+- New field **{organisasjon}**: the organisation of the person the e-mail goes to (from Personer). Filled in on e-mails to a project leader, the pitch e-mails, and "Send til de neste" / "Purr" when it goes to one person. The invitation form has an Organisasjon box (filled in from the person you pick).
+
 ## v28 – 17 November 2026 (page and back end)
 
 Linn's comments from 16 November (points 1–29, except the menu, which comes later). Needs the new `Kode.gs`, `setup()` once and a new deployment, plus these page files.

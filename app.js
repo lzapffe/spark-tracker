@@ -77,20 +77,22 @@
 
   // Saves rows in one tab and puts the saved versions into the local copy.
   function save(tab, rows, remove) {
-    return api('api_save', { tab: tab, rows: rows || [], remove: remove || [] }).then(function (res) {
-      // v28: the back end also sends the other rows the save changed ({rows, also, gone}), so the page
-      // stays up to date without fetching everything again. (An older back end sends just the rows.)
-      var saved = Array.isArray(res) ? res : (res && res.rows) || [];
-      var put = function (t, r) { var l = state.d[t] || (state.d[t] = []), i = l.findIndex(function (x) { return x.id === r.id; }); if (i >= 0) l[i] = r; else l.push(r); };
-      var drop = function (t, id) { var l = state.d[t] || [], i = l.findIndex(function (x) { return x.id === id; }); if (i >= 0) l.splice(i, 1); };
-      saved.forEach(function (r) { put(tab, r); });
-      (remove || []).forEach(function (id) { drop(tab, id); });
-      if (res && !Array.isArray(res)) {
-        Object.keys(res.also || {}).forEach(function (t) { (res.also[t] || []).forEach(function (r) { put(t, r); }); });
-        Object.keys(res.gone || {}).forEach(function (t) { (res.gone[t] || []).forEach(function (id) { drop(t, id); }); });
-      }
-      return saved;
-    }).catch(fail);
+    return api('api_save', { tab: tab, rows: rows || [], remove: remove || [] }).then(function (res) { return applySave(tab, res, remove); }).catch(fail);
+  }
+  // v29: shared by save() and the panel save (api_panelSave sends back the same shape).
+  function applySave(tab, res, remove) {
+    // v28: the back end also sends the other rows the save changed ({rows, also, gone}), so the page
+    // stays up to date without fetching everything again. (An older back end sends just the rows.)
+    var saved = Array.isArray(res) ? res : (res && res.rows) || [];
+    var put = function (t, r) { var l = state.d[t] || (state.d[t] = []), i = l.findIndex(function (x) { return x.id === r.id; }); if (i >= 0) l[i] = r; else l.push(r); };
+    var drop = function (t, id) { var l = state.d[t] || [], i = l.findIndex(function (x) { return x.id === id; }); if (i >= 0) l.splice(i, 1); };
+    saved.forEach(function (r) { put(tab, r); });
+    (remove || []).forEach(function (id) { drop(tab, id); });
+    if (res && !Array.isArray(res)) {
+      Object.keys(res.also || {}).forEach(function (t) { (res.also[t] || []).forEach(function (r) { put(t, r); }); });
+      Object.keys(res.gone || {}).forEach(function (t) { (res.gone[t] || []).forEach(function (id) { drop(t, id); }); });
+    }
+    return saved;
   }
 
   // A workflow call (admit, phase change ...) is followed by a full reload,
@@ -308,6 +310,7 @@
     if (state.view === 'tidslinje') tlFocus();
     window.scrollTo(0, keep);
     afterRender();   // v19
+    if (keep) window.scrollTo(0, keep);   // v29: again after the panels are laid out (masonry), so the page stays where it was
   }
 
 
@@ -613,7 +616,7 @@
   function contactsPanel(p) {
     var list = projContacts(p), cc = projCc(p);
     var gen = state.d.Maler.filter(function (m) { return m.type === 'generell'; }).sort(function (a, b) { return Number(a.rekkefolge || 0) - Number(b.rekkefolge || 0); });
-    var v = { navn: p.leder || '', prosjekt: p.tittel || p.kortnavn, beskrivelse: p.maal || '' };
+    var v = { navn: p.leder || '', prosjekt: p.tittel || p.kortnavn, beskrivelse: p.maal || '', organisasjon: orgOf(p.leder) };   // v29
     return '<section class="panel"><h2>Personer</h2>' +
       '<div class="task"><span></span><div><div class="tt">' + (p.leder ? personLink(p.leder) : 'Prosjektleder ikke satt') + '</div><div class="meta">Prosjektleder' + (p.epost ? ' · ' + esc(p.epost) : '') + '</div></div></div>' +
       list.map(function (c, i) { return { c: c, i: i }; }).filter(function (x) { return pcActive(x.c); }).concat([null], list.map(function (c, i) { return { c: c, i: i }; }).filter(function (x) { return !pcActive(x.c); })).map(function (x, k, all) {
@@ -890,7 +893,7 @@
     var had = state.focusTask != null; state.focusTask = null;
     if (had && state.view === 'rundeoppg' && state.d) { state.keepScroll = true; render(); }
   }
-  function val(form, name) { var el = form.querySelector('[name="' + name + '"]'); return el ? (el.type === 'checkbox' ? (el.checked ? 'ja' : 'nei') : el.classList.contains('money') ? rawMoney(el.value) : el.classList.contains('tm') ? normTime(el.value) : el.value.trim()) : undefined; }
+  function val(form, name) { var el = form.querySelector('[name="' + name + '"]'); return el ? (el.type === 'checkbox' ? (el.checked ? 'ja' : 'nei') : el.classList.contains('money') ? rawMoney(el.value) : el.classList.contains('tm') ? normTime(el.value) : el.classList.contains('dt') ? normDate(el.value) : el.value.trim()) : undefined; }
   // ---- v28: times are typed as text in 24-hour format (the browser's clock box followed the computer's language) ----
   // "815", "8.15", "8:15", "0815" and "8" all become 08:15 / 08:00. Anything else is left as typed (and marked).
   function normTime(v) {
@@ -911,6 +914,30 @@
     if (!ok) { toast('Skriv klokkeslettet som tt:mm, for eksempel 08:15'); return; }
     if (n !== el.value) { el.value = n; el.dispatchEvent(new Event('input', { bubbles: true })); }
   }, true);
+  // ---- v29: dates typed as dd.mm.åååå (the browser's date box followed the computer's language: mm/dd/yyyy) ----
+  // "18.11.2026", "18/11/2026", "18-11-26", "18.11" (this year) and "18112026" all become 2026-11-18. Stored as before (åååå-mm-dd).
+  function normDate(v) {
+    var t = String(v == null ? '' : v).trim(); if (!t) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+    var m = t.match(/^(\d{1,2})[.\/\-\s](\d{1,2})(?:[.\/\-\s](\d{2}|\d{4}))?\.?$/) || t.match(/^(\d{2})(\d{2})(\d{4})$/);
+    if (!m) return t;
+    var d = Number(m[1]), mo = Number(m[2]), y = m[3] ? Number(m[3].length === 2 ? '20' + m[3] : m[3]) : Number(today().slice(0, 4));
+    var dt = new Date(Date.UTC(y, mo - 1, d));
+    if (mo < 1 || mo > 12 || dt.getUTCDate() !== d) return t;
+    return y + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+  }
+  function okDate(v) { return !v || /^\d{4}-\d{2}-\d{2}$/.test(v); }
+  function dmy(iso) { var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? m[3] + '.' + m[2] + '.' + m[1] : String(iso || ''); }
+  function dateInput(name, value, attrs) {
+    return '<input type="text" class="dt" inputmode="numeric" maxlength="10" placeholder="dd.mm.åååå" autocomplete="off"' + (name ? ' name="' + name + '"' : '') + (attrs || '') + ' value="' + esc(dmy(value)) + '">';
+  }
+  document.addEventListener('change', function (e) {
+    var el = e.target; if (!el || !el.classList || !el.classList.contains('dt')) return;
+    var n = normDate(el.value), ok = okDate(n);
+    el.classList.toggle('bad', !ok);
+    if (!ok) { toast('Skriv datoen som dd.mm.åååå, for eksempel 18.11.2026'); return; }
+    if (dmy(n) !== el.value) el.value = dmy(n);
+  }, true);
   function field(label, name, value, type, opts) {
     type = type || 'text';
     var input;
@@ -918,6 +945,7 @@
     else if (type === 'textarea') input = '<textarea name="' + name + '">' + esc(value) + '</textarea>';
     else if (type === 'money') input = moneyInput(name, value);
     else if (type === 'time') input = timeInput(name, value);   // v28: a text box in 24-hour time
+    else if (type === 'ddate') input = dateInput(name, value);  // v29: a text box for dd.mm.åååå
     else input = '<input type="' + type + '" name="' + name + '" value="' + esc(value) + '">';
     return '<label class="f">' + label + input + '</label>';
   }
@@ -977,10 +1005,10 @@
       var r = runOf(t), list = panelOf(r), p = list.find(function (x) { return x.id === mid; }); if (!p) return;
       // Taking a tick off changes the list (the date sent, or the Ja), so it asks first.
       if (!mail && (t.teller === 'ja' ? p.svar === 'Ja' : p.sendt) && !window.confirm(t.teller === 'ja' ? 'Fjerne «Ja» for ' + p.navn + '? Svaret blir «Venter» igjen.' : 'Fjerne «e-post sendt» (' + fmtDate(p.sendt) + ') for ' + p.navn + '?')) return;
-      if (mail) { window.location.href = mailto(p.epost, runName(r), '', ''); p.sendt = today(); p.sist = today(); p.svar = p.svar || 'Venter'; p.purres = p.purres || addDays(today(), 7); }
+      if (mail) { window.location.href = mailto(p.epost, runName(r), '', ''); p.sendt = today(); p.sist = today(); p.svar = p.svar || 'Venter'; }
       else if (t.teller === 'ja') { p.svar = p.svar === 'Ja' ? (p.sendt ? 'Venter' : '') : 'Ja'; p.sist = today(); }
       else if (p.sendt) { p.sendt = ''; if (p.svar === 'Venter') p.svar = ''; }
-      else { p.sendt = today(); p.sist = today(); p.svar = p.svar || 'Venter'; p.purres = p.purres || addDays(today(), 7); }
+      else { p.sendt = today(); p.sist = today(); p.svar = p.svar || 'Venter'; }
       savePanel(r, list, mail ? 'Merket som sendt' : 'Lagret');
       return;
     }
@@ -2410,7 +2438,7 @@
       var p = b.dataset.ag.split('|'), i = Number(p[1]);
       if (p[0] === 'add') rows.push({ id: newKey(), min: '', hva: '', ansvarlig: '', art: '' });
       if (p[0] === 'brk') rows.push({ id: newKey(), min: '15', hva: 'Pause', ansvarlig: '', art: 'pause' });
-      if (p[0] === 'pit') rows.push({ id: newKey(), min: pitchMin(), hva: 'Pitch', ansvarlig: '', art: 'pitch' });   // v28
+      if (p[0] === 'pit') rows.push({ id: newKey(), min: pitchMin(), hva: 'Pitch ' + (rows.filter(isPitchRow).length + 1), ansvarlig: '', art: 'pitch' });   // v28; v29: numbered
       if (p[0] === 'del') rows.splice(i, 1);
       if (p[0] === 'up' && i > 0) rows.splice(i - 1, 0, rows.splice(i, 1)[0]);
       if (p[0] === 'down' && i < rows.length - 1) rows.splice(i + 1, 0, rows.splice(i, 1)[0]);
@@ -4937,7 +4965,7 @@
 
   // ---- E-mail templates (Mer → E-postmaler) and the invite buttons ----------------------------
   // Maler tab: navn, type (foredragsholder | mentor | generell), spraak (no | en), emne, tekst.
-  // Fields in {curly brackets} are filled in: {navn} {arrangement} {dato} {tid} {sted} {prosjekt} {beskrivelse}.
+  // Fields in {curly brackets} are filled in: {navn} {organisasjon} {arrangement} {dato} {tid} {sted} {prosjekt} {beskrivelse}.
   var TPL_TYPES = { foredragsholder: 'Inviter foredragsholder', mentor: 'Inviter mentor', generell: 'Generell' };
   var LANGS = { no: 'Norsk', en: 'English' };
   // v28 (1): the body is tidied before it is sent to the e-mail program: no spaces at the end of a line, no more than
@@ -5015,7 +5043,7 @@
       types.map(function (t) { return group(typeAll(t), list.filter(function (m) { return oldType(m) === t; })); }).join('') +
       acts.map(function (r) { return group(actName(r), list.filter(function (m) { return tplRoots(m).indexOf(r) >= 0; })); }).join('');
     return bar + (body || '<div class="panel empty">Ingen maler' + (q || where || lang ? ' som passer.' : ' ennå.') + '</div>') +
-      '<p class="empty">«Åpne i e-post» lager et utkast i e-postprogrammet ditt, «Kopier» legger teksten på utklippstavlen. Felt i {krøllparenteser} fylles ut: {navn}, {arrangement}, {dato}, {tid}, {sted}, {prosjekt}, {beskrivelse}, og for pitch {pitchtid} og {tidsplan}.</p>';
+      '<p class="empty">«Åpne i e-post» lager et utkast i e-postprogrammet ditt, «Kopier» legger teksten på utklippstavlen. Felt i {krøllparenteser} fylles ut: {navn}, {organisasjon}, {arrangement}, {dato}, {tid}, {sted}, {prosjekt}, {beskrivelse}, og for pitch {pitchtid} og {tidsplan}.</p>';
   }
 
   // Mottakere: pick groups, get "Navn <epost>; …" to paste into Outlook. Duplicates are removed.
@@ -5117,7 +5145,7 @@
         '<div id="tvKom">' + field('Kommentar (for eksempel hvilket år den ble brukt)', 'kommentar', '') + '</div>' +
         field('Emne', 'emne', '') + '<label class="f">Tekst<textarea name="tekst" class="tall"></textarea></label>' +
         '<div class="tv-foot"><button type="button" class="btn small ghost" id="tvPrev" aria-label="Forrige variant">←</button><span id="tvList" class="tv-list"></span><button type="button" class="btn small ghost" id="tvNext" aria-label="Neste variant">→</button></div></div>' +
-      '<p class="empty">Felt som fylles ut: {navn} {arrangement} {dato} {tid} {sted} {prosjekt} {beskrivelse}, og for pitch {pitchtid} (prosjektets tid i agendaen) og {tidsplan} (hele listen)</p>' +
+      '<p class="empty">Felt som fylles ut: {navn} {organisasjon} {arrangement} {dato} {tid} {sted} {prosjekt} {beskrivelse}, og for pitch {pitchtid} (prosjektets tid i agendaen) og {tidsplan} (hele listen)</p>' +
       actions(id ? '<button type="button" class="btn danger" data-deltpl="' + esc(id) + '">Slett</button>' : ''),
       function (form) {
         keep();
@@ -5150,7 +5178,7 @@
   // "Inviter foredragsholder" (on a workshop year) and "Inviter mentor" (on a project page).
   //   kind = foredragsholder | mentor, ctxId = the run ID or project ID (or '' from the template list).
   function invite(kind, ctxId, tplId) {
-    var d = state.d, v = { navn: '', arrangement: '', dato: '', tid: '', sted: '', prosjekt: '', beskrivelse: '' }, date = '';
+    var d = state.d, v = { navn: '', organisasjon: '', arrangement: '', dato: '', tid: '', sted: '', prosjekt: '', beskrivelse: '' }, date = '';
     var first = tplId ? byId('Maler', tplId) : null, lang = first ? first.spraak : 'no';
     if (kind === 'foredragsholder') {
       var r = byId('Runder', ctxId);
@@ -5169,7 +5197,7 @@
       '<div class="grid2">' + field('Språk', 'spraak', '', 'select', Object.keys(LANGS).map(function (k) { return option(k, lang, LANGS[k]); }).join('')) +
         field('Mal', 'mal', '', 'select', '') +
         field('Kontakt', 'kontakt', '', 'select', option('', v.kontakt || '', '– Skriv navnet selv') + d.Kontakter.slice().sort(function (a, b) { return a.navn < b.navn ? -1 : 1; }).map(function (c) { return option(c.id, v.kontakt || '', c.navn); }).join('')) +
-        field('Navn', 'navn', v.navn) + field('E-post', 'epost', v.epost || '', 'text') + field('Arrangement', 'arrangement', v.arrangement) +
+        field('Navn', 'navn', v.navn) + field('E-post', 'epost', v.epost || '', 'text') + field('Organisasjon', 'organisasjon', v.organisasjon || orgOf(v.navn)) + field('Arrangement', 'arrangement', v.arrangement) +
         field('Dato', 'dato', date, 'date') + field('Klokkeslett', 'tid', v.tid, 'time') + field('Sted', 'sted', v.sted) +
         (kind === 'mentor' ? field('Prosjekt', 'prosjekt', v.prosjekt) : '') + '</div>' +
       (kind === 'mentor' ? field('Kort om prosjektet', 'beskrivelse', v.beskrivelse, 'textarea') : '') +
@@ -5186,7 +5214,7 @@
     };
     var build = function () {
       var mv = String(val(form, 'mal') || '').split('|'), m0 = byId('Maler', mv[0]), m = m0 ? tplVariants(m0)[Number(mv[1]) || 0] : null, l = val(form, 'spraak');
-      var vals = { navn: val(form, 'navn'), arrangement: val(form, 'arrangement'), dato: longDate(val(form, 'dato'), l), tid: val(form, 'tid'), sted: val(form, 'sted'), prosjekt: val(form, 'prosjekt'), beskrivelse: val(form, 'beskrivelse') };
+      var vals = { navn: val(form, 'navn'), organisasjon: val(form, 'organisasjon'), arrangement: val(form, 'arrangement'), dato: longDate(val(form, 'dato'), l), tid: val(form, 'tid'), sted: val(form, 'sted'), prosjekt: val(form, 'prosjekt'), beskrivelse: val(form, 'beskrivelse') };
       form.querySelector('[name="emne_ut"]').value = m ? fillTpl(m.emne, vals) : '';
       form.querySelector('[name="tekst_ut"]').value = m ? fillTpl(m.tekst, vals) : '';
       link();
@@ -5195,7 +5223,7 @@
     form.addEventListener('input', function (e) { if (e.target.name === 'emne_ut' || e.target.name === 'tekst_ut') link(); else build(); });
     form.addEventListener('change', function (e) {
       if (e.target.name === 'spraak') fillTplList();
-      if (e.target.name === 'kontakt') { var c = byId('Kontakter', e.target.value); if (c) { form.querySelector('[name="navn"]').value = c.navn; form.querySelector('[name="epost"]').value = c.epost || ''; } }
+      if (e.target.name === 'kontakt') { var c = byId('Kontakter', e.target.value); if (c) { form.querySelector('[name="navn"]').value = c.navn; form.querySelector('[name="epost"]').value = c.epost || ''; form.querySelector('[name="organisasjon"]').value = c.enhet || ''; } }
       if (e.target.name !== 'emne_ut' && e.target.name !== 'tekst_ut') build();
     });
     $('mailCopy').addEventListener('click', function () { copyText(form.querySelector('[name="tekst_ut"]').value); });
@@ -5288,6 +5316,8 @@
 
   // ---- v19: people to ask (the person popup and "Snakk med …") ----
   // ---- v21: people. Kontakter is the person database; project leaders and the people on projects count too ----
+  // v29: {organisasjon} in e-mails = the organisation of the person the e-mail goes to (Personer).
+  function orgOf(name) { var c = name ? contactOf(name) : null; return (c && c.enhet) || ''; }
   function sameName(a, b) { return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase(); }
   // "Venter på" and "Spør" hold names as text; several names are separated by commas.
   function whoList(v) { return splitList(v); }
@@ -6111,30 +6141,43 @@
 
   // ---- v19: the panel list (Runder.panel), for activities with "Har panel" ----
   var PANEL_SVAR = { Ja: 'c-done', Nei: 'c-miss', Venter: 'c-prog' };
-  function panelOf(r) { var l = jsonOf(r && r.panel, []); return Array.isArray(l) ? l : []; }
+  // v29: each entry remembers which entry it was when read (_k, not saved), so a save can send only what changed.
+  function panelKey(e) { return e && e.id ? 'id:' + e.id : 'n:' + ((e && e.rolle) || '') + '|' + String((e && e.navn) || '').trim().toLowerCase(); }
+  function keepKey(e, from) { if (from && from._k) Object.defineProperty(e, '_k', { value: from._k, writable: true, enumerable: false }); return e; }
+  function panelOf(r) {
+    var l = jsonOf(r && r.panel, []); if (!Array.isArray(l)) return [];
+    l.forEach(function (e) { if (e && typeof e === 'object') Object.defineProperty(e, '_k', { value: panelKey(e), writable: true, enumerable: false }); });
+    return l;
+  }
   // v21: one list holds both the panel and the speakers (rolle 'taler'). Saving it also
   // - puts everyone who has said Ja on the year's guest list (never takes anyone off it),
   // - marks panel / speaker group tasks on the year as done when enough are ticked.
   function savePanel(r, list, msg) {
     closeDrawer();
-    var row = { id: r.id, panel: JSON.stringify(list) }, g = guestsOf(r), added = [];
-    list.forEach(function (p) {
-      if (p.svar !== 'Ja' || !p.navn || g.some(function (x) { return sameName(x.navn, p.navn); })) return;
-      var c = contactOf(p.navn), x = { navn: p.navn, hvor: p.rolle === 'taler' ? 'Foredragsholder' : 'Panel', allergier: (c && c.allergier) || '' };
-      g.push(x); added.push(x);
+    // v29 (safety): only the changed, new and deleted entries are sent. The back end puts them into the list
+    // that is in the sheet now, so a save can never drop entries it didn't touch. It also adds the Ja people
+    // to the guest list (never takes anyone off it).
+    var base = panelOf(r), was = {}, seen = {}, put = [], add = [], del = [];
+    base.forEach(function (e) { was[e._k] = JSON.stringify(e); });
+    list.forEach(function (e) {
+      if (e._k && was[e._k] !== undefined && !seen[e._k]) { seen[e._k] = 1; if (JSON.stringify(e) !== was[e._k]) put.push({ key: e._k, entry: e }); }
+      else add.push(e);
     });
-    if (added.length) row.gjester = JSON.stringify(g);
-    r.panel = row.panel; if (row.gjester) r.gjester = row.gjester;
-    var fin = state.d.Oppgaver.filter(function (t) { return t.runde_id === r.id && PANEL_GROUPS[t.gruppe] && openTask(t) && groupReached(t); });
-    return Promise.all([save('Runder', [row])].concat(fin.map(function (t) { return celebrate(t.id); }))).then(function () {
-      return fin.length ? save('Oppgaver', fin.map(function (t) { return { id: t.id, status: 'Ferdig' }; })) : null;
-    }).then(function () {
-      var words = [msg || 'Lagret'];
-      if (added.length) words.push(added.map(function (x) { return shortPerson(x.navn); }).join(', ') + ' er lagt på deltakerlisten');
-      if (fin.length) words.push('«' + fin.map(function (t) { return t.tittel; }).join('», «') + '» er ferdig');
-      toast(words.join('. ')); state.keepScroll = true;
-      render();   // v28
-    });
+    base.forEach(function (e) { if (!seen[e._k]) del.push(e._k); });
+    r.panel = JSON.stringify(list);   // shown at once; the sheet follows
+    var go = put.length || add.length || del.length ? api('api_panelSave', { runde_id: r.id, put: put, add: add, del: del }).then(function (res) { applySave('Runder', res); return (res && res.added) || []; }) : Promise.resolve([]);
+    return go.then(function (added) {
+      var fin = state.d.Oppgaver.filter(function (t) { return t.runde_id === r.id && PANEL_GROUPS[t.gruppe] && openTask(t) && groupReached(t); });
+      return Promise.all(fin.map(function (t) { return celebrate(t.id); })).then(function () {
+        return fin.length ? save('Oppgaver', fin.map(function (t) { return { id: t.id, status: 'Ferdig' }; })) : null;
+      }).then(function () {
+        var words = [msg || 'Lagret'];
+        if (added.length) words.push(added.map(function (n) { return shortPerson(n); }).join(', ') + ' er lagt på deltakerlisten');
+        if (fin.length) words.push('«' + fin.map(function (t) { return t.tittel; }).join('», «') + '» er ferdig');
+        toast(words.join('. ')); state.keepScroll = true;
+        render();
+      });
+    }).catch(function (e) { state.keepScroll = true; return load(true).then(function () { fail(e); }); });
   }
   // ---- v28 (points 12–23): the panel list ("Panelet") and the speakers (Foredragsholdere) ----
   // Valg options and the Kompetanse list are kept in Innstillinger (panel_valg, kompetanse). Kompetanse and
@@ -6172,7 +6215,7 @@
           cell(x, 'valg', esc(p.valg || ''), 'Valg') +
           cell(x, 'sendt', p.sendt ? esc(fmtDate(p.sendt)) : '<span class="why">ikke sendt</span>', 'E-post sendt') +
           cell(x, 'svar', (sv ? '<span class="chip ' + (PANEL_SVAR[sv] || 'c-na') + '">' + esc(sv) + '</span>' : '') + (sv === 'Venter' && p.purres ? '<small class="why">purres ' + esc(fmtDate(p.purres)) + '</small>' : ''), 'Svar') +
-          '<td data-l="Dager siden kontakt" data-pcell="' + esc(r.id + '|' + x.i + '|sist') + '"' + (last ? ' title="Sist kontakt ' + esc(fmtDate(last)) + '"' : '') + '>' + (days != null ? '<span class="' + (late ? 'chip c-q' : '') + '">' + days + ' d</span>' : '') + '</td></tr>';
+          '<td data-l="Dager siden kontakt" data-pcell="' + esc(r.id + '|' + x.i + '|sist') + '"' + (last ? ' title="Sist kontakt ' + esc(fmtDate(last)) + '"' : '') + '>' + (days != null && sv === 'Venter' ? '<span class="' + (late ? 'chip c-q' : '') + '">' + days + ' d</span>' : '') + '</td></tr>';   // v29: only for Venter
       }).join('') + '</tbody></table></div>' : '<div class="empty">' + (tal ? 'Ingen foredragsholdere ennå. Legg dem inn her, så holder listen styr på hvem som har fått e-post, hvem som har svart og når de skal purres.' : 'Ingen i panelet ennå. Legg inn kandidatene her, så holder listen styr på hvem som har fått e-post, hvem som har svart og når de skal purres.') + '</div>') +
       '<div class="row wrap">' + (next.length ? '<button class="btn small" data-pansend="' + key + '">Send til de neste (' + next.length + ')</button>' : '') + (wait.length ? '<button class="btn small" data-panpurr="' + key + '">Purr dem som venter (' + wait.length + ')</button>' : '') +
         (tal ? '<button class="btn small ghost" data-invite="foredragsholder" data-id="' + esc(r.id) + '">Inviter foredragsholder</button>' : '') + '</div></section>';   // v28: moved from "Til denne aktiviteten"
@@ -6184,16 +6227,20 @@
     var ctl;
     if (k === 'svar') ctl = '<select aria-label="Svar">' + options(['Venter', 'Ja', 'Nei'], p.svar || '', '–') + '</select>';
     else if (k === 'valg') { var vl = panelValg(); if (p.valg && vl.indexOf(p.valg) < 0) vl = vl.concat([p.valg]); ctl = '<select aria-label="Valg">' + options(vl, p.valg || '', '–') + '</select>'; }
-    else ctl = '<input type="date" aria-label="' + (k === 'sist' ? 'Sist kontakt' : 'E-post sendt') + '" value="' + esc(p[k] || (k === 'sist' ? panelLast(p) : '')) + '">';
+    else ctl = dateInput('', p[k] || (k === 'sist' ? panelLast(p) : ''), ' aria-label="' + (k === 'sist' ? 'Sist kontakt' : 'E-post sendt') + '"');   // v29: dd.mm.åååå
     td.innerHTML = ctl;
     var el = td.firstChild, done = false;
     el.focus();
+    if (el.select && el.classList.contains('dt')) el.select();
+    el.addEventListener('keydown', function (e) { if (e.key === 'Enter' && el.classList.contains('dt')) { e.preventDefault(); el.dispatchEvent(new Event('change', { bubbles: true })); } });
     el.addEventListener('click', function (e) { e.stopPropagation(); });
     el.addEventListener('change', function () {
-      if (done) return; done = true;
-      p[k] = el.value;
+      if (done) return;
+      var nv = el.classList.contains('dt') ? normDate(el.value) : el.value;
+      if (!okDate(nv) && el.classList.contains('dt')) return;   // v29: the box is marked and the toast says how to write it
+      done = true;
+      p[k] = nv;
       if ((k === 'sendt' || k === 'sist') && p[k] && !p.svar) p.svar = 'Venter';   // (21)
-      if (k === 'sendt' && p.sendt && !p.purres) p.purres = addDays(p.sendt, 7);
       state.keepScroll = true; savePanel(r, list, 'Lagret');
     });
     el.addEventListener('blur', function () { setTimeout(function () { if (!done) { state.keepScroll = true; render(); } }, 200); });
@@ -6225,8 +6272,8 @@
       '<div class="grid2"><label class="f">Navn<input type="text" name="navn" list="pkList" autocomplete="off" value="' + esc(x.navn || '') + '"></label>' + field('E-post', 'epost', x.epost || (c0 && c0.epost) || '', 'email') +
         field('Organisasjon', 'enhet', panelOrg(x)) +
         '<label class="f">Valg<select name="valg">' + options(vl, x.valg || '', '–') + '</select><a href="#innstillinger" class="muted-link">Rediger valgene</a></label>' +
-        field('Svar', 'svar', '', 'select', options(['Venter', 'Ja', 'Nei'], x.svar || '', '–')) + field('E-post sendt', 'sendt', x.sendt, 'date') +
-        field('Sist kontakt', 'sist', x.sist, 'date') + field('Purres', 'purres', x.purres, 'date') + '</div>' +
+        field('Svar', 'svar', '', 'select', options(['Venter', 'Ja', 'Nei'], x.svar || '', '–')) + field('E-post sendt', 'sendt', x.sendt, 'ddate') +
+        field('Sist kontakt', 'sist', x.sist, 'ddate') + field('Purres', 'purres', x.purres, 'ddate') + '</div>' +
       (tal ? field('Tema', 'kompetanse', x.kompetanse) :
         '<div class="f"><span>Kompetanse</span><div class="tick-grid" id="kompTicks">' + kAll.map(kTick).join('') + '</div>' +
           '<input type="text" name="komp_ny" placeholder="Ny kompetanse (skill med komma)" aria-label="Ny kompetanse"><a href="#innstillinger" class="muted-link">Rediger kompetanselisten</a></div>') +
@@ -6240,8 +6287,9 @@
         var fresh = tal ? [] : splitList(val(form, 'komp_ny')).filter(function (k) { return picked.indexOf(k) < 0; });
         row.kompetanse = tal ? val(form, 'kompetanse') : picked.concat(fresh).join(', ');
         if (!row.navn) { toast('Skriv et navn'); return; }
+        if (!['sendt', 'sist', 'purres'].every(function (k) { return okDate(row[k]); })) { toast('Skriv datoene som dd.mm.åååå, for eksempel 18.11.2026'); return; }   // v29
         if ((row.sendt || row.sist) && !row.svar) row.svar = 'Venter';   // (21)
-        if (i >= 0) list[i] = Object.assign({}, x, row); else list.push(row);
+        if (i >= 0) list[i] = keepKey(Object.assign({}, x, row), x); else list.push(row);
         // The person in Personer: added if new; e-mail, organisation and kompetanse saved there; tagged panel / foredragsholder.
         var tag = tal ? 'foredragsholder' : 'panel', c = contactOf(row.navn), crow = null;
         if (!c) { var snm = splitName(row.navn); crow = { navn: row.navn, fornavn: snm.fornavn, etternavn: snm.etternavn, epost: row.epost, enhet: row.enhet, tagger: tag }; if (!tal) crow.kompetanse = row.kompetanse; }
@@ -6279,18 +6327,19 @@
     var r = byId('Runder', rid), s = byId('Serier', r.serie_id), list = panelOf(r);
     var who = list.filter(function (p) { return (p.rolle === 'taler') === tal && (purr ? p.svar === 'Venter' : !p.sendt && p.svar !== 'Nei' && !/reserve/i.test(p.valg || '')); });
     var tpls = s ? templatesOf(s) : [], v = Object.assign({ arrangement: s ? s.navn : '', tid: r.tid || '', sted: r.sted || '' }, avkVars(r));
+    if (who.length === 1) v.organisasjon = panelOrg(who[0]);   // v29: only when the e-mail goes to one person
     var mails = who.map(function (p) { return p.epost; }).filter(Boolean);
     openDrawer('<h2>' + (purr ? 'Purr dem som venter' : 'Send til de neste') + '</h2><p class="empty">' + esc(who.map(function (p) { return p.navn; }).join(', ')) + '</p>' +
       (mails.length < who.length ? '<p class="empty">⚠ ' + (who.length - mails.length) + ' mangler e-postadresse.</p>' : '') +
       (tpls.length ? field('E-postmal', 'mal', '', 'select', option('', '', 'Ingen (tom e-post)') + tpls.map(function (m) { return tplVariants(m).map(function (x, i) { return option(m.id + '|' + i, '', m.navn + ' (' + (m.spraak || 'no').toUpperCase() + ')' + (i ? ' – variant ' + (i + 1) + (x.kommentar ? ' (' + x.kommentar + ')' : '') : '')); }).join(''); }).join('')) : '') +
-      '<p class="empty">Adressene legges i Bcc. Når du trykker, får de dagens dato som ' + (purr ? '«sist kontakt»' : '«e-post sendt»') + ', og ny purredato om 7 dager.</p>' +
+      '<p class="empty">Adressene legges i Bcc. Når du trykker, får de dagens dato som ' + (purr ? '«sist kontakt»' : '«e-post sendt»') + '.</p>' +
       '<div class="actions"><span></span><span><button type="button" class="btn ghost" data-close>Avbryt</button> <button class="btn primary" type="submit">Åpne e-post</button></span></div>',
       function (form) {
         var mv = String(val(form, 'mal') || '').split('|'), m0 = byId('Maler', mv[0]), m = m0 ? Object.assign({ spraak: m0.spraak }, tplVariants(m0)[Number(mv[1]) || 0]) : null, vv = Object.assign({}, v, { dato: m ? longDate(r.dato, m.spraak) : '' });
         var href = mailto('', m ? fillTpl(m.emne, vv) : (purr ? 'Påminnelse: ' : '') + runName(r), m ? fillTpl(m.tekst, vv) : '', '');
         href = href.replace(/^mailto:\?/, 'mailto:?bcc=' + encodeURIComponent(mails.join(',')).replace(/%40/g, '@').replace(/%2C/g, ',') + '&');
         window.location.href = href;
-        who.forEach(function (p) { p.sist = today(); p.purres = addDays(today(), 7); if (!purr) { p.sendt = today(); p.svar = p.svar || 'Venter'; } });
+        who.forEach(function (p) { p.sist = today(); if (!purr) { p.sendt = today(); p.svar = p.svar || 'Venter'; } });   // v29: Purres is not filled in
         savePanel(r, list, purr ? 'Purring notert' : 'Merket som sendt');
       });
   }
@@ -6687,11 +6736,11 @@
   // In the agenda (year page): who pitches in a row, with Digitalt and an E-post button.
   function agendaSlotCell(r, row) {
     var here = slotsOf(r).filter(function (x) { return x.rad === row.id; });
-    if (!here.length) return isPitchRow(row) ? '<div class="meta ag-slot"><button type="button" class="plink" data-slotedit="' + esc(r.id) + '">velg prosjekt</button></div>' : '';
+    if (!here.length) return isPitchRow(row) ? ' <span class="meta ag-slot"><button type="button" class="plink" data-slotedit="' + esc(r.id) + '">velg prosjekt</button></span>' : '';   // v29: on the same line
     return here.map(function (x) {
-      return '<div class="meta ag-slot">' + (x.prosjekt_id ? '<button type="button" class="plink" data-go="prosjekt/' + esc(x.prosjekt_id) + '">' + esc(shortName(x.prosjekt_id) || '?') + '</button>' : '<span class="empty">ingen prosjekt</span>') +
+      return ' <span class="meta ag-slot">' + (x.prosjekt_id ? '<button type="button" class="plink" data-go="prosjekt/' + esc(x.prosjekt_id) + '">' + esc(shortName(x.prosjekt_id) || '?') + '</button>' : '<span class="empty">ingen prosjekt</span>') +
         (x.digitalt === 'ja' ? ' ' + digitalChip() : '') + (x.merknad ? ' · ' + esc(x.merknad) : '') +
-        (x.prosjekt_id ? ' <button type="button" class="btn small ghost" data-slotmail="' + esc(r.id + '|' + x.id) + '" aria-label="E-post til ' + esc(shortName(x.prosjekt_id)) + '">✉ E-post</button>' : '') + '</div>';
+        (x.prosjekt_id ? ' <button type="button" class="btn small ghost" data-slotmail="' + esc(r.id + '|' + x.id) + '" aria-label="E-post til ' + esc(shortName(x.prosjekt_id)) + '">✉ E-post</button>' : '') + '</span>';
     }).join('');
   }
   // Under the agenda table: the buttons, and old times that don't match a row any more.
@@ -6757,7 +6806,7 @@
     var p = arg.split('|'), r = byId('Runder', p[0]), s = r && byId('Serier', r.serie_id), x = r && slotsOf(r).find(function (y) { return y.id === p[1]; });
     var pr = x && byId('Prosjekter', x.prosjekt_id); if (!pr) return;
     var to = pr.epost || emailOf(pr.leder) || '', cc = projCc(pr);
-    var base = Object.assign({ arrangement: s.navn, tid: r.tid || '', sted: r.sted || '' }, avkVars(r), { prosjekt: pr.kortnavn, navn: firstName(pr.leder || ''), pitchtid: slotText(x), tidsplan: scheduleText(r) });
+    var base = Object.assign({ arrangement: s.navn, tid: r.tid || '', sted: r.sted || '' }, avkVars(r), { prosjekt: pr.kortnavn, navn: firstName(pr.leder || ''), organisasjon: orgOf(pr.leder), pitchtid: slotText(x), tidsplan: scheduleText(r) });   // v29: organisasjon
     var tpls = templatesOf(s);
     var links = tpls.map(function (m) {
       var v = Object.assign({}, base, { dato: longDate(r.dato, m.spraak) }), pv = tplPick(m);   // v28: the variant picked in E-postmaler
@@ -7102,7 +7151,7 @@
     if (ds.msdue) { msDueEdit(ds.msdue); return; }
     if (ds.gtick) { var gtp = ds.gtick.split('|'); groupTick(gtp[0], gtp.slice(1).join('|')); return; }   // v21
     if (ds.gmail) { var gmp = ds.gmail.split('|'); groupTick(gmp[0], gmp.slice(1).join('|'), true); return; }
-    if (ds.pandel) { var pdl = ds.pandel.split('|'), pdr = byId('Runder', pdl[0]), pls = panelOf(pdr); pls.splice(Number(pdl[1]), 1); savePanel(pdr, pls, 'Fjernet'); return; }
+    if (ds.pandel) { var pdl = ds.pandel.split('|'), pdr = byId('Runder', pdl[0]), pls = panelOf(pdr), pdp = pls[Number(pdl[1])]; if (!pdp || !window.confirm('Slette ' + (pdp.navn || 'denne personen') + ' fra listen?')) return; pls.splice(Number(pdl[1]), 1); savePanel(pdr, pls, 'Fjernet'); return; }   // v29: asks first
     if (ds.pansend) { panelMail(ds.pansend, false); return; }
     if (ds.panpurr) { panelMail(ds.panpurr, true); return; }
     if (ds.dmgo) { e.preventDefault(); state.dmJump = ds.dmgo; afterRender(); return; }
