@@ -253,9 +253,10 @@
   // Top menu: main pages, plus two drop-down groups (Faser, Mer).
   var NAV = [
     ['oversikt', 'Oversikt'], ['oppgaver', 'Oppgaver'], ['prosjekter', 'Prosjekter'], ['sokere', 'Søkere'],
-    ['Faser', [['fase/soknad', 'Søknad'], ['fase/1', '1. år'], ['fase/2', '2. år'], ['fase/avslutning', 'Avslutning']]],
-    ['hendelser', 'Aktiviteter'], ['maned', 'Måned og år'], ['innboks', 'Innboks'],
-    ['Mer', [['personer', 'Personer'], ['kunnskap', 'Kunnskapsbank'], ['sok', 'Søk'], ['progress', 'Årsplan'], ['arbeidsflyt', 'Arbeidsflyt'], ['statistikk', 'Statistikk'], ['budsjett', 'Budsjett'], ['maler', 'E-post'], ['frister', 'Frister'], ['innstillinger', 'Innstillinger']]]
+    // v30 (the menu): Faser are tabs on Prosjekter, Måned og år + Frister are Kalender, Søk is the box in the bar,
+    // Arbeidsflyt opens from Årsplan. The old addresses (#fase/…, #maned, #frister, #sok, #arbeidsflyt) still work.
+    ['hendelser', 'Aktiviteter'], ['kalender', 'Kalender'], ['innboks', 'Innboks'],
+    ['Mer', [['personer', 'Personer'], ['kunnskap', 'Kunnskapsbank'], ['progress', 'Årsplan'], ['statistikk', 'Statistikk'], ['budsjett', 'Budsjett'], ['maler', 'E-post'], ['innstillinger', 'Innstillinger']]]
   ];
   function renderNav() {
     var d = state.d;
@@ -264,7 +265,7 @@
       innboks: d.Innboks.filter(function (i) { return i.sortert !== 'ja'; }).length,
       sokere: d.Søkere.filter(function (s) { return s.status === 'Aktiv' || !s.status; }).length
     };
-    var cur = (state.view === 'prosjekt' || state.view === 'tidslinje') ? 'prosjekter' : state.view === 'uke' ? 'oppgaver' : state.view === 'person' ? 'personer' : (state.view === 'serie' || state.view === 'runde' || state.view === 'rundeoppg') ? 'hendelser' : state.view === 'fase' ? 'fase/' + state.param : state.view;
+    var cur = (state.view === 'prosjekt' || state.view === 'tidslinje') ? 'prosjekter' : state.view === 'uke' ? 'oppgaver' : state.view === 'person' ? 'personer' : (state.view === 'serie' || state.view === 'runde' || state.view === 'rundeoppg') ? 'hendelser' : state.view === 'arbeidsflyt' ? 'progress' : state.view;
     function link(n) {
       var c = counts[n[0]] ? '<span class="count">' + counts[n[0]] + '</span>' : '';
       return '<a class="nav' + (cur === n[0] ? ' on' : '') + '" href="#' + n[0] + '">' + n[1] + c + '</a>';
@@ -273,8 +274,16 @@
       if (typeof n[1] === 'string') return link(n);
       var on = n[1].some(function (x) { return x[0] === cur; });
       return '<details class="dd"><summary class="nav' + (on ? ' on' : '') + '">' + n[0] + ' <span class="caret" aria-hidden="true">▾</span></summary><div class="ddp">' + n[1].map(link).join('') + '</div></details>';
-    }).join('');
+    }).join('') +
+      // v30: search is always in the bar (Enter opens the results)
+      '<label class="navsearch"><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M13 13l4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>' +
+      '<input type="search" id="navQ" aria-label="Søk i alt" autocomplete="off" value="' + esc(state.view === 'sok' ? state.filters.gq || '' : '') + '"></label>';
   }
+  $('side').addEventListener('keydown', function (e) {   // v30: the search box in the bar
+    if (e.target.id !== 'navQ' || e.key !== 'Enter') return;
+    e.preventDefault(); state.filters.gq = e.target.value;
+    if (state.view === 'sok') render(); else location.hash = '#sok';
+  });
   // Drop-downs: only one open at a time; on a phone the panel is placed under the bar.
   $('side').addEventListener('toggle', function (e) {
     var el = e.target;
@@ -292,6 +301,10 @@
   function route() {
     var h = (location.hash || '#oversikt').slice(1).split('/');
     state.view = h[0] || 'oversikt'; state.param = h[1] || '';
+    // v30: old addresses go to their new place
+    if (state.view === 'fase') state.view = 'prosjekter';
+    if (state.view === 'maned') state.view = 'kalender';
+    if (state.view === 'frister') { state.view = 'kalender'; state.param = 'frister'; }
     state.dmJump = h[2] != null ? decodeURIComponent(h[2]) : '';   // v19: #rundeoppg/<year>/<delmål> jumps to that delmål
     if (!$('drawer').hidden && state.focusTask != null) closeDrawer();
     if (state.d) render();
@@ -300,11 +313,12 @@
   function render() {
     renderNav();
     var pages = { oversikt: pageOverview, oppgaver: pageTasks, prosjekter: pageProjects, prosjekt: pageProject, sokere: pageApplicants, progress: pageProgress, innboks: pageInbox, innstillinger: pageSettings,
-      fase: pagePhase, maned: pageMonth, hendelser: pageEvents, serie: pageSeries, runde: pageRun, gjennomgang: pageReview, uke: pageWeek, status: pageProjects, kunnskap: pageKnowledge, sok: pageSearch,
+      fase: pagePhase, maned: pageMonth, kalender: pageCalendar, hendelser: pageEvents, serie: pageSeries, runde: pageRun, gjennomgang: pageReview, uke: pageWeek, status: pageProjects, kunnskap: pageKnowledge, sok: pageSearch,
       tidslinje: pageTimeline, arbeidsflyt: pageWorkflow, statistikk: pageStats, budsjett: pageBudget, maler: pageTemplates, frister: pageDeadlines, rundeoppg: pageRunTasks, personer: pagePeople, person: pagePerson };
     state.dmc = {};   // v19: delmål per year, worked out again for each drawing
     var keep = state.keepScroll ? window.scrollY : 0; state.keepScroll = false;
     ($('main').innerHTML = (pages[state.view] || pageOverview)());
+    wrapDates($('main'));   // v30
     applyPos($('main'));
     if (state.view === 'arbeidsflyt') drawArrows();
     if (state.view === 'tidslinje') tlFocus();
@@ -391,7 +405,17 @@
   // "Sjekkpunkter og milepæler" (Årsplan checkpoints + project goals per phase) and
   // "Aktiviteter og frister" (attendance, deadlines and group tasks for one year, every cell a click).
   // Archived projects are on #prosjekter/arkiv. Replaces the old filters, Rader, Rutenett and the Status page.
+  // v30: Prosjekter has tabs Alle / Søknad / 1. år / 2. år / Avslutning (the phase pages, which had their own menu).
+  function projTabs() {
+    var cur = PHASE_SLUG[state.param] ? state.param : state.param === 'arkiv' ? 'arkiv' : '';
+    return '<div class="seg bigtabs">' + [['', 'Alle']].concat(Object.keys(PHASE_SLUG).map(function (k) { return [k, PHASE_SLUG[k]]; })).map(function (x) {
+      return '<button type="button" data-go="prosjekter' + (x[0] ? '/' + x[0] : '') + '" aria-pressed="' + (x[0] === cur) + '">' + x[1] + '</button>'; }).join('') + '</div>';
+  }
   function pageProjects() {
+    if (PHASE_SLUG[state.param]) return projTabs() + pagePhase();
+    return projTabs() + pageProjectsAll();
+  }
+  function pageProjectsAll() {
     var d = state.d, archived = d.Prosjekter.filter(function (p) { return p.fase === 'Arkivert'; });
     var rows = function (list, by) {
       var keys = [];
@@ -598,7 +622,7 @@
       field('Allergier eller dietter', 'allergier', c.allergier) +
       '<label class="check"><input type="checkbox" name="kopi"' + (isKp(c) ? ' checked' : '') + '> Kontaktperson: tas med på kopi når du sender e-post til prosjektlederen</label>' +
       '<div class="grid2"><label class="check"><input type="checkbox" name="inaktiv"' + (pcActive(c) ? '' : ' checked') + '> Ikke aktiv lenger</label>' +
-        '<label class="f">Fra dato (valgfritt)<input type="date" name="til" value="' + esc(c.til || '') + '"></label></div>' +
+        '<label class="f">Fra dato (valgfritt)<input type="text" class="dt" inputmode="numeric" maxlength="10" placeholder="dd.mm.åååå" autocomplete="off" name="til" value="' + esc(c.til || '') + '"></label></div>' +
       actions(isNew ? '' : '<button type="button" class="btn danger" data-delpc="' + esc(pid) + '|' + esc(idx) + '">Fjern</button>'),
       function (form) {
         var row = { navn: val(form, 'navn'), organisasjon: val(form, 'organisasjon'), epost: val(form, 'epost'), rolle: val(form, 'rolle'), kopi: val(form, 'kopi'), allergier: val(form, 'allergier') };
@@ -730,7 +754,8 @@
   }
   function pageProgress() {
     var E = ypEd(), G = ypGroups(E);
-    var tools = '<button class="btn" data-act="makegeneral">Lag generelle oppgaver som mangler for ' + today().slice(0, 4) + '</button>' +
+    var tools = '<a class="btn primary" href="#arbeidsflyt">Arbeidsflyt →</a>' +   // v30: Arbeidsflyt opens from here
+      '<button class="btn" data-act="makegeneral">Lag generelle oppgaver som mangler for ' + today().slice(0, 4) + '</button>' +
       '<a class="btn" href="#gjennomgang">Gjennomgang ved årsskiftet</a>';
     var seg = '<span class="seg">' + YP_PH.map(function (p) { return '<button type="button" data-ypf="' + esc(p) + '" aria-pressed="' + (p === E.ph) + '">' + p + '</button>'; }).join('') + '</span>';
     var list = (G.proj.length ? '<span class="group-h">' + (E.ph === 'Søknad' ? 'For hver søker' : 'For hvert prosjekt') + '</span>' + G.proj.map(function (g) { return ypHead(g) + g.rows.map(function (r) { return ypRow(E, r); }).join(''); }).join('') : '') +
@@ -864,14 +889,16 @@
     dr.classList.toggle('side', side);
     dr.hidden = false; $('drawerBg').hidden = side;
     var form = $('drawerForm');
+    wrapDates(form);   // v30
     // v17: a double click or Enter + click must not save twice (that made duplicate tasks).
     form.addEventListener('submit', function (e) {
       e.preventDefault();
+      if (badDates(form)) return;   // v30
       if (form.dataset.busy) return;
       form.dataset.busy = '1'; setTimeout(function () { delete form.dataset.busy; }, 1200);
       onSubmit(form);
     });
-    var first = form.querySelector('input,select,textarea'); if (first) first.focus();
+    var first = form.querySelector('input,select,textarea'); if (first) { DT_NOFILL = true; first.focus(); DT_NOFILL = false; }   // v30: no today's date from this focus
     initPeopleFields();   // v21
     initMsField(form);    // v24
   }
@@ -917,9 +944,10 @@
   // ---- v29: dates typed as dd.mm.åååå (the browser's date box followed the computer's language: mm/dd/yyyy) ----
   // "18.11.2026", "18/11/2026", "18-11-26", "18.11" (this year) and "18112026" all become 2026-11-18. Stored as before (åååå-mm-dd).
   function normDate(v) {
-    var t = String(v == null ? '' : v).trim(); if (!t) return '';
+    var t = String(v == null ? '' : v).trim(); if (!t || /^[_.\s]*$/.test(t)) return '';   // v30: an empty mask is blank
     if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
-    var m = t.match(/^(\d{1,2})[.\/\-\s](\d{1,2})(?:[.\/\-\s](\d{2}|\d{4}))?\.?$/) || t.match(/^(\d{2})(\d{2})(\d{4})$/);
+    if (t.indexOf('_') >= 0) t = t.split('.').map(function (x) { return x.replace(/_/g, ''); }).join('.').replace(/\.+$/, '');   // v30: "5_.11.2026" → 5.11.2026
+    var m = t.match(/^(\d{1,2})[.\/\-\s](\d{1,2})(?:[.\/\-\s](\d{2}|\d{4}))?\.?$/) || t.match(/^(\d{2})(\d{2})(\d{4}|\d{2})?$/);   // v30: also 0511 / 051126
     if (!m) return t;
     var d = Number(m[1]), mo = Number(m[2]), y = m[3] ? Number(m[3].length === 2 ? '20' + m[3] : m[3]) : Number(today().slice(0, 4));
     var dt = new Date(Date.UTC(y, mo - 1, d));
@@ -931,12 +959,94 @@
   function dateInput(name, value, attrs) {
     return '<input type="text" class="dt" inputmode="numeric" maxlength="10" placeholder="dd.mm.åååå" autocomplete="off"' + (name ? ' name="' + name + '"' : '') + (attrs || '') + ' value="' + esc(dmy(value)) + '">';
   }
+  // ---- v30: the date box as a fixed mask "__.__.____" ----
+  // - Clicking into an empty box fills in today's date, all selected: type over it, or delete it to leave the box blank.
+  //   (Not when a form opens and puts the cursor there by itself.)
+  // - Clicking into a box selects the whole date. Double-click the day, month or year to select only that part;
+  //   typing then changes only that part (e.g. 12 + Enter changes the day, month and year stay).
+  // - The dots stay where they are; digits fill the blanks. Phones whose keyboard doesn't report keys get the
+  //   same result after each input (the digits are put into the mask).
+  var DT_POS = [0, 1, 3, 4, 6, 7, 8, 9], DT_NOFILL = false;
+  function dtDigits(v) { var d = String(v || '').replace(/[^0-9_]/g, '').split(''); while (d.length < 8) d.push('_'); return d.slice(0, 8); }
+  function dtText(d) { return d.every(function (x) { return x === '_'; }) ? '' : d.slice(0, 2).join('') + '.' + d.slice(2, 4).join('') + '.' + d.slice(4).join(''); }
+  function dtCharToDigit(c) { var i = 0; while (i < 8 && DT_POS[i] < c) i++; return i; }
+  function dtSeg(c) { return c <= 2 ? [0, 2] : c <= 5 ? [2, 4] : [4, 8]; }   // digit ranges: day, month, year
+  function dtShow(el, d, cur) { NATIVE_VALUE.set.call(el, dtText(d) || (cur > 0 ? '__.__.____' : '')); var c = cur >= 8 ? 10 : DT_POS[cur]; try { el.setSelectionRange(c, c); } catch (e) {} }
+  var DT_PTR = null;   // the box last pressed with the mouse / a finger (Tab through a form doesn't fill in dates)
+  document.addEventListener('pointerdown', function (e) { DT_PTR = e.target; }, true);
+  document.addEventListener('focusin', function (e) {
+    var el = e.target; if (!el.classList || !el.classList.contains('dt')) return;
+    if (!NATIVE_VALUE.get.call(el) && !DT_NOFILL && (DT_PTR === el || el._dtPrefill)) NATIVE_VALUE.set.call(el, dmy(today()));
+    el._dtFresh = true;
+    setTimeout(function () { if (document.activeElement === el) try { el.setSelectionRange(0, NATIVE_VALUE.get.call(el).length); } catch (x) {} }, 0);
+  });
+  document.addEventListener('click', function (e) {
+    var el = e.target; if (!el.classList || !el.classList.contains('dt')) return;
+    if (e.detail === 1) el._dtCaret = el.selectionStart;   // the second click of a double-click selects a word; keep the first
+    if (el._dtFresh) { el._dtFresh = false; try { el.setSelectionRange(0, NATIVE_VALUE.get.call(el).length); } catch (x) {} }
+  });
+  document.addEventListener('dblclick', function (e) {
+    var el = e.target; if (!el.classList || !el.classList.contains('dt') || !NATIVE_VALUE.get.call(el)) return;
+    var sg = dtSeg(el._dtCaret == null ? el.selectionStart : el._dtCaret);
+    try { el.setSelectionRange(DT_POS[sg[0]], DT_POS[sg[1] - 1] + 1); } catch (x) {}
+  });
+  document.addEventListener('keydown', function (e) {
+    var el = e.target; if (!el.classList || !el.classList.contains('dt') || e.ctrlKey || e.metaKey || e.altKey) return;
+    var k = e.key, a = el.selectionStart, b = el.selectionEnd, d = dtDigits(NATIVE_VALUE.get.call(el));
+    if (/^[0-9]$/.test(k)) {
+      e.preventDefault();
+      var i = dtCharToDigit(a);
+      if (b > a) { for (var j = dtCharToDigit(a); j < dtCharToDigit(b); j++) d[j] = '_'; }   // the selection is cleared first
+      if (i >= 8) return;
+      d[i] = k; dtShow(el, d, i + 1); el.dispatchEvent(new Event('input', { bubbles: true }));
+    } else if (k === 'Backspace' || k === 'Delete') {
+      e.preventDefault();
+      if (b > a) { for (var j2 = dtCharToDigit(a); j2 < dtCharToDigit(b); j2++) d[j2] = '_'; dtShow(el, d, dtCharToDigit(a)); }
+      else if (k === 'Backspace') { var i2 = dtCharToDigit(a) - 1; if (i2 < 0) return; d[i2] = '_'; dtShow(el, d, i2); }
+      else { var i3 = dtCharToDigit(a); if (i3 >= 8) return; d[i3] = '_'; dtShow(el, d, i3); }
+      if (!dtText(d)) NATIVE_VALUE.set.call(el, '');   // everything deleted = blank
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    } else if (k.length === 1) e.preventDefault();   // letters and other signs are not typed
+  });
+  document.addEventListener('input', function (e) {   // phones (and paste): put the digits into the mask
+    var el = e.target; if (!el.classList || !el.classList.contains('dt') || e.isTrusted === false) return;
+    var raw = NATIVE_VALUE.get.call(el); if (/^(\d\d|__|\d_)\.(\d\d|__|\d_|_\d)\.[0-9_]{4}$/.test(raw) || !raw) return;
+    var iso = normDate(raw); if (okDate(iso) && iso) { NATIVE_VALUE.set.call(el, dmy(iso)); return; }
+    var d = String(raw).replace(/\D/g, '').slice(0, 8).split(''), n = d.length; while (d.length < 8) d.push('_');
+    dtShow(el, d, n);
+  }, true);
+  document.addEventListener('focusout', function (e) {
+    var el = e.target; if (!el.classList || !el.classList.contains('dt')) return;
+    if (/^[_.]*$/.test(NATIVE_VALUE.get.call(el))) NATIVE_VALUE.set.call(el, '');
+  });
+  // v30: every date box in the app is a .dt text box. wrapDates gives each one a .value that reads åååå-mm-dd
+  // (or the text as typed when it isn't a date) and shows a date set from code as dd.mm.åååå, so the rest of
+  // the code works with dates exactly as before. Called after drawing the page and opening a form, and by an
+  // observer for boxes added in other ways.
+  var NATIVE_VALUE = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+  function wrapDates(root) {
+    (root || document).querySelectorAll('input.dt').forEach(function (el) {
+      if (el._dt) return; el._dt = true;
+      var shown = NATIVE_VALUE.get.call(el); if (/^\d{4}-\d{2}-\d{2}$/.test(shown)) NATIVE_VALUE.set.call(el, dmy(shown));
+      Object.defineProperty(el, 'value', { configurable: true,
+        get: function () { return normDate(NATIVE_VALUE.get.call(el)); },
+        set: function (v) { NATIVE_VALUE.set.call(el, /^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? dmy(v) : String(v == null ? '' : v)); } });
+    });
+  }
+  if (window.MutationObserver) new MutationObserver(function () { wrapDates(document); }).observe(document.documentElement, { childList: true, subtree: true });
+  // v30: a form with a date that isn't a date is not saved (the box is marked).
+  function badDates(root) {
+    var bad = [].filter.call((root || document).querySelectorAll('input.dt'), function (el) { return !okDate(normDate(NATIVE_VALUE.get.call(el))); });
+    bad.forEach(function (el) { el.classList.add('bad'); });
+    if (bad.length) toast('Skriv datoen som dd.mm.åååå, for eksempel 18.11.2026');
+    return bad.length > 0;
+  }
   document.addEventListener('change', function (e) {
     var el = e.target; if (!el || !el.classList || !el.classList.contains('dt')) return;
-    var n = normDate(el.value), ok = okDate(n);
+    var raw = NATIVE_VALUE.get.call(el), n = normDate(raw), ok = okDate(n);
     el.classList.toggle('bad', !ok);
     if (!ok) { toast('Skriv datoen som dd.mm.åååå, for eksempel 18.11.2026'); return; }
-    if (dmy(n) !== el.value) el.value = dmy(n);
+    if (n && dmy(n) !== raw) NATIVE_VALUE.set.call(el, dmy(n));
   }, true);
   function field(label, name, value, type, opts) {
     type = type || 'text';
@@ -945,7 +1055,7 @@
     else if (type === 'textarea') input = '<textarea name="' + name + '">' + esc(value) + '</textarea>';
     else if (type === 'money') input = moneyInput(name, value);
     else if (type === 'time') input = timeInput(name, value);   // v28: a text box in 24-hour time
-    else if (type === 'ddate') input = dateInput(name, value);  // v29: a text box for dd.mm.åååå
+    else if (type === 'ddate' || type === 'date') input = dateInput(name, value);  // v29: a text box for dd.mm.åååå; v30: every date box
     else input = '<input type="' + type + '" name="' + name + '" value="' + esc(value) + '">';
     return '<label class="f">' + label + input + '</label>';
   }
@@ -1069,7 +1179,7 @@
       '<div id="gjGrp"' + (gj === 'grp' ? '' : ' hidden') + '><div class="f"><span>Gruppe</span>' + grpSeg + '</div><div id="grpMembers">' + memberBox() + '</div>' +
         '<label class="f">Trenger (tom = alle)<input type="number" min="1" name="trenger" value="' + esc(t.trenger || '') + '"></label>' +
         '<label class="f" id="koblingF"' + (PROJECT_GROUPS[grp] && grp !== 'sokere' ? '' : ' hidden') + '>Kobles til frist (kryssene følger hverandre)<select name="kobling">' + koblingOptions(t) + '</select></label></div>' +
-      '<div class="grid2"><label class="f">Frist<input type="date" name="frist" value="' + esc(t.frist || '') + '"><span id="fristWarn" class="dm-m"></span></label>' + field('Status', 'status', '', 'select', STATUSES.map(function (x) { return option(x, t.status, statusLabel(x)); }).join('')) + '</div>' +
+      '<div class="grid2"><label class="f">Frist<input type="text" class="dt" inputmode="numeric" maxlength="10" placeholder="dd.mm.åååå" autocomplete="off" name="frist" value="' + esc(t.frist || '') + '"><span id="fristWarn" class="dm-m"></span></label>' + field('Status', 'status', '', 'select', STATUSES.map(function (x) { return option(x, t.status, statusLabel(x)); }).join('')) + '</div>' +
       unlockFields(t, id) +
       (openCands.length ? '<details class="unl"' + (opens.length ? ' open' : '') + '><summary class="group-h">Åpner' + (opens.length ? ' (' + opens.length + ')' : '') + '</summary><p class="empty">Oppgaver som er låst til denne er ferdig.</p><div class="cl scrollcl">' +
         openCands.map(function (x) { return '<label><input type="checkbox" name="opn_' + esc(x.id) + '"' + (opens.indexOf(x.id) >= 0 ? ' checked' : '') + '> ' + esc(x.tittel) + '</label>'; }).join('') + '</div></details>' : '') +
@@ -1459,7 +1569,6 @@
   // ---- Page: one phase -------------------------------------------------------
   function pagePhase() {
     var d = state.d, ph = PHASE_SLUG[state.param] || '1. år', year = today().slice(0, 4);
-    var seg = '<span class="seg">' + ['Søknad', '1. år', '2. år', 'Avslutning'].map(function (p) { return '<button data-go="fase/' + phaseSlug(p) + '" aria-pressed="' + (p === ph) + '">' + p + '</button>'; }).join('') + '</span>';
     var general = d.Oppgaver.filter(function (t) { return !t.prosjekt_id && t.aar === year && t.fase === ph && t.type !== 'notater' && (state.filters.showLocked || !isLocked(t)); })
       .sort(function (a, b) { var pa = progressOf(a), pb = progressOf(b); return Number(pa && pa.maaned || 99) - Number(pb && pb.maaned || 99); });
     var openGeneral = general.filter(openTask);
@@ -1480,7 +1589,7 @@
     var delayed = members.filter(function (p) { return p.forsinket === 'ja'; }).length;
     var nowCount = projTasks.filter(function (t) { return !isLocked(t); }).length;
 
-    return head(ph, (ph === 'Søknad' ? 'Søknadsår ' + year : members.length + ' prosjekter'), seg + lockedToggle()) +
+    return head(ph, (ph === 'Søknad' ? 'Søknadsår ' + year : members.length + ' prosjekter'), lockedToggle()) +   // v30: the phase tabs are on top (projTabs)
       '<div class="kpis">' + kpi(ph === 'Søknad' ? 'Aktive søkere' : 'Prosjekter', members.length) + kpi('Generelle oppgaver igjen', openGeneral.length + ' av ' + general.length) +
         kpi('Prosjektoppgaver nå', nowCount) + kpi(ph === 'Søknad' ? 'Forfalt' : 'Forsinket', ph === 'Søknad' ? projTasks.filter(isLate).length : delayed, ph !== 'Søknad' && delayed > 0) + '</div>' +
       '<section class="panel"><h2>' + (ph === 'Søknad' ? 'Søkere' : 'Prosjektene i fasen') + '</h2>' + grid + '</section>' +
@@ -1493,6 +1602,13 @@
 
 
   // ---- Page: month view + year timeline -----------------------------------------
+  // v30: Kalender = Måned og år + Frister as two tabs.
+  function pageCalendar() {
+    var fr = state.param === 'frister';
+    return '<div class="seg bigtabs">' + [['', 'Måned og år'], ['frister', 'Frister']].map(function (x) {
+      return '<button type="button" data-go="kalender' + (x[0] ? '/' + x[0] : '') + '" aria-pressed="' + ((x[0] === 'frister') === fr) + '">' + x[1] + '</button>'; }).join('') + '</div>' +
+      (fr ? pageDeadlines() : pageMonth());
+  }
   function pageMonth() {
     var d = state.d, t = today(), year = Number(state.filters.myear || t.slice(0, 4)), month = Number(state.filters.mmonth || t.slice(5, 7));
     var mm = String(month).padStart(2, '0'), prefix = year + '-' + mm;
@@ -2134,7 +2250,7 @@
       var html = r && old ? row('Endre', segBtns('mode', (function () { var o = {}; o.aar = 'Bare i ' + r.aar; o.alle = 'Alle år'; return o; })(), mode)) : '';
       if (mode === 'aar') {
         var group = dlGroup(f, r);
-        html += '<label class="f">Dato i ' + esc(r.aar) + '<input type="date" data-dlk="ownDate" value="' + esc(ownDate || runDeadlineDates(r, s, false)[f.id] || '') + '"></label>' +
+        html += '<label class="f">Dato i ' + esc(r.aar) + '<input type="text" class="dt" inputmode="numeric" maxlength="10" placeholder="dd.mm.åååå" autocomplete="off" data-dlk="ownDate" value="' + esc(ownDate || runDeadlineDates(r, s, false)[f.id] || '') + '"></label>' +
           (group.length ? '<div class="cl"><span class="group-h">Gjelder i ' + esc(r.aar) + '</span>' + group.map(function (x) { return '<label><input type="checkbox" data-dlout="' + esc(x.id) + '"' + (out.indexOf(x.id) < 0 ? ' checked' : '') + '> ' + esc(x.kortnavn) + '</label>'; }).join('') + '</div>' : '');
         return html + preview();
       }
@@ -2263,7 +2379,7 @@
     }).join('');
     return '<section class="panel"><h2>Kommende</h2>' + (rems.length ? '<div class="tasklist">' + rems.map(dlReminderHtml).join('') + '</div>' : '') +
       (body ? '<div class="tasklist">' + body + '</div>' : '<div class="empty">Ingen aktiviteter denne eller neste måned.</div>') +
-      '<div class="row wrap"><a class="btn small" href="#frister">Alle frister</a></div></section>';
+      '<div class="row wrap"><a class="btn small" href="#kalender/frister">Alle frister</a></div></section>';
   }
   // The Frister page: every deadline of every current activity year, one month at a time.
   function pageDeadlines() {
@@ -3335,7 +3451,7 @@
     var later = function (d, n) { return d ? monthEnd(Number(addMonthsC(d, n).slice(0, 4)), Number(addMonthsC(d, n).slice(5, 7))) : ''; };
     var row = function (kind, key, on, label, from) {
       return '<div class="pz-row"><label><input type="checkbox" name="' + kind + '_' + esc(key) + '"' + (on ? ' checked' : '') + '> ' + esc(label) + ' <span class="when">' + esc(fmtDate(from)) + '</span></label>' +
-        '<input type="date" name="d' + kind + '_' + esc(key) + '" data-from="' + esc(from) + '" value="' + esc(later(from, 6)) + '" aria-label="Ny frist for ' + esc(label) + '"></div>';
+        '<input type="text" class="dt" inputmode="numeric" maxlength="10" placeholder="dd.mm.åååå" autocomplete="off" name="d' + kind + '_' + esc(key) + '" data-from="' + esc(from) + '" value="' + esc(later(from, 6)) + '" aria-label="Ny frist for ' + esc(label) + '"></div>';
     };
     openDrawer('<h2>Utsett ' + esc(p.kortnavn) + '</h2><p class="empty">Flytter de avkryssede fristene og sluttdatoen, merker prosjektet som forsinket og lagrer det i forsinkelsesloggen. Fasen endres ikke: prosjektet blir der det er til du flytter det. Hver frist får antall måneder lagt til; du kan skrive en annen dato på hver rad.</p>' +
       '<div class="grid2">' + field('Antall måneder', 'mnd', '6', 'number') + field('Årsak', 'aarsak', '') + '</div>' +
@@ -3355,7 +3471,7 @@
       });
     // The dates follow the number of months until you change one by hand.
     var form = $('drawerForm'), mnd = form.querySelector('[name="mnd"]');
-    var dates = form.querySelectorAll('.pz-row input[type="date"]');
+    var dates = form.querySelectorAll('.pz-row input.dt');
     dates.forEach(function (el) { el.dataset.auto = 'ja'; el.addEventListener('input', function () { el.dataset.auto = 'nei'; }); });
     mnd.addEventListener('input', function () { var n = Number(mnd.value) || 0; dates.forEach(function (el) { if (el.dataset.auto !== 'nei') el.value = later(el.dataset.from, n); }); });
   }
@@ -3532,7 +3648,7 @@
         '<section class="panel"><h2>Neste uke <span class="hint">' + weekRange(w.nextMon, w.nextSun) + '</span></h2>' +
           '<div class="grp">Frister</div>' + (nextHtml || '<div class="empty">Ingen frister neste uke.</div>') +
           (quietHtml ? '<div class="grp">Lenge siden sist</div>' + quietHtml : '') +
-          '<form class="wkadd" data-form="wkadd"><input type="text" id="wkText" placeholder="Legg til oppgave for neste uke …" aria-label="Ny oppgave for neste uke"><input type="date" id="wkDate" value="' + w.nextMon + '" aria-label="Frist"><button class="btn" type="submit">Legg til</button></form>' +
+          '<form class="wkadd" data-form="wkadd"><input type="text" id="wkText" placeholder="Legg til oppgave for neste uke …" aria-label="Ny oppgave for neste uke"><input type="text" class="dt" inputmode="numeric" maxlength="10" placeholder="dd.mm.åååå" autocomplete="off" id="wkDate" value="' + w.nextMon + '" aria-label="Frist"><button class="btn" type="submit">Legg til</button></form>' +
         '</section>' +
       '</div>' +
       '<section class="panel wkfinish"><div><h2>Notat for uka <span class="hint">valgfritt</span></h2><textarea id="wkNote" placeholder="Noe å huske fra denne uka?"></textarea></div><button class="btn primary" data-act="weekdone">Ferdig med uka</button></section>';
@@ -4914,11 +5030,12 @@
         return '<div class="task"><span></span><div class="t" data-expense="' + esc(u.id) + '"><div class="tt">' + esc(u.hva || 'Utgift') + '</div><div class="meta">' + esc(post ? post.navn : 'Uten post') + ' · betalt ' + esc(fmtDate(u.dato)) + ref + (u.kvittering ? ' · <a href="' + esc(safeUrl(u.kvittering)) + '" target="_blank" rel="noopener noreferrer">kvittering</a>' : '') + '</div></div><span class="when">' + kr(num(u.beloep)) + '</span></div>';
       }).join('') : '<div class="empty">Ingen utgifter ennå (f.eks. servering, reise, honorar).</div>') +
       '<form class="expadd" data-form="expense" data-run="' + esc(r.id) + '"><input type="text" inputmode="numeric" class="money" id="exAmt" placeholder="Beløp" aria-label="Beløp"><input type="text" id="exWhat" placeholder="Hva (f.eks. servering)" aria-label="Hva">' +
-        '<select id="exPost" aria-label="Post">' + postOpts + '</select><input type="date" id="exDate" value="' + today() + '" aria-label="Betalt dato"><input type="text" id="exLink" placeholder="Lenke til kvittering (valgfritt)" aria-label="Kvittering">' +
+        '<select id="exPost" aria-label="Post">' + postOpts + '</select><input type="text" class="dt" inputmode="numeric" maxlength="10" placeholder="dd.mm.åååå" autocomplete="off" id="exDate" value="' + today() + '" aria-label="Betalt dato"><input type="text" id="exLink" placeholder="Lenke til kvittering (valgfritt)" aria-label="Kvittering">' +
         '<label class="check"><input type="checkbox" id="exOwn"> Lagt ut selv (må refunderes)</label><button class="btn" type="submit">Legg til</button></form></section>';
   }
   function addExpense(form) {
     var r = byId('Runder', form.dataset.run), amt = rawMoney($('exAmt').value), what = $('exWhat').value.trim(), post = $('exPost').value, link = $('exLink').value.trim();
+    if (badDates($('exDate').parentNode)) return;   // v30
     var date = $('exDate').value || today(), own = $('exOwn').checked ? 'ja' : '';
     if (!amt) { toast('Skriv beløpet'); return; }
     if (link && !/^https?:\/\//i.test(link)) { toast('Lenken må starte med https://'); return; }
@@ -4990,7 +5107,7 @@
   }
   function fillTpl(text, v) { return String(text || '').replace(/\{([\wæøåÆØÅ]+)\}/g, function (m, k) { return v[k] != null && v[k] !== '' ? v[k] : m; }); }
   function longDate(d, lang) {
-    if (!d) return '';
+    if (!d || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return '';   // v30: also while a date is half typed
     var p = d.split('-').map(Number), wd = new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay();
     if (lang === 'en') return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][wd] + ' ' + p[2] + ' ' + ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][p[1] - 1] + ' ' + p[0];
     return ['søndag', 'mandag', 'tirsdag', 'onsdag', 'torsdag', 'fredag', 'lørdag'][wd] + ' ' + p[2] + '. ' + ['januar', 'februar', 'mars', 'april', 'mai', 'juni', 'juli', 'august', 'september', 'oktober', 'november', 'desember'][p[1] - 1] + ' ' + p[0];
@@ -4999,8 +5116,9 @@
   // v14: Mer → E-post. Two tabs: Maler (every template, with search and a filter) and Mottakere
   // (a recipient list to copy into Outlook's To / Kopi field).
   function pageTemplates() {
-    var tab = state.filters.etab || 'maler';
-    return head('E-post', '', segBtns([['maler', 'Maler'], ['mottakere', 'Mottakere']], tab, 'data-etab')) + (tab === 'mottakere' ? recipientsView() : templatesView());
+    // v30: one page: the templates, then "Lag mottakerliste" (was the Mottakere tab); the button jumps down to it.
+    return head('E-post', '', '<button type="button" class="btn primary" data-scrollto="rcpH">Lag mottakerliste ↓</button>') + templatesView() +
+      '<h2 class="sec-h" id="rcpH">Lag mottakerliste</h2>' + recipientsView();
   }
   function templatesView() {
     var f = state.filters, lang = f.tLang || '', q = (f.tq || '').toLowerCase(), where = f.twhere || '';
@@ -5020,8 +5138,11 @@
     });
     var card = function (m) {
       var general = m.type === 'generell', pv = tplPick(m), names = tplRoots(m).map(actName);
+      // v30: "Ligger på" links to where the template is used (or says Generell)
+      var where = isGen(m) ? 'Generell' : tplRoots(m).map(function (rt) { return '<a class="plink" href="#serie/' + esc(rt) + '">' + esc(actName(rt)) + '</a>'; }).join(', ') || (oldType(m) ? esc(typeAll(oldType(m))) : isInv(m) ? 'Invitasjoner' : '');
       return '<div class="tcard"><div class="h"><b>' + esc(m.navn) + '</b><span class="ph">' + esc(LANGS[m.spraak] || m.spraak) + '</span></div><div class="who">' + esc(pv.emne) +
-          (names.length ? ' · ' + esc(names.join(', ')) : '') + (oldType(m) ? ' · ' + esc(typeAll(oldType(m))) : '') + (pv.of > 1 ? ' · variant ' + pv.n + ' av ' + pv.of + (pv.kommentar ? ' (' + esc(pv.kommentar) + ')' : '') : '') + '</div>' +
+          (pv.of > 1 ? ' · variant ' + pv.n + ' av ' + pv.of + (pv.kommentar ? ' (' + esc(pv.kommentar) + ')' : '') : '') + '</div>' +
+        (where ? '<div class="who">Ligger på: ' + where + '</div>' : '') +
         '<div class="row">' + tplArrows(m) + (general ? '<a class="btn small primary" href="' + esc(mailto('', pv.emne, pv.tekst)) + '">Åpne i e-post</a><button class="btn small" data-tcopy="' + esc(m.id) + '">Kopier</button>' :
           '<button class="btn small primary" data-tuse="' + esc(m.id) + '">Fyll ut</button>') +
         '<button class="btn small ghost" data-tedit="' + esc(m.id) + '">Rediger</button></div></div>';
@@ -5476,7 +5597,8 @@
     });
     d.Søkere.forEach(function (a) { if (is(a.leder)) out.push({ k: 'Søker', y: a.soknadsaar || '', n: a.kortnavn, go: 'sokere' }); });
     d.Runder.filter(function (r) { return r.arkivert !== 'ja'; }).forEach(function (r) {
-      panelOf(r).forEach(function (x) { if (is(x.navn)) out.push({ k: x.rolle === 'taler' ? 'Foredragsholder' : 'Panel', r: x.svar || '', y: r.aar || '', n: runName(r), go: 'runde/' + r.id }); });
+      var pl = panelOf(r);
+      pl.forEach(function (x) { if (is(x.navn)) out.push({ k: x.rolle === 'taler' ? 'Foredragsholder' : 'Panel', r: [x.svar || '', panelResText(pl, x)].filter(Boolean).join(' · '), y: r.aar || '', n: runName(r), go: 'runde/' + r.id }); });   // v30: reserve link
       guestsOf(r).forEach(function (g) { if (is(g.navn)) out.push({ k: 'Gjest', y: r.aar || '', n: runName(r), go: 'runde/' + r.id }); });
     });
     (d.Agendaer || []).forEach(function (ag) {
@@ -5783,7 +5905,7 @@
         return '<div class="d">' + esc(day(x.dt)) + '</div><div class="e' + (x.go ? ' click" data-go="' + esc(x.go) : '') + '"><span class="kind">' + esc(x.kind) + '</span>' + esc(x.name) + (x.sub ? '<small>' + esc(x.sub) + '</small>' : '') + '</div>';
       }).join('') + '</div>';
     }).join('') : '<div class="empty">Ingenting de neste to månedene.</div>') +
-      '<div class="row wrap"><a class="btn small" href="#frister">Alle frister</a></div></section>';
+      '<div class="row wrap"><a class="btn small" href="#kalender/frister">Alle frister</a></div></section>';
   }
 
 
@@ -6197,12 +6319,34 @@
       var vl = panelValg(), ix = function (v) { return /^førstevalg$/i.test(v || '') ? -1 : vl.indexOf(v) < 0 ? 99 : vl.indexOf(v); };
       if (ix(a.p.valg) !== ix(b.p.valg)) return ix(a.p.valg) - ix(b.p.valg);
     }
+    var sa = a.p.sendt || '9999', sb = b.p.sendt || '9999'; if (sa !== sb) return sa < sb ? -1 : 1;   // v30: oldest e-mail first
     return String(a.p.navn || '').localeCompare(String(b.p.navn || ''), 'nb');
+  }
+  // ---- v30: reserves, per person. A reserve entry has reserve: [{for: <entry id>, nr}] (only in this year's list).
+  // When someone says Nei, "Send til de neste" takes their next reserve (lowest nr who hasn't said Nei).
+  function panelResOf(p) { return Array.isArray(p.reserve) ? p.reserve.filter(function (x) { return x && x.for; }) : []; }
+  function panelIsRes(p) { return /reserve/i.test(p.valg || '') || panelResOf(p).length > 0; }
+  function panelResFor(list, main) {   // the reserves of one person, in their order
+    return list.map(function (p) { var o = panelResOf(p).find(function (x) { return x.for === main.id; }); return o ? { p: p, nr: Number(o.nr) || 99 } : null; })
+      .filter(Boolean).sort(function (a, b) { return a.nr - b.nr || String(a.p.navn || '').localeCompare(String(b.p.navn || ''), 'nb'); });
+  }
+  function panelResText(list, p) {
+    return panelResOf(p).map(function (o) { var m = list.find(function (x) { return x.id === o.for; }); return m ? 'Reserve ' + (Number(o.nr) || '') + ' for ' + shortPerson(m.navn) : ''; }).filter(Boolean).join(', ');
+  }
+  function panelNext(list, tal) {
+    var mine = list.filter(function (p) { return (p.rolle === 'taler') === tal; });
+    var out = mine.filter(function (p) { return !p.sendt && p.svar !== 'Nei' && !panelIsRes(p); });
+    mine.forEach(function (m) {
+      if (!m.id || panelSvar(m) !== 'Nei') return;
+      var nx = panelResFor(mine, m).find(function (x) { return panelSvar(x.p) !== 'Nei'; });
+      if (nx && !nx.p.sendt && out.indexOf(nx.p) < 0) out.push(nx.p);
+    });
+    return out;
   }
   function panelPanel(r, kind) {
     var tal = kind === 'taler', all = panelOf(r).map(function (p, i) { return { p: p, i: i }; }).filter(function (x) { return (x.p.rolle === 'taler') === tal; }).sort(panelSort);
     var list = all.map(function (x) { return x.p; }), yes = list.filter(function (p) { return p.svar === 'Ja'; }).length, key = esc(r.id) + (tal ? '|taler' : '');
-    var next = list.filter(function (p) { return !p.sendt && p.svar !== 'Nei' && !/reserve/i.test(p.valg || ''); }), wait = list.filter(function (p) { return panelSvar(p) === 'Venter'; });
+    var next = panelNext(list, tal), wait = list.filter(function (p) { return panelSvar(p) === 'Venter'; });
     var cell = function (x, k, html, label) { return '<td data-l="' + label + '" data-pcell="' + esc(r.id + '|' + x.i + '|' + k) + '" title="Klikk for å endre">' + html + '</td>'; };
     return '<section class="panel"><h2><span>' + (tal ? 'Foredragsholdere' : 'Panelet') + '</span><button class="btn small" data-panedit="' + esc(r.id) + '||' + (tal ? 'taler' : '') + '">' + (tal ? '+ Foredragsholder' : '+ Panelmedlem') + '</button></h2>' +
       (list.length ? '<div class="meta">' + yes + ' har sagt ja · ' + wait.length + ' venter på svar</div><div class="tablewrap"><table class="t ptab"><thead><tr><th>Navn</th><th>' + (tal ? 'Tema' : 'Kompetanse') + '</th><th>Valg</th><th>E-post sendt</th><th>Svar</th><th>Dager siden kontakt</th></tr></thead><tbody>' + all.map(function (x) {
@@ -6210,7 +6354,7 @@
         var late = days != null && days > panelDays() && sv !== 'Ja' && sv !== 'Nei';
         var komp = tal ? esc(p.kompetanse || '') : panelKomp(p).map(function (k) { return '<span class="chip c-na">' + esc(k) + '</span>'; }).join(' ');
         return '<tr class="click" data-panedit="' + esc(r.id) + '|' + x.i + '" data-pname="' + esc(p.navn || '') + '">' +
-          '<td class="pn-name" data-l="Navn"><b>' + esc(p.navn || '') + '</b>' + (org ? '<small>' + esc(org) + '</small>' : '') + '</td>' +
+          '<td class="pn-name" data-l="Navn"><b>' + esc(p.navn || '') + '</b>' + (org ? '<small>' + esc(org) + '</small>' : '') + (panelResText(list, p) ? '<small class="pn-res">' + esc(panelResText(list, p)) + '</small>' : '') + '</td>' +
           '<td data-l="' + (tal ? 'Tema' : 'Kompetanse') + '"><span>' + komp + '</span></td>' +
           cell(x, 'valg', esc(p.valg || ''), 'Valg') +
           cell(x, 'sendt', p.sendt ? esc(fmtDate(p.sendt)) : '<span class="why">ikke sendt</span>', 'E-post sendt') +
@@ -6230,8 +6374,8 @@
     else ctl = dateInput('', p[k] || (k === 'sist' ? panelLast(p) : ''), ' aria-label="' + (k === 'sist' ? 'Sist kontakt' : 'E-post sendt') + '"');   // v29: dd.mm.åååå
     td.innerHTML = ctl;
     var el = td.firstChild, done = false;
+    if (el.classList.contains('dt')) el._dtPrefill = true;   // v30: an empty date cell gets today's date, selected
     el.focus();
-    if (el.select && el.classList.contains('dt')) el.select();
     el.addEventListener('keydown', function (e) { if (e.key === 'Enter' && el.classList.contains('dt')) { e.preventDefault(); el.dispatchEvent(new Event('change', { bubbles: true })); } });
     el.addEventListener('click', function (e) { e.stopPropagation(); });
     el.addEventListener('change', function () {
@@ -6239,6 +6383,7 @@
       var nv = el.classList.contains('dt') ? normDate(el.value) : el.value;
       if (!okDate(nv) && el.classList.contains('dt')) return;   // v29: the box is marked and the toast says how to write it
       done = true;
+      if (k === 'svar' && !p.svar && nv === 'Venter' && !p.sendt) p.sendt = today();   // v30
       p[k] = nv;
       if ((k === 'sendt' || k === 'sist') && p[k] && !p.svar) p.svar = 'Venter';   // (21)
       state.keepScroll = true; savePanel(r, list, 'Lagret');
@@ -6267,6 +6412,21 @@
     if (x.valg && vl.indexOf(x.valg) < 0) vl = vl.concat([x.valg]);
     var kTick = function (k) { return '<label class="check"><input type="checkbox" name="komp" value="' + esc(k) + '"' + (komp.indexOf(k) >= 0 ? ' checked' : '') + '> ' + esc(k) + '</label>'; };
     var kAll = uniq(kompList().concat(komp));
+    // v30: "Reserve for": each other panel member with an order number (1 = asked first when they say Nei).
+    var mains = tal ? [] : list.filter(function (m) { return m !== x && m.rolle !== 'taler'; });
+    mains.forEach(function (m) { if (!m.id) m.id = newKey(); });   // older entries get an id so a reserve can point to them
+    var resNow = panelResOf(x), resN = Math.max(3, mains.length);
+    var resBox = function () {
+      if (!mains.length) return '';
+      var open = resNow.length || /reserve/i.test(x.valg || '');
+      return '<details class="f res-box"' + (open ? ' open' : '') + '><summary>Reserve for' + (resNow.length ? ' (' + resNow.length + ')' : '') + '</summary>' +
+        '<p class="empty">Velg hvem personen er reserve for, og som nummer hvor mange i køen. Sier den personen nei, kommer reserven med i «Send til de neste».</p>' +
+        '<div class="res-grid">' + mains.map(function (m) {
+          var cur = resNow.find(function (o) { return o.for === m.id; }), v = cur ? String(Number(cur.nr) || 1) : '';
+          var opts = option('', v, '–'); for (var n = 1; n <= resN; n++) opts += option(String(n), v, 'Reserve ' + n);
+          return '<label class="f">' + esc(m.navn || '?') + '<select name="res_' + esc(m.id) + '">' + opts + '</select></label>';
+        }).join('') + '</div></details>';
+    };
     openDrawer('<h2>' + (i >= 0 ? esc(x.navn) : tal ? 'Ny foredragsholder' : 'Nytt panelmedlem') + '</h2>' +
       (i >= 0 && x.navn ? '<p><button type="button" class="plink" data-person="' + esc(x.navn) + '">Se personsiden</button></p>' : '') +
       '<div class="grid2"><label class="f">Navn<input type="text" name="navn" list="pkList" autocomplete="off" value="' + esc(x.navn || '') + '"></label>' + field('E-post', 'epost', x.epost || (c0 && c0.epost) || '', 'email') +
@@ -6277,6 +6437,7 @@
       (tal ? field('Tema', 'kompetanse', x.kompetanse) :
         '<div class="f"><span>Kompetanse</span><div class="tick-grid" id="kompTicks">' + kAll.map(kTick).join('') + '</div>' +
           '<input type="text" name="komp_ny" placeholder="Ny kompetanse (skill med komma)" aria-label="Ny kompetanse"><a href="#innstillinger" class="muted-link">Rediger kompetanselisten</a></div>') +
+      (tal ? '' : resBox()) +
       field('Notat', 'notat', x.notat, 'textarea') +
       peopleDatalist() +
       actions(i >= 0 ? '<button type="button" class="btn danger" data-pandel="' + esc(r.id) + '|' + i + '">Slett</button>' : ''),
@@ -6288,7 +6449,9 @@
         row.kompetanse = tal ? val(form, 'kompetanse') : picked.concat(fresh).join(', ');
         if (!row.navn) { toast('Skriv et navn'); return; }
         if (!['sendt', 'sist', 'purres'].every(function (k) { return okDate(row[k]); })) { toast('Skriv datoene som dd.mm.åååå, for eksempel 18.11.2026'); return; }   // v29
+        if (!x.svar && row.svar === 'Venter' && !row.sendt) row.sendt = today();   // v30: blank → Venter = e-mailed today
         if ((row.sendt || row.sist) && !row.svar) row.svar = 'Venter';   // (21)
+        if (!tal) row.reserve = mains.map(function (m) { var v = val(form, 'res_' + m.id); return v ? { for: m.id, nr: Number(v) } : null; }).filter(Boolean);   // v30
         if (i >= 0) list[i] = keepKey(Object.assign({}, x, row), x); else list.push(row);
         // The person in Personer: added if new; e-mail, organisation and kompetanse saved there; tagged panel / foredragsholder.
         var tag = tal ? 'foredragsholder' : 'panel', c = contactOf(row.navn), crow = null;
@@ -6325,7 +6488,7 @@
   function panelMail(arg, purr) {
     var rid = String(arg).split('|')[0], tal = String(arg).split('|')[1] === 'taler';   // v21: '|taler' = the speakers
     var r = byId('Runder', rid), s = byId('Serier', r.serie_id), list = panelOf(r);
-    var who = list.filter(function (p) { return (p.rolle === 'taler') === tal && (purr ? p.svar === 'Venter' : !p.sendt && p.svar !== 'Nei' && !/reserve/i.test(p.valg || '')); });
+    var who = purr ? list.filter(function (p) { return (p.rolle === 'taler') === tal && p.svar === 'Venter'; }) : panelNext(list, tal);   // v30: next reserves included
     var tpls = s ? templatesOf(s) : [], v = Object.assign({ arrangement: s ? s.navn : '', tid: r.tid || '', sted: r.sted || '' }, avkVars(r));
     if (who.length === 1) v.organisasjon = panelOrg(who[0]);   // v29: only when the e-mail goes to one person
     var mails = who.map(function (p) { return p.epost; }).filter(Boolean);
@@ -7125,7 +7288,7 @@
     if (ds.mstick) { msToggle(ds.mstick); return; }
     if (ds.msalt) { msAlt(ds.msalt); return; }
     if (ds.pedit !== undefined) { var pe = ds.pedit.split('|'); editPerson(pe[0], pe[1]); return; }
-    if (ds.etab) { state.filters.etab = ds.etab; render(); return; }
+    if (ds.scrollto) { var stEl = $(ds.scrollto); if (stEl) stEl.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }   // v30
     if (ds.rcpmore) { e.preventDefault(); rcp().more = !el.parentNode.open; el.parentNode.open = !el.parentNode.open; return; }
     if (ds.rcpkp !== undefined) { rcp().kp = ds.rcpkp; state.keepScroll = true; render(); return; }
     if (ds.rcpcopy) { var rt = $(ds.rcpcopy); if (rt) copyText(rt.value); return; }
@@ -7220,7 +7383,7 @@
       saveContacts(f.dataset.id, pl).then(function () { toast('Lagt til'); });
     }
     if (kind === 'expense') { addExpense(f); }
-    if (kind === 'wkadd') { var wt = $('wkText').value.trim(), wd = $('wkDate').value || weekDays().nextMon; if (!wt) return; save('Oppgaver', [{ tittel: wt, type: 'oppgave', status: 'Ikke startet', fase: 'Felles', frist: wd, opprinnelig_frist: wd, aar: wd.slice(0, 4) }]).then(function () { toast('Lagt til for ' + fmtDate(wd)); render(); }); }
+    if (kind === 'wkadd') { var wt = $('wkText').value.trim(), wd = $('wkDate').value || weekDays().nextMon; if (!wt || badDates($('wkDate').parentNode)) return; save('Oppgaver', [{ tittel: wt, type: 'oppgave', status: 'Ikke startet', fase: 'Felles', frist: wd, opprinnelig_frist: wd, aar: wd.slice(0, 4) }]).then(function () { toast('Lagt til for ' + fmtDate(wd)); render(); }); }
     if (kind === 'settings') {
       api('api_saveSettings', { vises_dager_for: $('sDays').value, gjennomgang_dato: $('sReview').value, workshops_obligatoriske: $('sWs').value, mentormoter_kreves: $('sMm').value, ingen_kontakt_dager: $('sNc').value, prosjektmidler_per_aar: rawMoney($('sPm').value), stilling_spark: $('sSt').value, refusjon_dager: $('sRf').value, tagger: $('sTags').value, pitch_min: $('sPitch').value, panel_dager: $('sPanDays').value })
         .then(function (s) { state.d.Innstillinger = s; toast('Lagret'); }).catch(fail);

@@ -975,7 +975,8 @@ body.fldragging, body.fldragging * { cursor: grabbing !important; user-select: n
 /* 24-hour time boxes (text, normalised to tt:mm) */
 input.tm { width: 7.5em; max-width: 100%; font-variant-numeric: tabular-nums; }
 input.tm.bad { border-color: var(--warn); }
-input.dt { width: 9.5em; max-width: 100%; font-variant-numeric: tabular-nums; }   /* v29: dd.mm.åååå */
+input.dt { width: 9.5em; max-width: 100%; font-variant-numeric: tabular-nums; }   /* v29: dd.mm.åååå; v30: every date box */
+label.f input.dt { width: 100%; max-width: 12em; }
 input.dt.bad { border-color: var(--warn); }
 /* Small grey link inside a form, e.g. "Endre standardlengden", "Rediger listen" */
 .muted-link { color: var(--muted); font-size: 12.5px; }
@@ -1022,3 +1023,19 @@ body.dragging { user-select: none; cursor: ew-resize; }
   .ag-row2 select[data-k="art"] { grid-column: 2; justify-self: start; }
   .ag-row2 .tl-btns { grid-column: 3; justify-self: end; }
 }
+
+/* v30: the menu. Search box in the bar; big tabs on Prosjekter and Kalender; section heading on E-post. */
+.navsearch { position: relative; display: inline-flex; align-items: center; margin-left: 8px; color: var(--muted); }
+.navsearch svg { position: absolute; left: 9px; pointer-events: none; }
+.navsearch input { padding: 6px 10px 6px 32px; border-radius: var(--r-s); border: 1px solid var(--line); background: var(--card); color: var(--text); min-width: 10em; max-width: 15em; font-size: 13.5px; }
+@media (max-width: 820px) { .navsearch input { min-width: 7em; max-width: 9em; } }
+.seg.bigtabs { justify-self: start; flex-wrap: wrap; border: 2px solid var(--accent); border-radius: 10px; }
+.seg.bigtabs button { padding: 10px 18px; font-size: 15px; font-weight: 600; background: color-mix(in srgb, var(--accent) 12%, var(--card)); color: var(--title); }
+.seg.bigtabs button + button { border-left: 2px solid var(--accent); }
+.seg.bigtabs button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
+.seg.bigtabs button:hover:not([aria-pressed="true"]) { background: color-mix(in srgb, var(--accent) 25%, var(--card)); }
+h2.sec-h { font-size: 20px; margin-top: 8px; scroll-margin-top: 70px; }
+/* v30: reserves in Panelet */
+.pn-name small.pn-res { color: var(--accent); }
+.res-box > summary { cursor: pointer; color: var(--text); font-weight: 600; }
+.res-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px 12px; margin-top: 6px; }

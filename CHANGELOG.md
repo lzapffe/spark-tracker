@@ -3,6 +3,29 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v30 – 18 November 2026 (page only)
+
+The menu (the five "Simplifications", as in the 18 November demo), every date box as dd.mm.åååå, and Linn's panel comments from 18 November. No back-end change.
+
+### Menu
+- **Prosjekter has tabs** Alle / Søknad / 1. år / 2. år / Avslutning (the phase pages); the Faser menu is gone.
+- **Kalender** = Måned og år and Frister as two tabs.
+- **Search box in the menu bar** (magnifying glass; Enter opens the results). Søk is gone from Mer.
+- **Arbeidsflyt** opens from a button on Årsplan instead of the menu.
+- **E-post** is one page: the templates (with all their tools) and then **Lag mottakerliste** (was the Mottakere tab); a button at the top jumps down to it. Each template card has **"Ligger på:"** with a link to its activity, or Generell.
+- Old addresses (#fase/…, #maned, #frister) still open the right tab.
+
+### Date boxes
+- Every date box in the app is a text box with fixed dots, **__.__.____**: digits fill the blanks. Stored as before (åååå-mm-dd).
+- Clicking an empty box fills in **today's date, selected**: type over it, or delete it to leave the box blank. (Tabbing through a form doesn't fill anything in.)
+- Clicking a box selects the whole date. **Double-click the day, month or year** to change only that part.
+- A date that doesn't exist (31.02) is marked, and the form isn't saved until it's fixed.
+
+### Panelet
+- Within each Svar group the list is ordered by **E-post sendt (oldest first)**, then by name.
+- Changing Svar from blank to **Venter** fills in today as E-post sendt (when it's empty).
+- **Reserves per person:** in the panel form, "Reserve for" sets who someone is a reserve for and as which number. The list shows "Reserve 1 for Eva" under the name, and so does the person's pop-up. When someone says Nei, **"Send til de neste" includes their next reserve** (the lowest number who hasn't said Nei).
+
 ## v29 – 18 November 2026 (page and back end)
 
 Linn's comments from 17 November. Needs the new `Kode.gs` and a new deployment (no `setup()`), plus these page files.
