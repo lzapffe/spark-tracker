@@ -1039,3 +1039,17 @@ h2.sec-h { font-size: 20px; margin-top: 8px; scroll-margin-top: 70px; }
 .pn-name small.pn-res { color: var(--accent); }
 .res-box > summary { cursor: pointer; color: var(--text); font-weight: 600; }
 .res-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px 12px; margin-top: 6px; }
+
+/* v31: Vurdering (panel form, person pop-up and page, review) */
+.vurd { margin: 14px 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card2); }
+.vurd h3 { margin: 0 0 8px; color: var(--title); }
+.vlist { margin: 4px 0 0; padding-left: 18px; }
+.vlist li { margin: 4px 0; }
+.vlist small.was { display: block; }
+.vk { font-weight: 600; }
+.vk-Ja { color: var(--done); } .vk-Kanskje { color: var(--started); } .vk-Nei { color: var(--s-miss); }
+.vrole { margin: 8px 0; }
+.vrev { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.6fr); gap: 4px 10px; align-items: end; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.vrev > div:first-child { grid-column: 1 / -1; }
+.vrev small.was { display: block; }
+@media (max-width: 420px) { .vrev { grid-template-columns: 1fr; } }

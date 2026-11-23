@@ -3,6 +3,26 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v31 – 23 November 2026 (page and back end)
+
+Linn's comments from 20 and 23 November.
+
+### Panelet
+- **Venter** is ordered by Dager siden kontakt: the person you have waited on longest first (last contact = Sist kontakt, or E-post sendt when that is empty). The other groups keep E-post sendt, then name.
+
+- When someone who had **Ja** is changed to something else (or deleted), SPARK asks whether to take them off Deltakere too. Before, they stayed on the list.
+- **Deltakere** has a **Kopier listen** button: copies the list with one person per line, "- Navn" (always the full name).
+
+### Vurdering (new)
+- Each person can have a **Vurdering** per role: Panelmedlem, Foredragsholder and Mentor. Each note has **Kontakt igjen?** (Ja / Kanskje / Nei) and a note, and belongs to one year of an activity (or one project, for mentors). Stored on the person (new column Kontakter `vurdering`).
+- **Panel and speaker form:** a "Vurdering som panelmedlem / foredragsholder" section for this year, with **Tidligere**: every earlier year the person was on the list, how it went (På panelet / Holdt innlegg, Kontaktet, sa nei, Kontaktet, svarte ikke, Ikke kontaktet) and the note if there is one. How it went is read from that year's list.
+- **Person form:** "Vurdering som mentor", one line per project where the person is or was a mentor.
+- **Person pop-up and person page:** Vurdering at the top of Generelt, each role kept apart (only roles the person has had).
+- **Review:** after "Merk som gjennomført", a form lists everyone on the year's panel and speaker list so you can fill in Vurdering for all at once. The year page gets a "Vurder panelet" button for finished years.
+
+### New day
+- An open SPARK page fetches the data again and redraws when a new day has started, and once after 07:15 (after the daily run). It checks every minute and when you come back to the tab, and waits while a form is open.
+
 ## v30 – 18 November 2026 (page only)
 
 The menu (the five "Simplifications", as in the 18 November demo), every date box as dd.mm.åååå, and Linn's panel comments from 18 November. No back-end change.

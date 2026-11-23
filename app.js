@@ -101,6 +101,23 @@
     return api(fn, arg).then(function (res) { if (msg) toast(msg); return load(true).then(function () { return res; }); }).catch(fail);
   }
 
+  // v31: an open page fetches the data again (and redraws) when a new day has started, and once after 07:15
+  // (the daily run is between 06 and 07). Checked every minute and when the tab is opened again; it waits
+  // while a form or a cell is being edited.
+  function localDay() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function refreshIfStale() {
+    if (!state.d || !state.loadedAt || document.hidden) return;
+    var dr = $('drawer'), ae = document.activeElement;
+    if ((dr && !dr.hidden) || document.getElementById('pp') || (ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName) && ae.id !== 'navQ')) return;
+    var mark = new Date(); mark.setHours(7, 15, 0, 0);
+    if (state.loadedDay !== localDay() || (state.loadedAt < mark.getTime() && Date.now() >= mark.getTime())) {
+      state.loadedAt = Date.now(); state.keepScroll = true; load(true);
+    }
+  }
+  setInterval(refreshIfStale, 60000);
+  document.addEventListener('visibilitychange', refreshIfStale);
+  window.addEventListener('focus', refreshIfStale);
+
   function fail(e) { toast('Feil: ' + (e && e.message || e)); throw e; }
 
   function load(quiet) {
@@ -108,7 +125,7 @@
     return api('api_getData').then(function (d) {
       // Tabs added in v8 (empty until setup() has been run after the update).
       ['Budsjett', 'Utgifter', 'Maler', 'Fasehistorikk', 'Typemaler', 'Agendaer', 'Erfaringer'].forEach(function (k) { d[k] = d[k] || []; });
-      state.d = d;
+      state.d = d; state.loadedAt = Date.now(); state.loadedDay = localDay();   // v31: for the morning refresh
       $('connect').hidden = true; $('shell').hidden = false; $('fab').hidden = false;
       render();
     }).catch(function (e) { if (!quiet) $('main').innerHTML = '<div class="panel err">Kunne ikke hente data: ' + esc(e.message) + '</div>'; });
@@ -2718,7 +2735,7 @@
       return '<div class="task"><span></span><div class="t"><div class="tt">' + personLink(x.navn) + '</div><div class="meta">' + esc(x.hvor || '') + (x.allergier ? ' <span class="chip ' + (on ? 'c-late' : 'c-prog') + '">' + (on ? '⚠ ' : '') + 'Allergi: ' + esc(x.allergier) + '</span>' : '') + '</div></div>' +
         '<div class="right"><button type="button" class="btn small ghost" data-guestedit="' + esc(r.id + '|' + i) + '">Endre</button><button type="button" class="btn small ghost" data-guestdel="' + esc(r.id + '|' + i) + '" aria-label="Fjern ' + esc(x.navn) + '">✕</button></div></div>';
     }).join('') + '</div><p class="dm-m">' + g.length + ' på listen</p>' : '<div class="empty">Ingen deltakere ennå.</div>') +
-      '<div class="row wrap"><button type="button" class="btn small" data-guestedit="' + esc(r.id) + '|">+ Deltaker</button>' + (signedUp(r).length ? '<button type="button" class="btn small ghost" data-guestall="' + esc(r.id) + '">Legg til alle fra de påmeldte prosjektene</button>' : '') + '</div></section>';
+      '<div class="row wrap"><button type="button" class="btn small" data-guestedit="' + esc(r.id) + '|">+ Deltaker</button>' + (g.length ? '<button type="button" class="btn small ghost" data-guestcopy="' + esc(r.id) + '">Kopier listen</button>' : '') + (signedUp(r).length ? '<button type="button" class="btn small ghost" data-guestall="' + esc(r.id) + '">Legg til alle fra de påmeldte prosjektene</button>' : '') + '</div></section>';
   }
   // Everyone who can be picked as a guest, with their allergies from Personer / Kontakter.
   function guestCandidates(r) {
@@ -3970,6 +3987,16 @@
     if (!c) return;
     var nm = c.fornavn || c.etternavn ? { fornavn: c.fornavn || '', etternavn: c.etternavn || '' } : splitName(c.navn);
     var before = id ? { navn: personName(c), epost: c.epost || '', allergier: c.allergier || '' } : null;
+    // v31: Vurdering som mentor, one line per project where the person is (or was) a mentor.
+    var mHist = id ? vurdHist(personName(c), 'mentor', null).filter(function (h) { return byId('Prosjekter', h.key); }) : [];
+    var mentorBox = function () {
+      if (!mHist.length) return '';
+      return '<section class="vurd"><h3>Vurdering som mentor</h3>' + mHist.map(function (h, n) {
+        var v = h.v || {};
+        return '<div class="vrev"><div><b>' + esc(h.akt) + '</b><small class="was">' + esc(h.st) + '</small></div>' +
+          '<label class="f">Kontakt igjen?' + vurdSelect('v_ki_' + n, v.ki) + '</label><label class="f">Notat<input type="text" name="v_no_' + n + '" value="' + esc(v.notat || '') + '"></label></div>';
+      }).join('') + '</section>';
+    };
     openDrawer('<h2>' + (id ? esc(personName(c)) : 'Ny person') + '</h2>' +
       '<div class="grid2">' + field('Fornavn', 'fornavn', nm.fornavn) + field('Etternavn', 'etternavn', nm.etternavn) + '</div>' +
       '<label class="check"><input type="checkbox" name="bare_fornavn"' + (id ? (firstOnly(personName(c)) ? ' checked' : '') : (c.bare_fornavn === 'ja' ? ' checked' : '')) + '> Bruk bare fornavn i appen</label>' +
@@ -3983,6 +4010,7 @@
         '<input type="text" name="komp_ny" placeholder="Ny kompetanse (skill med komma)" aria-label="Ny kompetanse"><a href="#innstillinger" class="muted-link">Rediger kompetanselisten</a></div>' +
       tagPicker(tagsOf(c)) +
       field('Notater (jobbrelatert)', 'notater', c.notater, 'textarea') +
+      mentorBox() +   // v31
       '<p class="empty">Prosjektleder, mentor, panel, gjest og lignende kommer av seg selv fra der personen er brukt, med år. Legg personen til i et prosjekt fra prosjektets Personer.</p>' +
       actions((id ? '<button type="button" class="btn danger" data-delcontact="' + esc(id) + '">Slett</button> ' : '') + '<button type="button" class="btn" data-contacttoday="1">Snakket med i dag</button>'),
       function (form) {
@@ -3997,6 +4025,7 @@
         row.kompetanse = kp.concat(kn).join(', ');   // v28
         if (kn.length) api('api_saveSettings', { kompetanse: uniq(kompList().concat(kn)).join(', ') }).then(function (st) { if (st) state.d.Innstillinger = st; }).catch(fail);
         if (id) row.id = id;
+        if (mHist.length) { var vj = c.vurdering || ''; mHist.forEach(function (h, n) { var nj = vurdNext({ vurdering: vj }, 'mentor', { prosjekt_id: h.key }, val(form, 'v_ki_' + n), val(form, 'v_no_' + n), h.akt); if (nj !== null) vj = nj; }); if (vj !== (c.vurdering || '')) row.vurdering = vj; }   // v31
         // Only one person can be "meg".
         var oldMe = row.meg === 'ja' ? state.d.Kontakter.filter(function (x) { return x.meg === 'ja' && x.id !== id; }).map(function (x) { return { id: x.id, meg: '' }; }) : [];
         save('Kontakter', [row].concat(oldMe)).then(function () {
@@ -5655,7 +5684,7 @@
     };
     var info = function (l, v) { return v ? '<div><span class="dm-m">' + l + '</span><span>' + v + '</span></div>' : ''; };
     var first = c ? (c.fornavn || splitName(shown).fornavn) : splitName(shown).fornavn;
-    var gen = '<div class="pp-info">' +
+    var gen = vurdPerson(name) + '<div class="pp-info">' +
       info('E-post', mail ? '<a href="' + esc(mailto(mail, '', '', '')) + '">' + esc(mail) + '</a>' : '') +
       info('Telefon', c && c.telefon ? '<a href="tel:' + esc(String(c.telefon).replace(/\s/g, '')) + '">' + esc(c.telefon) + '</a>' : '') +
       info('Organisasjon', c && c.enhet ? esc(c.enhet) : '') + info('Rolle', c && c.rolle ? esc(c.rolle) : '') +
@@ -5989,6 +6018,7 @@
     var tools = (s ? '<button class="btn" data-expnew="' + esc(s.id + '|' + r.id) + '">Skriv erfaring</button>' : '') + (!r.dato ? '<button class="btn" data-act="editrun" data-id="' + esc(r.id) + '">Sett dato</button>' : '') + '<button class="btn" data-act="editrun" data-id="' + esc(r.id) + '">Rediger</button>' +
       '<button class="btn" data-act="newtask" data-run="' + esc(r.id) + '">+ Ny oppgave</button>' +
       (s ? '<button class="btn" data-tledit="' + esc(s.id) + '">Rediger oppgaver og delmål</button>' : '') +   // v28: moved from "Til denne aktiviteten"
+      (r.status === 'gjennomført' && panelOf(r).length ? '<button class="btn" data-act="reviewpanel" data-id="' + esc(r.id) + '">Vurder panelet</button>' : '') +   // v31
       (r.status !== 'gjennomført' ? '<button class="btn primary" data-act="finishrun" data-id="' + esc(r.id) + '">Merk som gjennomført</button>' : '');
     var when = [r.dato ? fmtDateW(r.dato) + (r.sluttdato ? ' – ' + fmtDateW(r.sluttdato) : '') : '', r.tid ? 'kl. ' + r.tid : '', r.sted].filter(Boolean).join(' · ');
     var row = function (t) { return taskRow(t, { soft: true, noProject: true, dm: true }); };
@@ -6266,6 +6296,113 @@
   // v29: each entry remembers which entry it was when read (_k, not saved), so a save can send only what changed.
   function panelKey(e) { return e && e.id ? 'id:' + e.id : 'n:' + ((e && e.rolle) || '') + '|' + String((e && e.navn) || '').trim().toLowerCase(); }
   function keepKey(e, from) { if (from && from._k) Object.defineProperty(e, '_k', { value: from._k, writable: true, enumerable: false }); return e; }
+  // ---- v31: Vurdering. Per person and role (panel, taler, mentor), stored on the person (Kontakter.vurdering, JSON
+  // [{rolle, runde_id | prosjekt_id, gjelder, ki: Ja|Kanskje|Nei, notat, dato}]). How each year went is read from that
+  // year's panel list, so it is always up to date.
+  var VROLES = [['panel', 'Panelmedlem'], ['taler', 'Foredragsholder'], ['mentor', 'Mentor']];
+  var VKI = { Ja: '✓', Kanskje: '?', Nei: '✗' };
+  function vurdOf(c) { var l = jsonOf(c && c.vurdering, []); return Array.isArray(l) ? l : []; }
+  function vurdKey(v) { return v.runde_id || v.prosjekt_id || ''; }
+  function vurdFor(c, rolle, key) { return vurdOf(c).find(function (v) { return v.rolle === rolle && vurdKey(v) === key; }) || null; }
+  // The new JSON for the person after one change, or null when nothing changed.
+  function vurdNext(c, rolle, keyObj, ki, notat, gjelder) {
+    var l = vurdOf(c), key = keyObj.runde_id || keyObj.prosjekt_id, i = l.findIndex(function (v) { return v.rolle === rolle && vurdKey(v) === key; });
+    var cur = i >= 0 ? l[i] : null;
+    if (!ki && !notat) { if (!cur) return null; l.splice(i, 1); return JSON.stringify(l); }
+    if (cur && cur.ki === ki && (cur.notat || '') === notat) return null;
+    var v = Object.assign({ rolle: rolle }, keyObj, { gjelder: gjelder, ki: ki, notat: notat, dato: today() });
+    if (cur) l[i] = v; else l.push(v);
+    return JSON.stringify(l);
+  }
+  function runOver(r) { return r.status === 'gjennomført' || (!!r.dato && r.dato < today()); }
+  function panelStatus(x, r) {
+    var sv = panelSvar(x), over = runOver(r), tal = x.rolle === 'taler';
+    if (sv === 'Ja') return over ? (tal ? 'Holdt innlegg' : 'På panelet') : 'Har sagt ja';
+    if (sv === 'Nei') return 'Kontaktet, sa nei';
+    if (sv === 'Venter') return over ? 'Kontaktet, svarte ikke' : 'Venter på svar';
+    return 'Ikke kontaktet';
+  }
+  function isPerson(c, name) { return function (n) { return sameName(n, name) || (c && (sameName(n, c.navn) || sameName(n, personName(c)))); }; }
+  // Every year (or project, for mentors) the person had the role, with the note if there is one. Newest first.
+  function vurdHist(name, rolle, skipKey) {
+    var c = contactOf(name), is = isPerson(c, name), out = [];
+    if (rolle === 'mentor') {
+      state.d.Prosjekter.forEach(function (p) {
+        projContacts(p).forEach(function (x) {
+          if (x.rolle !== 'Mentor' || !is(x.navn) || p.id === skipKey || out.some(function (o) { return o.key === p.id; })) return;
+          out.push({ key: p.id, akt: p.kortnavn + (p.kull ? ' (' + p.kull + ')' : ''), sort: p.kull || '', st: pcActive(x) && p.fase !== 'Arkivert' ? 'Mentor nå' : 'Tidligere mentor', v: vurdFor(c, 'mentor', p.id) });
+        });
+      });
+    } else {
+      state.d.Runder.forEach(function (r) {
+        if (r.id === skipKey) return;
+        panelOf(r).forEach(function (x) {
+          if (!is(x.navn) || (x.rolle === 'taler') !== (rolle === 'taler') || out.some(function (o) { return o.key === r.id; })) return;
+          out.push({ key: r.id, akt: runName(r), sort: r.dato || r.aar || '', st: panelStatus(x, r), v: vurdFor(c, rolle, r.id) });
+        });
+      });
+    }
+    vurdOf(c).forEach(function (v) {   // a note whose year or project no longer lists the person
+      if (v.rolle !== rolle || vurdKey(v) === skipKey || out.some(function (o) { return o.key === vurdKey(v); })) return;
+      out.push({ key: vurdKey(v), akt: v.gjelder || '?', sort: v.dato || '', st: '', v: v });
+    });
+    return out.sort(function (a, b) { return String(b.sort).localeCompare(String(a.sort)); });
+  }
+  function vurdLine(h) {
+    var v = h.v || {};
+    return '<li><b>' + esc(h.akt) + '</b>' + (h.st ? ': ' + esc(h.st) : '') +
+      (v.ki ? ' <span class="vk vk-' + esc(v.ki) + '">' + (VKI[v.ki] || '') + ' ' + esc(v.ki) + '</span>' : '') +
+      (v.notat ? '<small class="was">' + esc(v.notat) + '</small>' : '') + '</li>';
+  }
+  function vurdSelect(name, ki) { return '<select name="' + name + '">' + options(['Ja', 'Kanskje', 'Nei'], ki || '', '–') + '</select>'; }
+  // The section in a form: this year's choice and note, then the earlier years.
+  function vurdBox(name, rolle, key, gjelder) {
+    var c = name ? contactOf(name) : null, v = (c && vurdFor(c, rolle, key)) || {}, hist = name ? vurdHist(name, rolle, key) : [];
+    var label = VROLES.find(function (x) { return x[0] === rolle; })[1].toLowerCase();
+    return '<section class="vurd"><h3>Vurdering som ' + label + '</h3>' +
+      '<div class="grid2"><label class="f">Kontakt igjen?' + vurdSelect('v_ki', v.ki) + '</label>' +
+      '<label class="f">Gjelder<input type="text" value="' + esc(gjelder) + '" disabled></label></div>' +
+      field('Notat', 'v_notat', v.notat || '', 'textarea') +
+      (hist.length ? '<div class="f"><span>Tidligere</span><ul class="vlist">' + hist.map(vurdLine).join('') + '</ul></div>' : '') + '</section>';
+  }
+  // The section in the person pop-up and on the person page: each role the person has had, kept apart.
+  function vurdPerson(name) {
+    var groups = VROLES.map(function (ro) { var h = vurdHist(name, ro[0], null); return h.length ? '<div class="vrole"><b>' + ro[1] + '</b><ul class="vlist">' + h.map(vurdLine).join('') + '</ul></div>' : ''; }).join('');
+    return groups ? '<section class="vurd"><h3>Vurdering</h3>' + groups + '</section>' : '';
+  }
+  // After "Merk som gjennomført" (and from a button on the year page): everyone on the panel and speaker list at once.
+  function reviewPanel(rid) {
+    var r = byId('Runder', rid), list = panelOf(r); if (!r || !list.length) return;
+    var rows = list.map(function (x, i) { return { p: x, i: i }; }).sort(panelSort);
+    var part = function (tal) {
+      var l = rows.filter(function (x) { return (x.p.rolle === 'taler') === tal && x.p.navn; }); if (!l.length) return '';
+      return '<h3>' + (tal ? 'Foredragsholdere' : 'Panelet') + '</h3>' + l.map(function (x) {
+        var c = contactOf(x.p.navn), v = (c && vurdFor(c, tal ? 'taler' : 'panel', r.id)) || {};
+        return '<div class="vrev"><div><b>' + esc(x.p.navn) + '</b><small class="was">' + esc(panelStatus(x.p, r)) + '</small></div>' +
+          '<label class="f">Kontakt igjen?' + vurdSelect('v_ki_' + x.i, v.ki) + '</label>' +
+          '<label class="f">Notat<input type="text" name="v_no_' + x.i + '" value="' + esc(v.notat || '') + '"></label></div>';
+      }).join('');
+    };
+    openDrawer('<h2>Vurdering: ' + esc(runName(r)) + '</h2><p class="empty">Skal de spørres igjen neste gang? Det lagres på personen, og vises neste år når du åpner dem i panellisten. Du kan hoppe over noen.</p>' +
+      part(false) + part(true) + actions(''),
+      function (form) {
+        var byPerson = {}, adds = [];
+        rows.forEach(function (x) {
+          if (!x.p.navn) return;
+          var rolle = x.p.rolle === 'taler' ? 'taler' : 'panel', c = contactOf(x.p.navn), k = c ? c.id : 'new:' + x.p.navn.toLowerCase();
+          var cur = byPerson[k] || { c: c, navn: x.p.navn, epost: x.p.epost, json: c ? c.vurdering : '' };
+          var nj = vurdNext({ vurdering: cur.json }, rolle, { runde_id: r.id }, val(form, 'v_ki_' + x.i), val(form, 'v_no_' + x.i), runName(r));
+          if (nj !== null) { cur.json = nj; cur.changed = true; }
+          byPerson[k] = cur;
+        });
+        var out = Object.keys(byPerson).map(function (k) { return byPerson[k]; }).filter(function (x) { return x.changed; }).map(function (x) {
+          if (x.c) return { id: x.c.id, vurdering: x.json };
+          var snm = splitName(x.navn); adds.push(x.navn); return { navn: x.navn, fornavn: snm.fornavn, etternavn: snm.etternavn, epost: x.epost || '', vurdering: x.json };
+        });
+        if (!out.length) { closeDrawer(); return; }
+        save('Kontakter', out).then(function () { closeDrawer(); toast('Vurderingen er lagret' + (adds.length ? ', og ' + adds.join(', ') + ' er lagt i Personer' : '')); state.keepScroll = true; render(); }).catch(fail);
+      });
+  }
   function panelOf(r) {
     var l = jsonOf(r && r.panel, []); if (!Array.isArray(l)) return [];
     l.forEach(function (e) { if (e && typeof e === 'object') Object.defineProperty(e, '_k', { value: panelKey(e), writable: true, enumerable: false }); });
@@ -6278,7 +6415,7 @@
     closeDrawer();
     // v29 (safety): only the changed, new and deleted entries are sent. The back end puts them into the list
     // that is in the sheet now, so a save can never drop entries it didn't touch. It also adds the Ja people
-    // to the guest list (never takes anyone off it).
+    // to the guest list. v31: when someone loses their Ja, the page asks before taking them off it.
     var base = panelOf(r), was = {}, seen = {}, put = [], add = [], del = [];
     base.forEach(function (e) { was[e._k] = JSON.stringify(e); });
     list.forEach(function (e) {
@@ -6286,6 +6423,9 @@
       else add.push(e);
     });
     base.forEach(function (e) { if (!seen[e._k]) del.push(e._k); });
+    // v31: people who had Ja before this save and don't now (changed or deleted): offer to take them off the guest list.
+    var nowJa = {}; list.forEach(function (e) { if (e._k && e.svar === 'Ja') nowJa[e._k] = 1; });
+    var lost = base.filter(function (e) { return e.svar === 'Ja' && e.navn && !nowJa[e._k]; }).map(function (e) { return e.navn; });
     r.panel = JSON.stringify(list);   // shown at once; the sheet follows
     var go = put.length || add.length || del.length ? api('api_panelSave', { runde_id: r.id, put: put, add: add, del: del }).then(function (res) { applySave('Runder', res); return (res && res.added) || []; }) : Promise.resolve([]);
     return go.then(function (added) {
@@ -6298,6 +6438,9 @@
         if (fin.length) words.push('«' + fin.map(function (t) { return t.tittel; }).join('», «') + '» er ferdig');
         toast(words.join('. ')); state.keepScroll = true;
         render();
+        var r2 = byId('Runder', r.id) || r, gl = guestsOf(r2), off = lost.filter(function (n) { return gl.some(function (g) { return sameName(g.navn, n); }); });
+        if (off.length && window.confirm(off.map(shortPerson).join(' og ') + ' har' + ' ikke lenger svart ja. Ta ' + (off.length > 1 ? 'dem' : off.map(shortPerson)[0]) + ' av deltakerlisten også?'))   // v31
+          saveGuests(r2, gl.filter(function (g) { return !off.some(function (n) { return sameName(g.navn, n); }); }), 'Tatt av deltakerlisten');
       });
     }).catch(function (e) { state.keepScroll = true; return load(true).then(function () { fail(e); }); });
   }
@@ -6319,6 +6462,7 @@
       var vl = panelValg(), ix = function (v) { return /^førstevalg$/i.test(v || '') ? -1 : vl.indexOf(v) < 0 ? 99 : vl.indexOf(v); };
       if (ix(a.p.valg) !== ix(b.p.valg)) return ix(a.p.valg) - ix(b.p.valg);
     }
+    if (ra === 1) { var la = panelLast(a.p) || '9999', lb = panelLast(b.p) || '9999'; if (la !== lb) return la < lb ? -1 : 1; }   // v31: Venter = most days since last contact first
     var sa = a.p.sendt || '9999', sb = b.p.sendt || '9999'; if (sa !== sb) return sa < sb ? -1 : 1;   // v30: oldest e-mail first
     return String(a.p.navn || '').localeCompare(String(b.p.navn || ''), 'nb');
   }
@@ -6439,6 +6583,7 @@
           '<input type="text" name="komp_ny" placeholder="Ny kompetanse (skill med komma)" aria-label="Ny kompetanse"><a href="#innstillinger" class="muted-link">Rediger kompetanselisten</a></div>') +
       (tal ? '' : resBox()) +
       field('Notat', 'notat', x.notat, 'textarea') +
+      vurdBox(x.navn, tal ? 'taler' : 'panel', r.id, runName(r)) +   // v31
       peopleDatalist() +
       actions(i >= 0 ? '<button type="button" class="btn danger" data-pandel="' + esc(r.id) + '|' + i + '">Slett</button>' : ''),
       function (form) {
@@ -6464,6 +6609,8 @@
           if (!tal && row.kompetanse !== splitList(c.kompetanse).join(', ')) { crow.kompetanse = row.kompetanse; ch = true; }
           if (!ch) crow = null;
         }
+        var vj = vurdNext(c, tal ? 'taler' : 'panel', { runde_id: r.id }, val(form, 'v_ki'), val(form, 'v_notat'), runName(r));   // v31: Vurdering on the person
+        if (vj !== null) { if (!crow) crow = { id: c.id }; crow.vurdering = vj; }
         var saves = [];
         if (crow && crow.tagger && tagList().indexOf(tag) < 0) saves.push(api('api_saveSettings', { tagger: tagList().concat([tag]).join(', ') }));
         if (fresh.length) saves.push(api('api_saveSettings', { kompetanse: uniq(kompList().concat(fresh)).join(', ') }));
@@ -7276,6 +7423,7 @@
     if (ds.matadd) { addFoodTasks(ds.matadd); return; }
     if (ds.guestedit !== undefined) { editGuest(ds.guestedit); return; }
     if (ds.guestall) { addAllGuests(ds.guestall); return; }
+    if (ds.guestcopy) { copyText(guestsOf(byId('Runder', ds.guestcopy)).map(function (x) { var c = contactOf(x.navn); return '- ' + (c ? personName(c) : x.navn); }).join('\n')); return; }   // v31: one line per guest, "- Navn", always the full name from Personer
     if (ds.guestdel) { var gd = ds.guestdel.split('|'), gr = byId('Runder', gd[0]), gl = guestsOf(gr); gl.splice(Number(gd[1]), 1); saveGuests(gr, gl, 'Fjernet'); return; }
     if (ds.reltask) { relatedTask(ds.reltask); return; }
     if (ds.waittask) { closeDrawer(); waitTask(ds.waittask); return; }
@@ -7337,7 +7485,8 @@
       case 'runupdate': runUpdate(ds.id); break;   // v19
       case 'runtasks': run('api_runTasks', { runde_id: ds.id }).then(function (res) { toast(res && res.lagt_til ? res.lagt_til + ' oppgaver lagt til' : 'Alle oppgavene fra listen finnes allerede'); }); break;
       case 'delrun': deleteRun(ds.id); break;
-      case 'finishrun': save('Runder', [{ id: ds.id, status: 'gjennomført' }]).then(function () { toast('Gjennomført. En «Notater til neste gang»-oppgave er lagt til.'); return render(); }); break;
+      case 'finishrun': save('Runder', [{ id: ds.id, status: 'gjennomført' }]).then(function () { toast('Gjennomført. En «Notater til neste gang»-oppgave er lagt til.'); render(); reviewPanel(ds.id); }); break;   // v31: then Vurdering
+      case 'reviewpanel': reviewPanel(ds.id); break;   // v31
       case 'reviewdone': run('api_reviewDone', null, 'Gjennomgangen er ferdig').then(function () { state.reviewed = {}; location.hash = '#oversikt'; }); break;
       case 'newproject': editProject(null); break;
       case 'editproject': editProject(ds.id); break;
