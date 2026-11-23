@@ -3,6 +3,23 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v33 – 23 November 2026 (page only)
+
+### Personer
+- The button is called **Slå sammen personer**.
+- The list is sorted by **first name** (the full name A–Å).
+- **No doubles after a merge:** when a merge (or a rename) gives the same name twice in a year's Deltakere, Panelet or Foredragsholdere, the entries become one. Guests: "hvor" and allergies are combined. Panel / speakers: empty fields are filled from the other, the earliest E-post sendt and the latest Sist kontakt / Purres are kept, notes and kompetanse are combined, reserves follow; if the two have different Svar, SPARK asks which is right.
+- **Doubles already there:** the year page shows "X står to ganger …" with a **Slå sammen doble** button on Deltakere and on Panelet.
+
+### Mat og servering
+- A food plan can have **both catering and butikk**; the Butikk / Catering switch is gone.
+- **Catering:** one leverandør and one bestillingslenke for the plan, and a list of orders (**+ Catering**): fra–til (til fills in one hour after fra), hva, kr per person and antall bestilt (empty = the planned number). Shown as "45 kr × 16 = 720 kr".
+- **Butikk:** total cost, shown as "1 200 kr ÷ 16 = 75 kr per person"; the shopping list is as before.
+- **Totalt for maten** and per person, in the form and on the year page.
+- **Måltider** is replaced by the catering rows: text already in Måltider is moved into Notat the first time the plan is saved (the old text stays in the data).
+- Older plans: the old single cost is read as the butikk total (or "Catering totalt (fra før)" for a catering plan). Saving still writes `mate` (catering / butikk / begge) and `kostnad` (the total) for the back end's summary Doc.
+- Task suggestions follow what the plan has (catering tasks, butikk tasks or both). "Lagre som standard" also copies the catering orders.
+
 ## v32 – 23 November 2026 (page only)
 
 ### Personer

@@ -2590,6 +2590,50 @@
   var FOOD_TASKS = { butikk: [['Lag handleliste', -4], ['Handle mat', -2], ['Forbered maten', -1]], catering: [['Bestill catering', -7], ['Bekreft antall og allergier med cateringen', -3]] };
   function jsonOf(v, dflt) { try { var x = JSON.parse(v || ''); return x == null ? dflt : x; } catch (e) { return dflt; } }
   function matOf(x) { var m = jsonOf(x && x.mat, {}); return m && typeof m === 'object' && !Array.isArray(m) ? m : {}; }
+  // ---- v33: the same person twice in one year's guest list or panel list (after a merge or a rename) becomes one entry ----
+  function dupGuests(gl) {
+    var out = [], n = 0;
+    gl.forEach(function (g) {
+      var o = out.find(function (x) { return sameName(x.navn, g.navn); });
+      if (!o) { out.push(g); return; }
+      n++;
+      ['hvor', 'allergier'].forEach(function (k) { var a = String(o[k] || '').trim(), b = String(g[k] || '').trim(); if (b && a.toLowerCase().indexOf(b.toLowerCase()) < 0) o[k] = a ? a + ', ' + b : b; });
+    });
+    return { list: out, n: n };
+  }
+  function askSvar(name, a, b) { return window.confirm(name + ' står to ganger på listen med ulike svar: «' + a + '» og «' + b + '». Trykk OK for «' + a + '», eller Avbryt for «' + b + '».') ? a : b; }
+  function dupPanel(pl, ask) {
+    var out = [], n = 0, ids = {};
+    pl.forEach(function (e) {
+      var o = out.find(function (x) { return sameName(x.navn, e.navn) && (x.rolle === 'taler') === (e.rolle === 'taler'); });
+      if (!o) { out.push(e); return; }
+      n++; if (e.id && o.id) ids[e.id] = o.id;
+      if (o.svar && e.svar && o.svar !== e.svar) o.svar = (ask || askSvar)(o.navn, o.svar, e.svar); else o.svar = o.svar || e.svar || '';
+      ['epost', 'enhet', 'valg'].forEach(function (k) { if (!o[k] && e[k]) o[k] = e[k]; });
+      o.kompetanse = uniq(splitList(o.kompetanse).concat(splitList(e.kompetanse))).join(', ');
+      if (e.sendt && (!o.sendt || e.sendt < o.sendt)) o.sendt = e.sendt;
+      ['sist', 'purres'].forEach(function (k) { if (e[k] && (!o[k] || e[k] > o[k])) o[k] = e[k]; });
+      var na = String(o.notat || '').trim(), nb = String(e.notat || '').trim(); if (nb && na.indexOf(nb) < 0) o.notat = na ? na + '\n\n' + nb : nb;
+      var res = (Array.isArray(o.reserve) ? o.reserve : []).slice(); (Array.isArray(e.reserve) ? e.reserve : []).forEach(function (x) { if (!res.some(function (y) { return y.for === x.for; })) res.push(x); });
+      if (res.length) o.reserve = res;
+    });
+    // Reserves that pointed to the removed entry point to the kept one.
+    if (n) out.forEach(function (x) { if (Array.isArray(x.reserve)) x.reserve.forEach(function (rv) { if (ids[rv.for]) rv.for = ids[rv.for]; }); });
+    return { list: out, n: n };
+  }
+  // "Rydd opp" on the year page: merges doubles that are already there.
+  function dedupeRun(rid) {
+    var r = byId('Runder', rid); if (!r) return;
+    var g = dupGuests(guestsOf(r)), p = dupPanel(panelOf(r));
+    var go = g.n ? save('Runder', [{ id: r.id, gjester: JSON.stringify(g.list) }]) : Promise.resolve();
+    go.then(function () { if (p.n) return savePanel(byId('Runder', rid), p.list, 'Doble er slått sammen'); toast('Doble er slått sammen'); state.keepScroll = true; render(); }).catch(fail);
+  }
+  function dupNote(r, kind) {
+    var gn = kind === 'g' ? dupGuests(guestsOf(r).map(function (x) { return Object.assign({}, x); })).n : 0, pn = kind === 'p' ? dupPanel(panelOf(r), function (n, a) { return a; }).n : 0;
+    if (!gn && !pn) return '';
+    return '<div class="banner warn dup-note"><div>' + [gn ? gn + ' ' + (gn === 1 ? 'person står' : 'personer står') + ' to ganger på Deltakere' : '', pn ? pn + ' ' + (pn === 1 ? 'person står' : 'personer står') + ' to ganger på Panelet eller Foredragsholdere' : ''].filter(Boolean).join(', og ') + '.</div>' +
+      '<button type="button" class="btn small" data-dedupe="' + esc(r.id) + '">Slå sammen doble</button></div>';
+  }
   function guestsOf(r) { var g = jsonOf(r && r.gjester, []); return Array.isArray(g) ? g : []; }
   function signedUp(r) { return state.d.Deltakelse.filter(function (a) { return a.runde_id === r.id && ['Påmeldt', 'Deltatt', 'Alternativ'].indexOf(a.status) >= 0; }).map(function (a) { return byId('Prosjekter', a.prosjekt_id); }).filter(Boolean); }
   function plannedCount(r) { var m = matOf(r); return Number(m.antall) || guestsOf(r).length || null; }
@@ -2612,69 +2656,142 @@
     }
     return null;
   }
+  // ---- v33: the food plan has both catering orders and shopping (Linn, 23 Nov) ----
+  // mat JSON (Runder.mat / Serier.mat): {pa, antall, leverandor, lenke, notat, handleliste, rester, rester_notat, faktisk_antall, timer,
+  //   catering: [{fra, til, hva, pris (per person), antall (ordered; empty = planned)}], butikk_kostnad (total), catering_total (old single total),
+  //   maltider_flyttet: 'ja' once the old Måltider text has been moved into Notat}. Saving also writes mate (catering / butikk / begge) and
+  //   kostnad (= the total) so the back end's summary Doc keeps working. Older plans (mate + kostnad) are read as before.
+  function foodPlan(m, people) {
+    var fresh = m.butikk_kostnad !== undefined || m.catering_total !== undefined || Array.isArray(m.catering);
+    var butikk = fresh ? num(m.butikk_kostnad) : (m.mate !== 'catering' ? num(m.kostnad) : 0);
+    var oldCat = fresh ? num(m.catering_total) : (m.mate === 'catering' ? num(m.kostnad) : 0);
+    var rows = (Array.isArray(m.catering) ? m.catering : []).map(function (x) { var n = Number(x.antall) || Number(people) || 0; return Object.assign({}, x, { n: n, sum: num(x.pris) * n }); });
+    var catSum = rows.reduce(function (a, x) { return a + x.sum; }, 0) + oldCat;
+    var hasCat = rows.length > 0 || oldCat > 0 || (!fresh && m.mate === 'catering');
+    var hasShop = butikk > 0 || (m.handleliste || []).length > 0 || (!fresh && m.mate === 'butikk');
+    return { rows: rows, butikk: butikk, oldCat: oldCat, catSum: catSum, total: catSum + butikk, hasCat: hasCat, hasShop: hasShop, people: Number(people) || 0 };
+  }
+  function foodTaskList(m) {
+    var f = foodPlan(m, 0), out = [];
+    if (f.hasCat) out = out.concat(FOOD_TASKS.catering);
+    if (f.hasShop) out = out.concat(FOOD_TASKS.butikk);
+    return out;
+  }
+  function catLine(x) {
+    return [x.fra ? x.fra + (x.til ? '–' + x.til : '') : '', x.hva || ''].filter(Boolean).map(esc).join(' · ') +
+      (num(x.pris) ? ' · ' + esc(kr(num(x.pris))) + ' × ' + esc(x.n) + ' = <b>' + esc(kr(x.sum)) + '</b>' : '');
+  }
   function matPanel(r, s) {
     var m = matOf(r), on = m.pa === 'ja', std = matOf(s);
     var seg = '<span class="seg"><button type="button" data-matpa="' + esc(r.id) + '|ja" aria-pressed="' + on + '">Trenger mat</button><button type="button" data-matpa="' + esc(r.id) + '|nei" aria-pressed="' + (m.pa === 'nei') + '">Ingen mat</button></span>';
-    if (!on) return '<section class="panel"><h2>Mat og servering</h2><div class="row wrap">' + seg + '</div>' + (m.pa === 'nei' ? '' : '<p class="empty">Velg om det skal være mat.' + (std.mate ? ' Standarden for aktiviteten (' + esc(FOOD_WAYS[std.mate] || '') + ') brukes som start.' : '') + '</p>') + '</section>';
+    if (!on) return '<section class="panel"><h2>Mat og servering</h2><div class="row wrap">' + seg + '</div>' + (m.pa === 'nei' ? '' : '<p class="empty">Velg om det skal være mat.' + (std.mate || std.catering ? ' Standarden for aktiviteten brukes som start.' : '') + '</p>') + '</section>';
     var al = allergyGuests(r), have = state.d.Oppgaver.filter(function (t) { return t.runde_id === r.id; }).map(function (t) { return t.tittel; });
-    var sugg = (FOOD_TASKS[m.mate] || []).filter(function (x) { return have.indexOf(x[0]) < 0; });
-    var list = m.handleliste || [];
-    return '<section class="panel" id="matPanel"><h2>Mat og servering</h2><div class="row wrap">' + seg + (m.mate ? ' <span class="chip c-info">' + esc(FOOD_WAYS[m.mate]) + '</span>' : ' <span class="chip c-na">Velg butikk eller catering (Rediger)</span>') + '</div>' +
+    var tasks = foodTaskList(m), sugg = tasks.map(function (x, i) { return { x: x, i: i }; }).filter(function (o) { return have.indexOf(o.x[0]) < 0; });
+    var list = m.handleliste || [], people = plannedCount(r), f = foodPlan(m, people);
+    return '<section class="panel" id="matPanel"><h2>Mat og servering</h2><div class="row wrap">' + seg + '</div>' +
       (al.length ? '<div class="banner warn"><div>⚠ <b>Allergier:</b> ' + al.map(function (g) { return esc(g.navn) + ' (' + esc(g.allergier) + ')'; }).join(', ') + '</div></div>' : '') +
-      '<p>' + [plannedCount(r) ? plannedCount(r) + ' personer' + (m.antall ? ' (planlagt)' : ' (deltakerlisten)') : 'Antall ikke satt', runHours(r, s) ? Math.round(runHours(r, s) * 10) / 10 + ' timer' : ''].filter(Boolean).map(esc).join(' · ') + '</p>' +
-      (m.maltider ? '<p class="pre">' + esc(m.maltider) + '</p>' : '') +
-      (m.mate === 'butikk' && list.length ? '<span class="group-h">Handleliste</span><div class="tablewrap"><table class="t"><tr><th>Vare</th><th>Mengde</th><th>Forslag</th></tr>' + list.map(function (x) {
-        var sg = foodSuggest(s, r, x.vare);
-        return '<tr><td>' + esc(x.vare) + '</td><td>' + esc((x.mengde || '') + ' ' + (x.enhet || '')) + '</td><td>' + (sg ? '<span title="' + esc(sg.text) + '">' + esc(sg.q + ' ' + sg.enhet) + '</span>' : '<span class="dm-m">–</span>') + '</td></tr>';
-      }).join('') + '</table></div>' : '') +
-      (m.mate === 'catering' ? '<p>' + [m.leverandor ? 'Leverandør: ' + esc(m.leverandor) : '', m.lenke ? '<a href="' + esc(safeUrl(m.lenke)) + '" target="_blank" rel="noopener noreferrer">Bestilling</a>' : ''].filter(Boolean).join(' · ') + '</p>' : '') +
-      (m.kostnad ? '<p>Kostnad: ' + esc(kr(num(m.kostnad))) + '</p>' : '') + (m.notat ? '<p class="pre">' + esc(m.notat) + '</p>' : '') +
-      (sugg.length ? '<div class="cl food-sugg"><span class="group-h">Forslag til oppgaver</span>' + sugg.map(function (x, i) { return '<label><input type="checkbox" data-fs="' + i + '" checked> ' + esc(x[0]) + ' <span class="dm-m">' + esc(daysText(x[1])) + (r.dato ? ' (' + esc(fmtDateW(addDays(r.dato, x[1]))) + ')' : '') + '</span>' + (r.dato ? weekendWarn(addDays(r.dato, x[1])) : '') + '</label>'; }).join('') +
+      '<p>' + [people ? people + ' personer' + (m.antall ? ' (planlagt)' : ' (deltakerlisten)') : 'Antall ikke satt', runHours(r, s) ? Math.round(runHours(r, s) * 10) / 10 + ' timer' : ''].filter(Boolean).map(esc).join(' · ') + '</p>' +
+      (m.maltider && m.maltider_flyttet !== 'ja' ? '<p class="pre">' + esc(m.maltider) + '</p>' : '') +
+      (f.hasCat ? '<span class="group-h">Catering</span>' +
+        ((m.leverandor || m.lenke) ? '<p>' + [m.leverandor ? 'Leverandør: ' + esc(m.leverandor) : '', m.lenke ? '<a href="' + esc(safeUrl(m.lenke)) + '" target="_blank" rel="noopener noreferrer">Bestilling</a>' : ''].filter(Boolean).join(' · ') + '</p>' : '') +
+        (f.rows.length ? '<ul class="cat-list">' + f.rows.map(function (x) { return '<li>' + catLine(x) + '</li>'; }).join('') + '</ul>' : '') +
+        (f.oldCat ? '<p>Catering totalt (fra før): ' + esc(kr(f.oldCat)) + '</p>' : '') : '') +
+      (f.hasShop ? '<span class="group-h">Butikk</span>' + (f.butikk ? '<p>' + esc(kr(f.butikk)) + (people ? ' ÷ ' + esc(people) + ' = <b>' + esc(kr(f.butikk / people)) + ' per person</b>' : '') + '</p>' : '') +
+        (list.length ? '<div class="tablewrap"><table class="t"><tr><th>Vare</th><th>Mengde</th><th>Forslag</th></tr>' + list.map(function (x) {
+          var sg = foodSuggest(s, r, x.vare);
+          return '<tr><td>' + esc(x.vare) + '</td><td>' + esc((x.mengde || '') + ' ' + (x.enhet || '')) + '</td><td>' + (sg ? '<span title="' + esc(sg.text) + '">' + esc(sg.q + ' ' + sg.enhet) + '</span>' : '<span class="dm-m">–</span>') + '</td></tr>';
+        }).join('') + '</table></div>' : '') : '') +
+      (f.total ? '<p class="food-total">Totalt for maten: <b>' + esc(kr(f.total)) + '</b>' + (people ? ' · ' + esc(kr(f.total / people)) + ' per person' : '') + '</p>' : '') +
+      (!f.hasCat && !f.hasShop ? '<p class="empty">Ingen catering eller handling lagt inn ennå. Trykk «Rediger matplanen».</p>' : '') +
+      (m.notat ? '<p class="pre">' + esc(m.notat) + '</p>' : '') +
+      (sugg.length ? '<div class="cl food-sugg"><span class="group-h">Forslag til oppgaver</span>' + sugg.map(function (o) { var x = o.x; return '<label><input type="checkbox" data-fs="' + o.i + '" checked> ' + esc(x[0]) + ' <span class="dm-m">' + esc(daysText(x[1])) + (r.dato ? ' (' + esc(fmtDateW(addDays(r.dato, x[1]))) + ')' : '') + '</span></label>'; }).join('') +
         '<div class="row wrap"><button type="button" class="btn small" data-matadd="' + esc(r.id) + '">Legg til valgte</button></div></div>' : '') +
       (m.rester ? '<span class="group-h">Rester etter ' + esc(r.aar) + '</span><p>' + (m.rester.length ? m.rester.filter(function (x) { return Number(x.igjen); }).map(function (x) { return esc(x.vare + ': ' + x.igjen + ' ' + (x.enhet || '')); }).join(', ') || 'Ingenting igjen' : 'Ingenting igjen') + (m.faktisk_antall ? ' · ' + esc(m.faktisk_antall) + ' personer kom' : '') + '</p>' + (m.rester_notat ? '<p class="pre">' + esc(m.rester_notat) + '</p>' : '') : '') +
       '<div class="row wrap"><button type="button" class="btn small" data-matedit="r|' + esc(r.id) + '">Rediger matplanen</button><button type="button" class="btn small" data-matrest="' + esc(r.id) + '">' + (m.rester ? 'Endre rester' : 'Registrer rester') + '</button><button type="button" class="btn small ghost" data-matstd="' + esc(r.id) + '">Lagre som standard</button></div></section>';
   }
   function seriesMatPanel(s) {
-    var m = matOf(s);
-    return '<section class="panel"><h2>Mat og servering</h2>' + (m.mate ? '<p><span class="chip c-info">' + esc(FOOD_WAYS[m.mate]) + '</span>' + (m.antall ? ' · ' + esc(m.antall) + ' personer' : '') + '</p>' + (m.maltider ? '<p class="pre">' + esc(m.maltider) + '</p>' : '') +
-      ((m.handleliste || []).length ? '<p>Handleliste: ' + m.handleliste.map(function (x) { return esc(x.vare + (x.mengde ? ' ' + x.mengde + ' ' + (x.enhet || '') : '')); }).join(', ') + '</p>' : '') : '<div class="empty">Ingen standard for mat. Lag en, så brukes den som start hvert år det skal være mat.</div>') +
-      '<div class="row wrap"><button type="button" class="btn small" data-matedit="s|' + esc(s.id) + '">' + (m.mate ? 'Rediger standarden' : '+ Lag standard') + '</button></div></section>';
+    var m = matOf(s), f = foodPlan(m, m.antall), any = f.hasCat || f.hasShop;
+    return '<section class="panel"><h2>Mat og servering</h2>' + (any ? (m.antall ? '<p>' + esc(m.antall) + ' personer</p>' : '') +
+      (f.rows.length ? '<p>Catering: ' + f.rows.map(function (x) { return esc([x.fra ? x.fra + (x.til ? '–' + x.til : '') : '', x.hva].filter(Boolean).join(' ')); }).join(', ') + '</p>' : f.hasCat ? '<p>Catering</p>' : '') +
+      ((m.handleliste || []).length ? '<p>Handleliste: ' + m.handleliste.map(function (x) { return esc(x.vare + (x.mengde ? ' ' + x.mengde + ' ' + (x.enhet || '') : '')); }).join(', ') + '</p>' : f.hasShop ? '<p>Butikk</p>' : '') : '<div class="empty">Ingen standard for mat. Lag en, så brukes den som start hvert år det skal være mat.</div>') +
+      '<div class="row wrap"><button type="button" class="btn small" data-matedit="s|' + esc(s.id) + '">' + (any ? 'Rediger standarden' : '+ Lag standard') + '</button></div></section>';
   }
   function setFood(arg) {
     var p = arg.split('|'), r = byId('Runder', p[0]), s = byId('Serier', r.serie_id), m = matOf(r);
-    if (p[1] === 'ja' && !m.mate) { var std = matOf(s); m = Object.assign({}, std, { pa: 'ja' }); } else m.pa = p[1];
+    if (p[1] === 'ja' && !m.mate && !Array.isArray(m.catering)) { var std = matOf(s); m = Object.assign({}, std, { pa: 'ja' }); } else m.pa = p[1];
     save('Runder', [{ id: r.id, mat: JSON.stringify(m) }]).then(function () {
       state.keepScroll = true; render();
       if (p[1] === 'ja' && allergyGuests(r).length) toast('⚠ ' + allergyGuests(r).length + ' på deltakerlisten har allergier');
     });
   }
+  function addHour(t) { var m = String(t || '').match(/^(\d{2}):(\d{2})$/); if (!m) return ''; var h = (Number(m[1]) + 1) % 24; return String(h).padStart(2, '0') + ':' + m[2]; }
   // The food plan of a year (kind 'r') or the activity's standard (kind 's').
   function editMat(arg) {
     var p = arg.split('|'), isRun = p[0] === 'r', obj = byId(isRun ? 'Runder' : 'Serier', p[1]);
     var s = isRun ? byId('Serier', obj.serie_id) : obj, m = matOf(obj), list = (m.handleliste || []).map(function (x) { return Object.assign({}, x); });
-    var way = m.mate || 'butikk';
+    var f0 = foodPlan(m, 0), cat = (Array.isArray(m.catering) ? m.catering : []).map(function (x) { return Object.assign({}, x); });
+    var people = function () { var a = Number(val($('drawerForm'), 'antall')); return a || (isRun ? guestsOf(obj).length : 0); };
+    var moveText = m.maltider && m.maltider_flyttet !== 'ja' ? String(m.maltider).trim() : '';   // the old Måltider text goes into Notat
+    var notat = [moveText, m.notat].filter(Boolean).join('\n\n');
     openDrawer('<h2>' + (isRun ? 'Matplan ' + esc(s.navn + ' ' + obj.aar) : 'Standard for mat: ' + esc(s.navn)) + '</h2>' +
-      '<div class="f"><span>Hvordan</span><span class="seg">' + Object.keys(FOOD_WAYS).map(function (k) { return '<button type="button" data-fway="' + k + '" aria-pressed="' + (way === k) + '">' + esc(FOOD_WAYS[k]) + '</button>'; }).join('') + '</span></div>' +
-      '<div class="grid2">' + field('Antall personer (planlagt)', 'antall', m.antall, 'number') + field('Kostnad (kr)', 'kostnad', m.kostnad, 'money') + '</div>' +
+      '<div class="grid2">' + field('Antall personer (planlagt)', 'antall', m.antall, 'number') + '</div>' +
       (isRun ? '<p class="empty">Tomt antall = antallet på deltakerlisten (' + guestsOf(obj).length + ').</p>' : '') +
-      field('Måltider (ett per linje, f.eks. «09:30 Kaffe og frukt»)', 'maltider', m.maltider, 'textarea') +
-      '<div id="fwButikk"' + (way === 'butikk' ? '' : ' hidden') + '><div class="f"><span class="tl-head">Handleliste</span><div id="shopEd" class="tled"></div></div></div>' +
-      '<div id="fwCatering"' + (way === 'catering' ? '' : ' hidden') + '><div class="grid2">' + field('Leverandør', 'leverandor', m.leverandor) + field('Lenke til bestilling', 'lenke', m.lenke) + '</div></div>' +
-      field('Notat', 'notat', m.notat, 'textarea') + actions(),
+      '<h3 class="food-h">Catering</h3><div class="grid2">' + field('Leverandør', 'leverandor', m.leverandor) + field('Lenke til bestilling', 'lenke', m.lenke) + '</div>' +
+      '<div id="catEd" class="tled"></div>' +
+      (f0.oldCat ? field('Catering, totalbeløp fra før (kr)', 'catering_total', String(f0.oldCat), 'money') : '') +
+      '<h3 class="food-h">Butikk</h3>' + field('Totalkostnad (kr)', 'butikk_kostnad', f0.butikk ? String(f0.butikk) : '', 'money') + '<p class="empty" id="shopPer"></p>' +
+      '<div class="f"><span class="tl-head">Handleliste</span><div id="shopEd" class="tled"></div></div>' +
+      '<p class="food-total" id="foodSum"></p>' +
+      field('Notat', 'notat', notat, 'textarea') + actions(),
       function (form) {
-        var out = Object.assign({}, m, { mate: way, antall: val(form, 'antall'), kostnad: val(form, 'kostnad'), maltider: val(form, 'maltider'), leverandor: val(form, 'leverandor'), lenke: val(form, 'lenke'), notat: val(form, 'notat'),
-          handleliste: list.filter(function (x) { return String(x.vare || '').trim(); }) });
+        var rows = cat.filter(function (x) { return String(x.hva || '').trim() || num(x.pris) || x.fra; }).map(function (x) { return { fra: normTime(x.fra), til: normTime(x.til), hva: String(x.hva || '').trim(), pris: rawMoney(x.pris), antall: String(x.antall || '').trim() }; });
+        var out = Object.assign({}, m, { antall: val(form, 'antall'), leverandor: val(form, 'leverandor'), lenke: val(form, 'lenke'), notat: val(form, 'notat'),
+          handleliste: list.filter(function (x) { return String(x.vare || '').trim(); }), catering: rows, butikk_kostnad: val(form, 'butikk_kostnad'), catering_total: f0.oldCat ? val(form, 'catering_total') : (m.catering_total || '') });
+        if (moveText) out.maltider_flyttet = 'ja';   // the Måltider text itself stays in the data
+        var f = foodPlan(out, Number(out.antall) || (isRun ? guestsOf(obj).length : 0));
+        out.mate = f.hasCat && f.hasShop ? 'begge' : f.hasCat ? 'catering' : f.hasShop ? 'butikk' : (m.mate || '');
+        out.kostnad = f.total ? String(Math.round(f.total)) : '';
         if (isRun && !out.pa) out.pa = 'ja';
         save(isRun ? 'Runder' : 'Serier', [{ id: obj.id, mat: JSON.stringify(out) }]).then(function () { closeDrawer(); toast('Lagret'); render(); });
       });
-    var dr = $('drawer'), box = $('shopEd');
-    dr.querySelectorAll('[data-fway]').forEach(function (b) {
-      b.addEventListener('click', function (e) {
-        e.stopPropagation(); way = b.dataset.fway;
-        dr.querySelectorAll('[data-fway]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
-        $('fwButikk').hidden = way !== 'butikk'; $('fwCatering').hidden = way !== 'catering';
-      });
+    var dr = $('drawer'), box = $('shopEd'), cbox = $('catEd'), form = $('drawerForm');
+    var sums = function () {
+      var n = people(), shop = num(rawMoney(val(form, 'butikk_kostnad'))), old = f0.oldCat ? num(rawMoney(val(form, 'catering_total'))) : 0, c = old;
+      cbox.querySelectorAll('[data-csum]').forEach(function (el) { var x = cat[Number(el.dataset.csum)], k = Number(x.antall) || n; el.textContent = num(rawMoney(x.pris)) ? kr(num(rawMoney(x.pris))) + ' × ' + k + ' = ' + kr(num(rawMoney(x.pris)) * k) : ''; c += num(rawMoney(x.pris)) * k; });
+      $('shopPer').textContent = shop && n ? kr(shop) + ' ÷ ' + n + ' = ' + kr(shop / n) + ' per person' : '';
+      $('foodSum').textContent = c + shop ? 'Totalt for maten: ' + kr(c + shop) + (n ? ' · ' + kr((c + shop) / n) + ' per person' : '') : '';
+    };
+    var drawCat = function () {
+      var n = people();
+      var headRow = '<div class="cat-row cat-head" aria-hidden="true"><span>Fra</span><span>Til</span><span class="cat-hva">Hva</span><span data-ck="pris">Kr per person</span><span data-ck="antall">Antall</span><span></span></div>';
+      cbox.innerHTML = (cat.length ? headRow + cat.map(function (x, i) {
+        return '<div class="cat-row"><input type="text" inputmode="numeric" data-ci="' + i + '" data-ck="fra" value="' + esc(x.fra || '') + '" placeholder="Fra" aria-label="Fra (tt:mm)">' +
+          '<input type="text" inputmode="numeric" data-ci="' + i + '" data-ck="til" value="' + esc(x.til || '') + '" placeholder="Til" aria-label="Til (tt:mm)">' +
+          '<input type="text" class="cat-hva" data-ci="' + i + '" data-ck="hva" value="' + esc(x.hva || '') + '" placeholder="Hva, f.eks. lunsj" aria-label="Hva">' +
+          '<input type="text" inputmode="numeric" data-ci="' + i + '" data-ck="pris" value="' + esc(x.pris ? moneyVal(x.pris) : '') + '" placeholder="kr per person" aria-label="Pris per person">' +
+          '<input type="number" min="0" data-ci="' + i + '" data-ck="antall" value="' + esc(x.antall || '') + '" placeholder="' + esc(n || 'Antall') + '" aria-label="Antall bestilt">' +
+          '<button type="button" class="btn small ghost" data-cr="del|' + i + '" aria-label="Slett">✕</button><span class="cat-sum" data-csum="' + i + '"></span></div>';
+      }).join('') : '<div class="empty">Ingen catering ennå.</div>') + '<div class="row wrap"><button type="button" class="btn small" data-cr="add|">+ Catering</button></div>';
+      sums();
+    };
+    cbox.addEventListener('input', function (e) { var el = e.target, i = Number(el.dataset.ci); if (el.dataset.ck && cat[i]) { cat[i][el.dataset.ck] = el.value; sums(); } });
+    cbox.addEventListener('change', function (e) {
+      var el = e.target, i = Number(el.dataset.ci); if (!cat[i]) return;
+      if (el.dataset.ck === 'fra' || el.dataset.ck === 'til') { el.value = normTime(el.value); cat[i][el.dataset.ck] = el.value; }
+      if (el.dataset.ck === 'fra' && el.value && !cat[i].til) { cat[i].til = addHour(el.value); var t = cbox.querySelector('[data-ci="' + i + '"][data-ck="til"]'); if (t) t.value = cat[i].til; }   // "til" = one hour later
+      if (el.dataset.ck === 'pris') { el.value = cat[i].pris ? moneyVal(rawMoney(cat[i].pris)) : ''; }
+      sums();
     });
+    cbox.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-cr]'); if (!b) return;
+      e.stopPropagation();
+      var q = b.dataset.cr.split('|');
+      if (q[0] === 'add') cat.push({ fra: '', til: '', hva: '', pris: '', antall: '' });
+      if (q[0] === 'del') cat.splice(Number(q[1]), 1);
+      drawCat();
+      if (q[0] === 'add') { var all = cbox.querySelectorAll('[data-ck="fra"]'); all[all.length - 1].focus(); }
+    });
+    form.addEventListener('input', function (e) { if (['antall', 'butikk_kostnad', 'catering_total'].indexOf(e.target.name) >= 0) { if (e.target.name === 'antall') drawCat(); else sums(); } });
     var draw = function () {
       box.innerHTML = (list.length ? list.map(function (x, i) {
         var sg = isRun ? foodSuggest(s, obj, x.vare) : null;
@@ -2697,7 +2814,8 @@
       draw();
       if (q[0] === 'add') { var all = box.querySelectorAll('input[data-k="vare"]'); all[all.length - 1].focus(); }
     });
-    draw();
+    draw(); drawCat();
+    void dr;
   }
   // After the event: what was left of each item, how many came and how long it lasted.
   function editRest(rid) {
@@ -2715,13 +2833,13 @@
   }
   function foodToStandard(rid) {
     var r = byId('Runder', rid), m = matOf(r);
-    if (!window.confirm('Bruke matplanen fra ' + r.aar + ' som standard for aktiviteten? Rester og kostnad tas ikke med.')) return;
-    var std = { mate: m.mate, antall: m.antall, maltider: m.maltider, handleliste: m.handleliste || [], leverandor: m.leverandor, lenke: m.lenke, notat: m.notat };
+    if (!window.confirm('Bruke matplanen fra ' + r.aar + ' som standard for aktiviteten? Rester og butikk-kostnaden tas ikke med.')) return;
+    var std = { mate: m.mate, antall: m.antall, maltider: m.maltider, maltider_flyttet: m.maltider_flyttet, handleliste: m.handleliste || [], leverandor: m.leverandor, lenke: m.lenke, notat: m.notat, catering: m.catering || [] };   // v33: catering orders too
     save('Serier', [{ id: r.serie_id, mat: JSON.stringify(std) }]).then(function () { toast('Lagret som standard'); render(); });
   }
   function addFoodTasks(rid) {
     var r = byId('Runder', rid), m = matOf(r), panel = $('matPanel');
-    var picked = (FOOD_TASKS[m.mate] || []).filter(function (x, i) { var c = panel && panel.querySelector('[data-fs="' + i + '"]'); return c && c.checked; });
+    var picked = foodTaskList(m).filter(function (x, i) { var c = panel && panel.querySelector('[data-fs="' + i + '"]'); return c && c.checked; });
     var have = state.d.Oppgaver.filter(function (t) { return t.runde_id === r.id; }).map(function (t) { return t.tittel; });
     picked = picked.filter(function (x) { return have.indexOf(x[0]) < 0; });
     if (!picked.length) { toast('Ingen valgt'); return; }
@@ -2731,7 +2849,7 @@
   // The guest list of an event year: people from the signed-up projects, contacts, or anyone typed in.
   function guestPanel(r) {
     var g = guestsOf(r), on = matOf(r).pa === 'ja';
-    return '<section class="panel"><h2>Deltakere</h2>' + (g.length ? '<div class="tasklist">' + g.map(function (x, i) {
+    return '<section class="panel"><h2>Deltakere</h2>' + dupNote(r, 'g') + (g.length ? '<div class="tasklist">' + g.map(function (x, i) {
       return '<div class="task"><span></span><div class="t"><div class="tt">' + personLink(x.navn) + '</div><div class="meta">' + esc(x.hvor || '') + (x.allergier ? ' <span class="chip ' + (on ? 'c-late' : 'c-prog') + '">' + (on ? '⚠ ' : '') + 'Allergi: ' + esc(x.allergier) + '</span>' : '') + '</div></div>' +
         '<div class="right"><button type="button" class="btn small ghost" data-guestedit="' + esc(r.id + '|' + i) + '">Endre</button><button type="button" class="btn small ghost" data-guestdel="' + esc(r.id + '|' + i) + '" aria-label="Fjern ' + esc(x.navn) + '">✕</button></div></div>';
     }).join('') + '</div><p class="dm-m">' + g.length + ' på listen</p>' : '<div class="empty">Ingen deltakere ennå.</div>') +
@@ -3777,7 +3895,7 @@
       if (f.peopen === 'venter' && !r.it.waits.length) return false;
       if (f.peopen === 'spor' && !r.it.asks.length) return false;
       return true;
-    }).sort(function (a, b) { var x = (a.c.etternavn || a.n).toLowerCase() + a.n.toLowerCase(), y = (b.c.etternavn || b.n).toLowerCase() + b.n.toLowerCase(); return x < y ? -1 : x > y ? 1 : 0; });
+    }).sort(function (a, b) { return a.n.localeCompare(b.n, 'nb', { sensitivity: 'base' }); });   // v33: by first name (the full name A–Å)
     var missing = gatherList().length;
     var mm = !!state.mergeMode, msel = state.mergeSel || {}, nSel = Object.keys(msel).filter(function (k) { return msel[k] && byId('Kontakter', k); }).length;   // v32
     var sel = function (id, cur, blank, opts) { return '<select id="' + id + '" aria-label="' + esc(blank) + '">' + option('', cur || '', blank) + opts.map(function (o) { return option(o, cur || '', o); }).join('') + '</select>'; };
@@ -3786,7 +3904,7 @@
       '<select id="fPeopen" aria-label="Åpne ting">' + option('', f.peopen || '', 'Alle') + option('venter', f.peopen || '', 'Venter på noe fra') + option('spor', f.peopen || '', 'Har noe å spørre om') + '</select>' +
       '<button class="btn" data-act="edittags">Rediger tagger</button>' + (missing ? '<button class="btn" data-act="gather">Samle personer (' + missing + ')</button>' : '') +
       (mm ? '<button class="btn" data-act="mergeoff">Avbryt</button><button class="btn primary" data-act="mergego"' + (nSel < 2 ? ' disabled' : '') + '>Slå sammen (' + nSel + ')</button>'   // v32
-          : '<button class="btn" data-act="mergeon">Slå sammen</button><button class="btn primary" data-act="newcontact">Ny person</button>');
+          : '<button class="btn" data-act="mergeon">Slå sammen personer</button><button class="btn primary" data-act="newcontact">Ny person</button>');
     var body = list.length ? '<div class="panel tablewrap"><table class="t peeps' + (mm ? ' merging' : '') + '"><tr>' + (mm ? '<th><span class="sr">Velg</span></th>' : '') + '<th>Navn</th><th>Er med som</th><th>Tagger</th><th>Organisasjon</th><th>E-post</th><th>Venter på</th><th>Spør</th></tr>' + list.map(function (r) {
       var c = r.c;
       return '<tr class="click' + (mm && msel[c.id] ? ' picked' : '') + '"' + (mm ? ' data-mergerow="' + esc(c.id) + '"' : ' data-go="person/' + esc(c.id) + '"') + '>' + (mm ? '<td><input type="checkbox" tabindex="-1" aria-label="Velg ' + esc(r.n) + '"' + (msel[c.id] ? ' checked' : '') + '></td>' : '') + '<td class="strong">' + esc(r.n) + (c.meg === 'ja' ? ' <span class="chip c-na">deg</span>' : '') + '</td><td>' + autoChips(r.w, 3) + '</td><td>' + tagChips(c) + '</td><td>' + esc(c.enhet) + '</td><td>' + esc(c.epost) + '</td>' +
@@ -3796,7 +3914,7 @@
     var byMail = {}; d.Kontakter.forEach(function (c) { var m = String(c.epost || '').trim().toLowerCase(); if (m) (byMail[m] = byMail[m] || []).push(personName(c)); });
     var same = Object.keys(byMail).filter(function (m) { return byMail[m].length > 1; });
     var warn = same.length ? '<div class="panel same-mail"><b>Samme e-post på flere personer</b>' + same.map(function (m) { return '<div>' + esc(byMail[m].join(' og ')) + ' <span class="dm-m">' + esc(m) + '</span></div>'; }).join('') + '</div>' : '';
-    var help = mm ? '<div class="panel merge-help">Huk av to eller flere som er samme person, og trykk «Slå sammen».</div>' : '';
+    var help = mm ? '<div class="panel merge-help">Huk av to eller flere som er samme person, og trykk «Slå sammen (2)».</div>' : '';
     return head('Personer', list.length + ' av ' + d.Kontakter.length + ' personer' + (missing ? ' · ' + missing + ' navn i appen er ikke i registeret ennå' : ''), tools) + warn + help + body;
   }
   // ---- v32: Slå sammen. Two or more register entries that are the same person become one. ----
@@ -5849,6 +5967,8 @@
       var r = { id: rr.id }, ch = false, pl = panelOf(rr), gl = guestsOf(rr), pc = false, gc = false;
       pl.forEach(function (x) { if (hit(x.navn)) { if (ren) x.navn = nn; if (mE) x.epost = c.epost; pc = true; } });
       gl.forEach(function (x) { if (hit(x.navn)) { if (ren) x.navn = nn; if (mA) x.allergier = c.allergier || ''; gc = true; } });
+      if (pc && ren) pl = dupPanel(pl).list;   // v33: no doubles after a rename / merge
+      if (gc && ren) gl = dupGuests(gl).list;
       if (pc) { r.panel = JSON.stringify(pl); ch = true; }
       if (gc) { r.gjester = JSON.stringify(gl); ch = true; }
       if (ch) rows.Runder.push(r);
@@ -6559,7 +6679,7 @@
     var list = all.map(function (x) { return x.p; }), yes = list.filter(function (p) { return p.svar === 'Ja'; }).length, key = esc(r.id) + (tal ? '|taler' : '');
     var next = panelNext(list, tal), wait = list.filter(function (p) { return panelSvar(p) === 'Venter'; });
     var cell = function (x, k, html, label) { return '<td data-l="' + label + '" data-pcell="' + esc(r.id + '|' + x.i + '|' + k) + '" title="Klikk for å endre">' + html + '</td>'; };
-    return '<section class="panel"><h2><span>' + (tal ? 'Foredragsholdere' : 'Panelet') + '</span><button class="btn small" data-panedit="' + esc(r.id) + '||' + (tal ? 'taler' : '') + '">' + (tal ? '+ Foredragsholder' : '+ Panelmedlem') + '</button></h2>' +
+    return '<section class="panel"><h2><span>' + (tal ? 'Foredragsholdere' : 'Panelet') + '</span><button class="btn small" data-panedit="' + esc(r.id) + '||' + (tal ? 'taler' : '') + '">' + (tal ? '+ Foredragsholder' : '+ Panelmedlem') + '</button></h2>' + (tal ? '' : dupNote(r, 'p')) +   // v33
       (list.length ? '<div class="meta">' + yes + ' har sagt ja · ' + wait.length + ' venter på svar</div><div class="tablewrap"><table class="t ptab"><thead><tr><th>Navn</th><th>' + (tal ? 'Tema' : 'Kompetanse') + '</th><th>Valg</th><th>E-post sendt</th><th>Svar</th><th>Dager siden kontakt</th></tr></thead><tbody>' + all.map(function (x) {
         var p = x.p, sv = panelSvar(p), last = panelLast(p), days = last ? daysBetween(last, today()) : null, org = panelOrg(p);
         var late = days != null && days > panelDays() && sv !== 'Ja' && sv !== 'Nei';
@@ -7491,6 +7611,7 @@
     if (ds.matadd) { addFoodTasks(ds.matadd); return; }
     if (ds.guestedit !== undefined) { editGuest(ds.guestedit); return; }
     if (ds.guestall) { addAllGuests(ds.guestall); return; }
+    if (ds.dedupe) { dedupeRun(ds.dedupe); return; }   // v33
     if (ds.guestcopy) { copyText(guestsOf(byId('Runder', ds.guestcopy)).map(function (x) { var c = contactOf(x.navn); return '- ' + (c ? personName(c) : x.navn); }).join('\n')); return; }   // v31: one line per guest, "- Navn", always the full name from Personer
     if (ds.guestdel) { var gd = ds.guestdel.split('|'), gr = byId('Runder', gd[0]), gl = guestsOf(gr); gl.splice(Number(gd[1]), 1); saveGuests(gr, gl, 'Fjernet'); return; }
     if (ds.reltask) { relatedTask(ds.reltask); return; }
