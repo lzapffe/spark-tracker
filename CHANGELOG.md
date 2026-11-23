@@ -3,6 +3,12 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v32 – 23 November 2026 (page only)
+
+### Personer
+- **Slå sammen:** press "Slå sammen", tick two or more people who are the same, and press "Slå sammen (n)". Choose who to keep. The kept person gets the others' information where their own is empty (e-post, telefon, organisasjon, rolle, kjenner via); notes are put together; tags, kompetanse, temaer, allergier and Vurdering are combined; Sist kontakt is the latest. The others' names are changed to the kept name everywhere they are used, and the other entries are deleted from Personer. The form shows what will happen before you save.
+- **Warning** at the top of Personer when two or more people have the same e-mail address.
+
 ## v31 – 23 November 2026 (page and back end)
 
 Linn's comments from 20 and 23 November.

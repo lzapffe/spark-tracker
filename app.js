@@ -3779,18 +3779,85 @@
       return true;
     }).sort(function (a, b) { var x = (a.c.etternavn || a.n).toLowerCase() + a.n.toLowerCase(), y = (b.c.etternavn || b.n).toLowerCase() + b.n.toLowerCase(); return x < y ? -1 : x > y ? 1 : 0; });
     var missing = gatherList().length;
+    var mm = !!state.mergeMode, msel = state.mergeSel || {}, nSel = Object.keys(msel).filter(function (k) { return msel[k] && byId('Kontakter', k); }).length;   // v32
     var sel = function (id, cur, blank, opts) { return '<select id="' + id + '" aria-label="' + esc(blank) + '">' + option('', cur || '', blank) + opts.map(function (o) { return option(o, cur || '', o); }).join('') + '</select>'; };
     var tools = '<input type="text" class="search" id="fPeq" placeholder="Søk etter navn, organisasjon, tema …" value="' + esc(f.peq || '') + '">' +
       sel('fPetag', f.petag, 'Alle tagger', tags) + sel('fPekind', f.pekind, 'Alle roller', PERSON_KINDS) + sel('fPeyear', f.peyear, 'Alle år', years) +
       '<select id="fPeopen" aria-label="Åpne ting">' + option('', f.peopen || '', 'Alle') + option('venter', f.peopen || '', 'Venter på noe fra') + option('spor', f.peopen || '', 'Har noe å spørre om') + '</select>' +
       '<button class="btn" data-act="edittags">Rediger tagger</button>' + (missing ? '<button class="btn" data-act="gather">Samle personer (' + missing + ')</button>' : '') +
-      '<button class="btn primary" data-act="newcontact">Ny person</button>';
-    var body = list.length ? '<div class="panel tablewrap"><table class="t peeps"><tr><th>Navn</th><th>Er med som</th><th>Tagger</th><th>Organisasjon</th><th>E-post</th><th>Venter på</th><th>Spør</th></tr>' + list.map(function (r) {
+      (mm ? '<button class="btn" data-act="mergeoff">Avbryt</button><button class="btn primary" data-act="mergego"' + (nSel < 2 ? ' disabled' : '') + '>Slå sammen (' + nSel + ')</button>'   // v32
+          : '<button class="btn" data-act="mergeon">Slå sammen</button><button class="btn primary" data-act="newcontact">Ny person</button>');
+    var body = list.length ? '<div class="panel tablewrap"><table class="t peeps' + (mm ? ' merging' : '') + '"><tr>' + (mm ? '<th><span class="sr">Velg</span></th>' : '') + '<th>Navn</th><th>Er med som</th><th>Tagger</th><th>Organisasjon</th><th>E-post</th><th>Venter på</th><th>Spør</th></tr>' + list.map(function (r) {
       var c = r.c;
-      return '<tr class="click" data-go="person/' + esc(c.id) + '"><td class="strong">' + esc(r.n) + (c.meg === 'ja' ? ' <span class="chip c-na">deg</span>' : '') + '</td><td>' + autoChips(r.w, 3) + '</td><td>' + tagChips(c) + '</td><td>' + esc(c.enhet) + '</td><td>' + esc(c.epost) + '</td>' +
+      return '<tr class="click' + (mm && msel[c.id] ? ' picked' : '') + '"' + (mm ? ' data-mergerow="' + esc(c.id) + '"' : ' data-go="person/' + esc(c.id) + '"') + '>' + (mm ? '<td><input type="checkbox" tabindex="-1" aria-label="Velg ' + esc(r.n) + '"' + (msel[c.id] ? ' checked' : '') + '></td>' : '') + '<td class="strong">' + esc(r.n) + (c.meg === 'ja' ? ' <span class="chip c-na">deg</span>' : '') + '</td><td>' + autoChips(r.w, 3) + '</td><td>' + tagChips(c) + '</td><td>' + esc(c.enhet) + '</td><td>' + esc(c.epost) + '</td>' +
         '<td>' + (r.it.waits.length ? '<span class="chip c-prog">' + r.it.waits.length + '</span>' : '') + '</td><td>' + (r.it.asks.length ? '<span class="chip c-q">' + r.it.asks.length + '</span>' : '') + '</td></tr>';
     }).join('') + '</table></div>' : '<div class="panel empty">' + (d.Kontakter.length ? 'Ingen personer passer filteret.' : 'Ingen i registeret ennå. «Samle personer» henter navnene som allerede står i appen.') + '</div>';
-    return head('Personer', list.length + ' av ' + d.Kontakter.length + ' personer' + (missing ? ' · ' + missing + ' navn i appen er ikke i registeret ennå' : ''), tools) + body;
+    // v32: a warning when two or more people in the register have the same e-mail address.
+    var byMail = {}; d.Kontakter.forEach(function (c) { var m = String(c.epost || '').trim().toLowerCase(); if (m) (byMail[m] = byMail[m] || []).push(personName(c)); });
+    var same = Object.keys(byMail).filter(function (m) { return byMail[m].length > 1; });
+    var warn = same.length ? '<div class="panel same-mail"><b>Samme e-post på flere personer</b>' + same.map(function (m) { return '<div>' + esc(byMail[m].join(' og ')) + ' <span class="dm-m">' + esc(m) + '</span></div>'; }).join('') + '</div>' : '';
+    var help = mm ? '<div class="panel merge-help">Huk av to eller flere som er samme person, og trykk «Slå sammen».</div>' : '';
+    return head('Personer', list.length + ' av ' + d.Kontakter.length + ' personer' + (missing ? ' · ' + missing + ' navn i appen er ikke i registeret ennå' : ''), tools) + warn + help + body;
+  }
+  // ---- v32: Slå sammen. Two or more register entries that are the same person become one. ----
+  // The kept entry gets the others' information where its own is empty; notes are put together; tags,
+  // kompetanse, temaer and Vurdering are combined. The others' names are changed to the kept name everywhere
+  // they are used (as in Samle personer), and the other entries are deleted from Personer.
+  function mergeFilled(c) { return ['epost', 'telefon', 'enhet', 'rolle', 'allergier', 'emner', 'kjenner_via', 'notater', 'tagger', 'kompetanse', 'vurdering'].filter(function (k) { return c[k]; }).length; }
+  function mergeResult(keep, others) {
+    var row = { id: keep.id }, all = [keep].concat(others);
+    ['epost', 'telefon', 'enhet', 'rolle', 'kjenner_via', 'prosjekter'].forEach(function (k) { if (!keep[k]) { var o = others.find(function (x) { return x[k]; }); if (o) row[k] = o[k]; } });
+    var join = function (k, sep) { var l = []; all.forEach(function (x) { var v = String(x[k] || '').trim(); if (v && !l.some(function (y) { return y.toLowerCase() === v.toLowerCase(); })) l.push(v); }); var t = l.join(sep); if (t !== String(keep[k] || '').trim()) row[k] = t; };
+    join('notater', '\n\n'); join('allergier', ', ');
+    var lists = function (k) { var t = uniq([].concat.apply([], all.map(function (x) { return splitList(x[k]); }))).join(', '); if (t !== splitList(keep[k]).join(', ')) row[k] = t; };
+    lists('tagger'); lists('kompetanse'); lists('emner');
+    var sk = all.map(function (x) { return x.sist_kontakt || ''; }).sort().pop(); if (sk && sk !== keep.sist_kontakt) row.sist_kontakt = sk;
+    if (keep.meg !== 'ja' && others.some(function (x) { return x.meg === 'ja'; })) row.meg = 'ja';
+    var v = vurdOf(keep).slice(); others.forEach(function (x) { vurdOf(x).forEach(function (n) { if (!v.some(function (m) { return m.rolle === n.rolle && vurdKey(m) === vurdKey(n); })) v.push(n); }); });
+    if (v.length !== vurdOf(keep).length) row.vurdering = JSON.stringify(v);
+    return row;
+  }
+  var MERGE_LABEL = { epost: 'E-post', telefon: 'Telefon', enhet: 'Organisasjon', rolle: 'Rolle', kjenner_via: 'Kjenner via', prosjekter: 'Prosjekter', notater: 'Notater', allergier: 'Allergier', tagger: 'Tagger', kompetanse: 'Kompetanse', emner: 'Temaer', sist_kontakt: 'Sist kontakt', meg: 'Dette er meg', vurdering: 'Vurdering' };
+  function mergePeople(ids) {
+    var people = ids.map(function (id) { return byId('Kontakter', id); }).filter(Boolean); if (people.length < 2) return;
+    var best = people.slice().sort(function (a, b) { return mergeFilled(b) - mergeFilled(a); })[0];
+    var card = function (c) {
+      var w = personWhere(personName(c));
+      return '<label class="mg-card"><input type="radio" name="keep" value="' + esc(c.id) + '"' + (c === best ? ' checked' : '') + '><span><b>' + esc(personName(c)) + '</b>' +
+        '<small class="was">' + esc([c.epost, c.enhet, c.telefon].filter(Boolean).join(' · ') || 'Ingen e-post eller organisasjon') + '</small>' +
+        (w.length ? '<small class="was">' + esc(whereTags(w).join(', ')) + '</small>' : '') + '</span></label>';
+    };
+    openDrawer('<h2>Slå sammen ' + people.length + ' personer</h2><p class="empty">Velg hvem du vil beholde. Det navnet brukes overalt etterpå.</p>' +
+      '<div class="mg-list">' + people.map(card).join('') + '</div><div id="mgSum"></div>' + actions(''),
+      function (form) {
+        var keep = byId('Kontakter', (form.querySelector('[name="keep"]:checked') || {}).value), others = people.filter(function (x) { return x !== keep; });
+        var row = mergeResult(keep, others), kn = personName(keep);
+        var renames = others.filter(function (o) { return !sameName(personName(o), kn); });
+        save('Kontakter', [row]).then(function () {
+          var n = 0;
+          return renames.reduce(function (pr, o) { return pr.then(function () { return propagatePerson({ navn: personName(o) }, byId('Kontakter', keep.id) || keep).then(function (k) { n += k || 0; }); }); }, Promise.resolve()).then(function () { return n; });
+        }).then(function (n) {
+          return save('Kontakter', [], others.map(function (o) { return o.id; })).then(function () { return n; });
+        }).then(function (n) {
+          closeDrawer(); state.mergeMode = false; state.mergeSel = {};
+          toast(others.length + (others.length === 1 ? ' person' : ' personer') + ' slått sammen med ' + kn + (n ? ', ' + n + (n === 1 ? ' sted' : ' steder') + ' endret' : ''));
+          return load(true);
+        }).catch(fail);
+      });
+    // What happens, for the chosen one (updates when another is chosen).
+    var form = $('drawerForm'), sum = function () {
+      var keep = byId('Kontakter', (form.querySelector('[name="keep"]:checked') || {}).value), others = people.filter(function (x) { return x !== keep; }), row = mergeResult(keep, others), kn = personName(keep);
+      var gets = Object.keys(row).filter(function (k) { return k !== 'id'; }).map(function (k) { return MERGE_LABEL[k] || k; });
+      $('mgSum').innerHTML = '<div class="mg-sum"><b>Det som skjer når du lagrer</b><ul>' +
+        '<li>' + esc(kn) + ' beholdes' + (gets.length ? ' og får med: ' + esc(gets.join(', ')) : '') + '.</li>' +
+        others.map(function (o) {
+          var lost = ['epost', 'telefon', 'enhet', 'rolle', 'kjenner_via'].filter(function (k) { return o[k] && keep[k] && String(o[k]).trim().toLowerCase() !== String(keep[k]).trim().toLowerCase(); }).map(function (k) { return MERGE_LABEL[k] + ' ' + o[k]; });   // v32: kept person's own value wins
+          return (lost.length ? '<li class="err">Går tapt fra ' + esc(personName(o)) + ': ' + esc(lost.join(', ')) + '. Vil du ta vare på det, trykk Avbryt og skriv det inn hos ' + esc(personName(keep)) + ' først.</li>' : '') +
+            '<li>' + esc(personName(o)) + ' slettes fra Personer' + (sameName(personName(o), kn) ? '' : ', og navnet byttes til ' + esc(kn) + ' overalt der det er brukt') + '.</li>'; }).join('') +
+        '</ul></div>';
+    };
+    form.addEventListener('change', function (e) { if (e.target.name === 'keep') sum(); });
+    sum();
   }
   function pagePerson() {
     var c = byId('Kontakter', state.param);
@@ -7315,6 +7382,7 @@
     if (ds.psatt) { var psa = ds.psatt.split('|'); state.keepScroll = true; saveAttendance(psa[0], psa[1], psa[2]); return; }   // v23: Prosjekter, "Med"
     if (ds.psalt) { var psl = ds.psalt.split('|'); editAlternative(psl[0], psl[1]); return; }
     if (ds.psy) { state.filters.psy = ds.psy; state.keepScroll = true; render(); return; }   // v21: a pressed button again = no status
+    if (ds.mergerow) { e.preventDefault(); var ms = state.mergeSel = state.mergeSel || {}; ms[ds.mergerow] = !ms[ds.mergerow]; state.keepScroll = true; render(); return; }   // v32
     if (ds.go) { e.preventDefault(); location.hash = '#' + ds.go; return; }
     if (ds.done) {
       if (longPressed) { longPressed = false; return; }
@@ -7473,6 +7541,9 @@
       case 'newcontact': editContact(null); break;
       case 'edittags': editTags(); break;   // v22
       case 'gather': gatherPeople(); break;
+      case 'mergeon': state.mergeMode = true; state.mergeSel = {}; render(); break;   // v32
+      case 'mergeoff': state.mergeMode = false; state.mergeSel = {}; render(); break;
+      case 'mergego': mergePeople(Object.keys(state.mergeSel || {}).filter(function (k) { return state.mergeSel[k]; })); break;
       case 'newnote': editNote(null); break;
       case 'csv': downloadCsv($('csvTab').value); break;
       case 'editseries': editSeries(ds.id); break;

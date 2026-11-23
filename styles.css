@@ -1053,3 +1053,15 @@ h2.sec-h { font-size: 20px; margin-top: 8px; scroll-margin-top: 70px; }
 .vrev > div:first-child { grid-column: 1 / -1; }
 .vrev small.was { display: block; }
 @media (max-width: 420px) { .vrev { grid-template-columns: 1fr; } }
+
+/* v32: Slå sammen (Personer) */
+.peeps.merging tr.picked td { background: var(--now); }
+.peeps.merging td:first-child { width: 28px; }
+.same-mail, .merge-help { margin-bottom: 12px; }
+.same-mail > div { margin-top: 4px; }
+.mg-list { display: grid; gap: 8px; margin: 10px 0; }
+.mg-card { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-s); cursor: pointer; }
+.mg-card small.was { display: block; }
+.mg-sum { padding: 10px 12px; border-radius: var(--r-s); background: var(--card2); }
+.mg-sum ul { margin: 6px 0 0; padding-left: 18px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
