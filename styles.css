@@ -1111,16 +1111,21 @@ table.ag tr.ag-food td { padding-top: 1px; padding-bottom: 1px; border-top: 0; f
 .pr-w { font-size: 1.15em; }
 .pr-w small { color: var(--pr-muted); font-size: .8em; }
 .pr-brk .pr-w { color: var(--pr-muted); font-style: italic; }
-.pr-row ul { list-style: none; margin: .27em 0 0; padding: 0; font-size: .92em; display: grid; gap: .1em; }
+.pr-row ul { list-style: none; margin: .27em 0 0; padding: 0; font-size: .92em; display: grid; gap: .25em; line-height: 1.35; }
+.pr-row ul li, .pr-w { overflow-wrap: anywhere; }
 .pr-m { color: var(--pr-muted); font-variant-numeric: tabular-nums; }
-.pr-dig { font-size: .78em; border: 1px solid var(--pr-line); border-radius: 3px; padding: 0 .35em; color: var(--pr-muted); font-style: normal; white-space: nowrap; }
+.pr-dig { display: inline-block; font-size: .78em; line-height: 1.3; border: 1px solid var(--pr-line); border-radius: 3px; padding: 0 .35em; margin-left: .35em; vertical-align: .08em; color: var(--pr-muted); font-style: normal; white-space: nowrap; }   /* v39: a box of its own, never on top of the name */
 .pr-food { font-size: .82em; color: var(--pr-muted); font-style: italic; }
 .pr-foot { margin-top: auto; border-top: 1px solid var(--pr-line); padding-top: .7em; font-size: .9em; color: var(--pr-muted); }
 .pr-notes { height: 5.5em; border-top: 1px dotted var(--pr-line); margin-top: .7em; }
 @media print {
-  @page { size: A4; margin: 0; }
+  /* v39: the page margins do the spacing (19 mm = the 9 % in the preview), so nothing depends on the printer's
+     own edges, and the text size is fixed (15 pt = 2.52 % of an A4 width), the same as the preview. */
+  @page { size: A4; margin: 19mm 19mm 16mm; }
   body > *:not(#printArea) { display: none !important; }
-  #printArea { display: block !important; width: 210mm; }
-  html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
-  .pr-sheet { width: 210mm; height: 297mm; aspect-ratio: auto; }
+  #printArea { display: block !important; }
+  html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; height: auto !important; }
+  body::before { display: none !important; }
+  .pr-wrap { container-type: normal; }
+  .pr-sheet { width: auto; height: auto; min-height: 255mm; aspect-ratio: auto; padding: 0; overflow: visible; font-size: 15pt; box-shadow: none; }
 }

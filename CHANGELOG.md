@@ -3,6 +3,11 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v39 – 24 November 2026 (page only)
+
+### Fixed
+- **Skriv ut (agenda):** the printed page no longer has a fixed width of 210 mm. The page margins (19 mm) do the spacing and the text size is fixed at 15 pt, so the text can't run past the right edge when the browser or printer adds its own margins. The "digitalt" tag is a small box of its own with a little space before it, and lines in the pitch list have a bit more space, so the tag doesn't run into the name.
+
 ## v38 – 24 November 2026 (page only)
 
 ### Changed
