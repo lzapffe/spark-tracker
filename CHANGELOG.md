@@ -3,6 +3,13 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v35 – 24 November 2026 (page only)
+
+### Changed
+- **Søkere:** the steps are now Søknad mottatt → Prioritert av fakultetet → Pitch → Rektoratets vedtak → Takket ja. "Fase 1" is renamed **Søknad mottatt**, "Prioritert av fakultet" is renamed **Prioritert av fakultetet**, and **Fase 2 is removed**. Applicants saved with an old name are shown under the new one (Fase 2 → Prioritert av fakultetet); the sheet gets the new name the next time the applicant is saved.
+- **Pitches (Velg prosjekter til pitchene):** the list shows this year's active **applicants** (Søkere with the same søknadsår as the year), sorted by name, instead of the current projects. A project already picked on a pitch stays under "Valgt fra før". Picking an applicant doesn't sign anyone up as a participant (picking a project still does).
+- An applicant on the agenda opens the applicant form when clicked; ✉ E-post goes to the applicant's e-mail (no copy list).
+
 ## v34 – 24 November 2026 (page only)
 
 ### Fixed

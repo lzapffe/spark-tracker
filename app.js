@@ -20,7 +20,10 @@
   var URL_KEY = 'spark_url', APP_KEY = 'spark_key', THEME_KEY = 'spark_theme', VIEW_KEY = 'spark_projview';
   var PHASES = ['Søknad', '1. år', '2. år', 'Avslutning', 'Arkivert'];
   var ACTIVE = ['1. år', '2. år', 'Avslutning'];
-  var STEPS = ['Fase 1', 'Prioritert av fakultet', 'Fase 2', 'Pitch', 'Rektoratets vedtak', 'Takket ja'];
+  var STEPS = ['Søknad mottatt', 'Prioritert av fakultetet', 'Pitch', 'Rektoratets vedtak', 'Takket ja'];
+  // v35: old names in the sheet. Fase 2 is gone: those applicants show under Prioritert av fakultetet.
+  var OLD_STEPS = { 'Fase 1': 'Søknad mottatt', 'Prioritert av fakultet': 'Prioritert av fakultetet', 'Fase 2': 'Prioritert av fakultetet' };
+  function stepOf(s) { var st = (s && s.steg) || STEPS[0]; return OLD_STEPS[st] || st; }
   var STATUSES = ['Ikke startet', 'Pågående', 'Venter på', 'Ferdig', 'Ikke aktuelt'];
   function statusLabel(st) { return st === 'Ikke aktuelt' ? 'Ikke aktuelt i år' : st; }   // v25: shown text only
   var FACULTIES = ['HF', 'JUS', 'MED', 'MN', 'OD', 'SV', 'TF', 'UV', 'Museum', 'Senter', 'Annet'];
@@ -706,7 +709,7 @@
     var tools = '<select id="fSyear">' + options(years, year) + '</select><button class="btn primary" data-act="newapplicant">Ny søker</button>';
 
     var board = '<div class="board">' + STEPS.map(function (st) {
-      var l = active.filter(function (s) { return (s.steg || STEPS[0]) === st; });
+      var l = active.filter(function (s) { return (stepOf(s)) === st; });
       return '<div class="col"><h3>' + st + ' <span>' + l.length + '</span></h3>' + l.map(applicantCard).join('') + '</div>';
     }).join('') + '</div>';
 
@@ -718,7 +721,7 @@
       }).join('') + '</table></div>' : '<div class="empty">Ingen ennå.</div>') + '</section>';
   }
   function applicantCard(s) {
-    var i = STEPS.indexOf(s.steg || STEPS[0]);
+    var i = STEPS.indexOf(stepOf(s));
     var open = state.d.Oppgaver.filter(function (t) { return t.prosjekt_id === s.id && openTask(t); }).length;
     return '<div class="acard"><b>' + esc(s.kortnavn) + '</b><div class="empty">' + esc([s.fakultet, s.leder].filter(Boolean).join(' · ')) + (open ? ' · ' + open + ' oppgaver' : '') + '</div>' +
       '<div class="row">' + (i < STEPS.length - 1 ? '<button class="btn small" data-step="' + esc(s.id) + '">→ ' + STEPS[i + 1] + '</button>' : '') +
@@ -1482,7 +1485,7 @@
       field('Prosjekttittel', 'tittel', s.tittel) +
       '<div class="grid2">' + field('Fakultet', 'fakultet', '', 'select', options(FACULTIES, s.fakultet || '', '–')) + field('Institutt/enhet', 'enhet', s.enhet) +
         '<label class="f">Prosjektleder<input type="text" name="leder" list="pkList" autocomplete="off" value="' + esc(s.leder || '') + '"></label>' + field('E-post', 'epost', s.epost) +
-        field('Steg', 'steg', '', 'select', options(STEPS, s.steg || STEPS[0])) + field('Status', 'status', '', 'select', options(['Aktiv', 'Opptatt', 'Avslått', 'Trukket'], s.status || 'Aktiv')) + '</div>' +
+        field('Steg', 'steg', '', 'select', options(STEPS, stepOf(s))) + field('Status', 'status', '', 'select', options(['Aktiv', 'Opptatt', 'Avslått', 'Trukket'], s.status || 'Aktiv')) + '</div>' +
       field('Merknader', 'merknader', s.merknader, 'textarea') + peopleDatalist() + actions(),
       function (form) {
         var row = {}; ['kortnavn', 'soknadsaar', 'tittel', 'fakultet', 'enhet', 'leder', 'epost', 'steg', 'status', 'merknader'].forEach(function (k) { row[k] = val(form, k); });
@@ -1597,7 +1600,7 @@
       members = d.Søkere.filter(function (s) { return s.soknadsaar === year && (s.status === 'Aktiv' || !s.status); });
       grid = members.length ? '<div class="tablewrap"><table class="t"><tr><th>Søker</th><th>Steg</th><th>Fakultet</th><th>Åpne oppgaver</th></tr>' + members.map(function (s) {
         var open = d.Oppgaver.filter(function (t) { return t.prosjekt_id === s.id && openTask(t); }).length;
-        return '<tr class="click" data-edit-applicant="' + esc(s.id) + '"><td class="strong">' + esc(s.kortnavn) + '</td><td><span class="chip c-info">' + esc(s.steg || STEPS[0]) + '</span></td><td>' + esc(s.fakultet) + '</td><td>' + open + '</td></tr>';
+        return '<tr class="click" data-edit-applicant="' + esc(s.id) + '"><td class="strong">' + esc(s.kortnavn) + '</td><td><span class="chip c-info">' + esc(stepOf(s)) + '</span></td><td>' + esc(s.fakultet) + '</td><td>' + open + '</td></tr>';
       }).join('') + '</table></div>' : '<div class="empty">Ingen aktive søkere for ' + year + '. <a href="#sokere">Gå til Søkere</a></div>';
     } else {
       members = d.Prosjekter.filter(function (p) { return p.fase === ph; });
@@ -3834,7 +3837,7 @@
     var apps = d.Søkere.filter(function (s) { return s.soknadsaar === year; });
     var openApps = apps.filter(function (s) { return !s.status || s.status === 'Aktiv'; });
     return '<section class="panel"><h2>Søknadsrunden ' + year + '</h2><div class="tablewrap"><table class="t"><tr><th>Steg</th><th>Antall</th></tr>' +
-      STEPS.map(function (st) { return '<tr><td>' + st + '</td><td>' + openApps.filter(function (s) { return (s.steg || STEPS[0]) === st; }).length + '</td></tr>'; }).join('') +
+      STEPS.map(function (st) { return '<tr><td>' + st + '</td><td>' + openApps.filter(function (s) { return (stepOf(s)) === st; }).length + '</td></tr>'; }).join('') +
       ['Opptatt', 'Avslått', 'Trukket'].map(function (st) { return '<tr><td>' + st + '</td><td>' + apps.filter(function (s) { return s.status === st; }).length + '</td></tr>'; }).join('') + '</table></div></section>';
   }
   // Data og filer (open the sheet, Excel, CSV per tab) → bottom of Innstillinger.
@@ -4835,7 +4838,7 @@
     var apps = appsIn(Y);
     var byFac = FACULTIES.map(function (fk) { return [fk, apps.filter(function (s) { return s.fakultet === fk; }).length]; }).filter(function (r) { return r[1]; }).sort(function (a, b) { return b[1] - a[1]; });
     var noFac = apps.filter(function (s) { return !s.fakultet; }).length; if (noFac) byFac.push(['Ikke oppgitt', noFac]);
-    var funnel = STEPS.map(function (st, i) { return [st, apps.filter(function (s) { return s.status === 'Opptatt' || STEPS.indexOf(s.steg || STEPS[0]) >= i; }).length]; });
+    var funnel = STEPS.map(function (st, i) { return [st, apps.filter(function (s) { return s.status === 'Opptatt' || STEPS.indexOf(stepOf(s)) >= i; }).length]; });
 
     // 2. Admitted and admission rate.
     var admitted = years.map(function (y) { return Math.max(appsIn(y).filter(function (s) { return s.status === 'Opptatt'; }).length, d.Prosjekter.filter(function (p) { return p.kull === String(y + 1); }).length); });   // v23: kull = the year a project starts, the year after it applied
@@ -7236,7 +7239,7 @@
     var here = slotsOf(r).filter(function (x) { return x.rad === row.id; });
     if (!here.length) return isPitchRow(row) ? ' <span class="meta ag-slot"><button type="button" class="plink" data-slotedit="' + esc(r.id) + '">velg prosjekt</button></span>' : '';   // v29: on the same line
     return here.map(function (x) {
-      return ' <span class="meta ag-slot">' + (x.prosjekt_id ? '<button type="button" class="plink" data-go="prosjekt/' + esc(x.prosjekt_id) + '">' + esc(shortName(x.prosjekt_id) || '?') + '</button>' : '<span class="empty">ingen prosjekt</span>') +
+      return ' <span class="meta ag-slot">' + (x.prosjekt_id ? '<button type="button" class="plink" ' + (byId('Prosjekter', x.prosjekt_id) ? 'data-go="prosjekt/' : 'data-edit-applicant="') + esc(x.prosjekt_id) + '">' + esc(shortName(x.prosjekt_id) || '?') + '</button>' : '<span class="empty">ingen prosjekt</span>') +
         (x.digitalt === 'ja' ? ' ' + digitalChip() : '') + (x.merknad ? ' · ' + esc(x.merknad) : '') +
         (x.prosjekt_id ? ' <button type="button" class="btn small ghost" data-slotmail="' + esc(r.id + '|' + x.id) + '" aria-label="E-post til ' + esc(shortName(x.prosjekt_id)) + '">✉ E-post</button>' : '') + '</span>';
     }).join('');
@@ -7255,13 +7258,14 @@
     var have = slotsOf(r), rows = agTimes(r, s).filter(function (o) { return isPitchRow(o.x); });
     var lines = rows.map(function (o) { var x = have.find(function (y) { return y.rad === o.id; }) || {}; return { id: x.id || '', rad: o.id, fra: o.fra, til: o.til, hva: o.x.hva, prosjekt_id: x.prosjekt_id || '', digitalt: x.digitalt || '', merknad: x.merknad || '' }; })
       .concat(have.filter(function (x) { return x.los || (x.rad && !rows.some(function (o) { return o.id === x.rad; })); }).map(function (x) { return Object.assign({ old: true }, x); }));
-    var signed = state.d.Deltakelse.filter(function (x) { return x.runde_id === r.id && ['Påmeldt', 'Deltatt'].indexOf(x.status) >= 0; }).map(function (x) { return x.prosjekt_id; });
-    var projs = state.d.Prosjekter.filter(function (p) { return ACTIVE.indexOf(p.fase) >= 0 || signed.indexOf(p.id) >= 0 || lines.some(function (x) { return x.prosjekt_id === p.id; }); })
-      .sort(function (a, b) { return (signed.indexOf(a.id) < 0) - (signed.indexOf(b.id) < 0) || (a.kortnavn < b.kortnavn ? -1 : 1); });
+    // v35: the choices are this year's active applicants (Søkere). A project or applicant already picked stays in the list.
+    var picked = lines.map(function (x) { return x.prosjekt_id; }).filter(Boolean);
+    var byName = function (a, b) { return String(a.kortnavn || '').localeCompare(String(b.kortnavn || ''), 'nb', { numeric: true }); };
+    var apps = state.d.Søkere.filter(function (a) { return picked.indexOf(a.id) >= 0 || ((!r.aar || a.soknadsaar === r.aar) && (a.status === 'Aktiv' || !a.status)); }).sort(byName);
+    var before = picked.filter(function (id, i) { return picked.indexOf(id) === i && !apps.some(function (a) { return a.id === id; }); }).map(function (id) { return byId('Prosjekter', id); }).filter(Boolean).sort(byName);
     var pOpts = function (cur) {
-      var on = projs.filter(function (p) { return signed.indexOf(p.id) >= 0; }), off = projs.filter(function (p) { return signed.indexOf(p.id) < 0; });
-      return option('', cur || '', '–') + (on.length ? '<optgroup label="Påmeldt">' + on.map(function (p) { return option(p.id, cur || '', p.kortnavn); }).join('') + '</optgroup>' : '') +
-        (off.length ? '<optgroup label="Ikke påmeldt (meldes på når du lagrer)">' + off.map(function (p) { return option(p.id, cur || '', p.kortnavn); }).join('') + '</optgroup>' : '');
+      return option('', cur || '', '–') + (apps.length ? '<optgroup label="Søkere ' + esc(r.aar || '') + '">' + apps.map(function (p) { return option(p.id, cur || '', p.kortnavn); }).join('') + '</optgroup>' : '') +
+        (before.length ? '<optgroup label="Valgt fra før">' + before.map(function (p) { return option(p.id, cur || '', p.kortnavn); }).join('') + '</optgroup>' : '');
     };
     var rowHtml = function (x, i) {
       return '<div class="slot-row' + (x.old ? ' old' : '') + '" data-i="' + i + '"><span class="agt">' + esc(slotTime(x)) + (x.old ? '<small>passer ikke agendaen</small>' : x.hva && !/^pitch$/i.test(x.hva) ? '<small>' + esc(x.hva) + '</small>' : '') + '</span>' +
@@ -7271,7 +7275,7 @@
         (x.old ? '<label class="check"><input type="checkbox" name="rm_' + i + '"> Fjern</label>' : '<span></span>') + '</div>';
     };
     openDrawer('<h2>Pitcher: ' + esc(runName(r)) + '</h2>' +
-      (rows.length ? '<p class="empty">Tidene kommer fra agendaen (pitch-radene). Et prosjekt som ikke er påmeldt ennå, blir meldt på når du lagrer.</p>' :
+      (rows.length ? '<p class="empty">Tidene kommer fra agendaen (pitch-radene). Velg blant søkerne ' + esc(r.aar || '') + '.</p>' + (apps.length ? '' : '<p class="empty">Ingen aktive søkere for ' + esc(r.aar || '') + ' ennå.</p>') :
         '<div class="banner"><div>Agendaen har ingen pitch-rader ennå. Rediger agendaen og trykk «+ Pitch» for hver pitch.</div></div>') +
       '<div id="slotRows" class="slot-rows">' + lines.map(rowHtml).join('') + '</div>' + actions(),
       function (form) {
@@ -7282,7 +7286,7 @@
           if (x.old && !x.rad) { y.fra = x.fra; y.til = x.til; } else y.rad = x.rad;
           return y.prosjekt_id || y.merknad || x.old ? y : null;
         }).filter(Boolean), d = state.d, add = [];
-        out.forEach(function (x) { if (x.prosjekt_id && !d.Deltakelse.some(function (a) { return a.runde_id === r.id && a.prosjekt_id === x.prosjekt_id; }) && !add.some(function (a) { return a.prosjekt_id === x.prosjekt_id; })) add.push({ runde_id: r.id, prosjekt_id: x.prosjekt_id, status: 'Påmeldt' }); });
+        out.forEach(function (x) { if (x.prosjekt_id && byId('Prosjekter', x.prosjekt_id) && !d.Deltakelse.some(function (a) { return a.runde_id === r.id && a.prosjekt_id === x.prosjekt_id; }) && !add.some(function (a) { return a.prosjekt_id === x.prosjekt_id; })) add.push({ runde_id: r.id, prosjekt_id: x.prosjekt_id, status: 'Påmeldt' }); });
         // When the agenda has variants by number, signing projects up could switch the year to another variant and the
         // pitch rows would no longer match. So the variant the pitches are in is chosen for the year (Bruk denne).
         var agL = agendasOf(s), agU = pickedVariant(agL, r, s) || agL[0], lock = !r.variant && agL.length > 1 && agU && out.some(function (x) { return x.rad; });
@@ -7302,8 +7306,8 @@
   // One project's e-mail with its time: the activity's templates filled in, or a short plain e-mail.
   function slotMail(arg) {
     var p = arg.split('|'), r = byId('Runder', p[0]), s = r && byId('Serier', r.serie_id), x = r && slotsOf(r).find(function (y) { return y.id === p[1]; });
-    var pr = x && byId('Prosjekter', x.prosjekt_id); if (!pr) return;
-    var to = pr.epost || emailOf(pr.leder) || '', cc = projCc(pr);
+    var pr = x && (byId('Prosjekter', x.prosjekt_id) || byId('Søkere', x.prosjekt_id)); if (!pr) return;   // v35: or an applicant
+    var to = pr.epost || emailOf(pr.leder) || '', cc = byId('Prosjekter', pr.id) ? projCc(pr) : '';
     var base = Object.assign({ arrangement: s.navn, tid: r.tid || '', sted: r.sted || '' }, avkVars(r), { prosjekt: pr.kortnavn, navn: firstName(pr.leder || ''), organisasjon: orgOf(pr.leder), pitchtid: slotText(x), tidsplan: scheduleText(r) });   // v29: organisasjon
     var tpls = templatesOf(s);
     var links = tpls.map(function (m) {
@@ -7530,7 +7534,7 @@
     }
     if (ds.deldoc) { save('Dokumenter', [], [ds.deldoc]).then(render); return; }
     if (ds.view) { store(VIEW_KEY, ds.view); render(); return; }
-    if (ds.step) { var s = byId('Søkere', ds.step); var i = STEPS.indexOf(s.steg || STEPS[0]); save('Søkere', [{ id: s.id, steg: STEPS[i + 1] }]).then(render); return; }
+    if (ds.step) { var s = byId('Søkere', ds.step); var i = STEPS.indexOf(stepOf(s)); save('Søkere', [{ id: s.id, steg: STEPS[i + 1] }]).then(render); return; }
     if (ds.editApplicant) { editApplicant(ds.editApplicant); return; }
     if (ds.admit) { admit(ds.admit); return; }
     if (ds.decline) { decline(ds.decline); return; }
