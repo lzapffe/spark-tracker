@@ -2544,7 +2544,7 @@
     }).sort(function (a, b) { return a.fra < b.fra ? -1 : a.fra > b.fra ? 1 : 0; });
   }
   // v37: print the year's agenda as a programme (layout B). The switches are remembered in this browser.
-  var PRINT_OPTS = [['ans', 'Ansvarlig'], ['who', 'Hvem som pitcher'], ['dig', 'Digitalt'], ['food', 'Matlevering'], ['place', 'Sted'], ['notes', 'Plass til notater']];
+  var PRINT_OPTS = [['ans', 'Ansvarlig'], ['who', 'Hvem som pitcher'], ['dig', 'Digitalt'], ['food', 'Matlevering'], ['place', 'Sted'], ['notes', 'Plass til notater'], ['fit', 'Tilpass til én side']];   // v40: + fit
   function printOpts() { var o = {}; try { o = JSON.parse(localStorage.getItem('spark-print') || '{}') || {}; } catch (e) { o = {}; } PRINT_OPTS.forEach(function (x) { if (o[x[0]] === undefined) o[x[0]] = true; }); return o; }
   function agendaPrintHtml(r, o) {   // v38: same layout as example B
     var s = byId('Serier', r.serie_id), list = agendasOf(s), a = pickedVariant(list, r, s) || list[0]; if (!a) return '';
@@ -2566,26 +2566,37 @@
     }
     while (fi < food.length) out.push(foodLine(food[fi++]));
     var when = r.dato ? longDate(r.dato) : '';
-    return '<div class="pr-wrap"><div class="pr-sheet"><div><div class="pr-k pr-sans">SPARK · UiO</div><div class="pr-t">' + esc(runName(r)) + '</div><div class="pr-s pr-sans">' + esc(when.charAt(0).toUpperCase() + when.slice(1)) + (o.place && r.sted ? '<br>' + esc(r.sted) : '') + '</div></div>' +
-      '<div class="pr-list">' + out.join('') + '</div>' + (o.notes ? '<div class="pr-foot pr-sans"><div class="pr-notes"></div></div>' : '') + '</div></div>';
+    return '<div class="pr-wrap"><div class="pr-sheet' + (o.fit ? ' pr-fit' : '') + '"><div><div class="pr-k pr-sans">SPARK · UiO</div><div class="pr-t">' + esc(runName(r)) + '</div><div class="pr-s pr-sans">' + esc(when.charAt(0).toUpperCase() + when.slice(1)) + (o.place && r.sted ? '<br>' + esc(r.sted) : '') + '</div></div>' +
+      '<div class="pr-list">' + out.join('') + '</div>' + (o.notes ? '<div class="pr-foot pr-sans"><div class="pr-notes">Notater</div><i class="pr-line"></i><i class="pr-line"></i><i class="pr-line"></i><i class="pr-line"></i></div>' : '') + '</div></div>';   // v40: lines to write on
   }
   function agendaPrint(rid) {
     var r = byId('Runder', rid); if (!r) return;
     var o = printOpts();
     openDrawer('<h2>Skriv ut agendaen</h2><p class="empty">Velg hva som skal være med. Utskriften er én A4-side.</p>' +
       '<div class="cl">' + PRINT_OPTS.map(function (x) { return '<label><input type="checkbox" data-propt="' + x[0] + '"' + (o[x[0]] ? ' checked' : '') + '> ' + esc(x[1]) + '</label>'; }).join('') + '</div>' +
-      '<div class="pr-preview" id="prPreview">' + agendaPrintHtml(r, o) + '</div>' +
+      '<div class="pr-preview" id="prPreview">' + agendaPrintHtml(r, o) + '</div><p class="empty" id="prFitNote"></p>' +
       '<div class="actions"><span></span><span><button type="button" class="btn ghost" data-close>Lukk</button> <button class="btn primary" type="submit">Skriv ut</button></span></div>',
       function () {
         var area = $('printArea') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'printArea' }));
         area.innerHTML = agendaPrintHtml(r, o);
+        var sh = area.querySelector('.pr-sheet'); if (sh) sh.style.setProperty('--pr-scale', String(scale));   // the same size as the preview
         window.print();
       });
     $('drawer').classList.add('wide');
+    // v40: "Tilpass til én side": make the text smaller in steps until the preview sheet holds everything.
+    // The preview has the same proportions as the printed A4 page, so the same scale is used for printing.
+    var scale = 1;
+    var fit = function () {
+      var sh = document.querySelector('#prPreview .pr-sheet'), note = $('prFitNote'); if (!sh) return;
+      scale = 1; sh.style.setProperty('--pr-scale', '1');
+      if (o.fit) while (sh.scrollHeight > sh.clientHeight + 1 && scale > 0.45) { scale = Math.round((scale - 0.04) * 100) / 100; sh.style.setProperty('--pr-scale', String(scale)); }
+      if (note) note.textContent = o.fit && scale < 1 ? 'Teksten er gjort ' + Math.round((1 - scale) * 100) + ' % mindre så alt får plass på én side.' : '';
+    };
+    setTimeout(fit, 50); if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
     $('drawerForm').addEventListener('change', function (e) {
       var k = e.target.dataset && e.target.dataset.propt; if (!k) return;
       o[k] = e.target.checked; try { localStorage.setItem('spark-print', JSON.stringify(o)); } catch (err) { /* not saved; fine */ }
-      $('prPreview').innerHTML = agendaPrintHtml(r, o);
+      $('prPreview').innerHTML = agendaPrintHtml(r, o); fit();
     });
   }
   function agendaPanel(s, r) {
@@ -2619,7 +2630,7 @@
     }).join('') + food.slice(fi).map(foodRow).join('') + '</table></div>' : '<div class="empty">Ingen bolker ennå. Klikk «Rediger agendaen».</div>';
     return '<section class="panel"><h2>Agenda</h2>' + (seg || note ? '<div class="agbar"><div class="row wrap">' + seg + '</div><div class="row wrap">' + note + '</div></div>' : '') + span + table +
       (a.merknad ? '<p class="pre ag-note">' + esc(a.merknad) + '</p>' : '') + (pitches ? agendaSlotFoot(r) : '') +
-      (used ? '<div class="row wrap"><button type="button" class="btn small ghost" data-agprint="' + esc(r.id) + '">Skriv ut</button></div>' : '') +   // v37
+      (used ? '<div class="row wrap"><button type="button" class="btn small" data-agprint="' + esc(r.id) + '">Skriv ut</button></div>' : '') +   // v37
       '<div class="row wrap"><button class="btn small" data-agedit="' + esc(a.id) + '" data-agserie="' + esc(s.id) + '"' + (r ? ' data-agrun="' + esc(r.id) + '"' : '') + '>Rediger agendaen</button><button class="btn small ghost" data-agedit="" data-agserie="' + esc(s.id) + '"' + (r ? ' data-agrun="' + esc(r.id) + '"' : '') + '>+ Variant for et annet antall</button></div></section>';
   }
   // v28: opened from a year (rid), the times are counted from that year's Klokkeslett when it has one (it was always

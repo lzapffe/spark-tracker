@@ -1100,7 +1100,8 @@ table.ag tr.ag-food td { padding-top: 1px; padding-bottom: 1px; border-top: 0; f
 .pr-preview { margin-top: 10px; max-width: 480px; box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 6px 18px rgba(0,0,0,.08); }
 .pr-wrap { container-type: inline-size; }
 .pr-sheet { --pr-ink: #1c1f1d; --pr-muted: #6b716d; --pr-line: #d7dbd8; background: #fff; color: var(--pr-ink); aspect-ratio: 210 / 297; box-sizing: border-box; padding: 9%; overflow: hidden;
-  display: flex; flex-direction: column; gap: 1.27em; font-family: "Source Serif 4", Georgia, "Times New Roman", serif; font-size: 2.52cqw; line-height: 1.45; }
+  display: flex; flex-direction: column; gap: 1.27em; font-family: "Source Serif 4", Georgia, "Times New Roman", serif; font-size: calc(2.52cqw * var(--pr-scale, 1)); line-height: 1.45; }
+.pr-sheet:not(.pr-fit) { aspect-ratio: auto; min-height: calc(100cqw * 297 / 210); overflow: visible; }   /* v40: without "Tilpass" the preview shows everything */
 .pr-sheet .pr-sans { font-family: "Hanken Grotesk", "Schibsted Grotesk", system-ui, sans-serif; }
 .pr-k { font-size: .78em; letter-spacing: .14em; text-transform: uppercase; color: var(--pr-muted); }
 .pr-t { font-size: 2.6em; line-height: 1.05; font-weight: 600; margin-top: .15em; }
@@ -1117,7 +1118,8 @@ table.ag tr.ag-food td { padding-top: 1px; padding-bottom: 1px; border-top: 0; f
 .pr-dig { display: inline-block; font-size: .78em; line-height: 1.3; border: 1px solid var(--pr-line); border-radius: 3px; padding: 0 .35em; margin-left: .35em; vertical-align: .08em; color: var(--pr-muted); font-style: normal; white-space: nowrap; }   /* v39: a box of its own, never on top of the name */
 .pr-food { font-size: .82em; color: var(--pr-muted); font-style: italic; }
 .pr-foot { margin-top: auto; border-top: 1px solid var(--pr-line); padding-top: .7em; font-size: .9em; color: var(--pr-muted); }
-.pr-notes { height: 5.5em; border-top: 1px dotted var(--pr-line); margin-top: .7em; }
+.pr-notes { font-size: .78em; letter-spacing: .12em; text-transform: uppercase; }
+.pr-line { display: block; height: 1.9em; border-bottom: 1px solid var(--pr-line); }   /* v40: lines to write on */
 @media print {
   /* v39: the page margins do the spacing (19 mm = the 9 % in the preview), so nothing depends on the printer's
      own edges, and the text size is fixed (15 pt = 2.52 % of an A4 width), the same as the preview. */
@@ -1127,5 +1129,6 @@ table.ag tr.ag-food td { padding-top: 1px; padding-bottom: 1px; border-top: 0; f
   html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; height: auto !important; }
   body::before { display: none !important; }
   .pr-wrap { container-type: normal; }
-  .pr-sheet { width: auto; height: auto; min-height: 255mm; aspect-ratio: auto; padding: 0; overflow: visible; font-size: 15pt; box-shadow: none; }
+  .pr-sheet { width: auto; height: auto; min-height: 0; aspect-ratio: auto; padding: 0; overflow: visible; font-size: calc(15pt * var(--pr-scale, 1)); box-shadow: none; }
+  .pr-sheet.pr-fit { height: 258mm; overflow: hidden; }   /* v40: one page: 297 mm minus the margins, a little to spare */
 }

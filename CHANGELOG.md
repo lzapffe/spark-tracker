@@ -3,6 +3,17 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v40 – 24 November 2026 (page only)
+
+### Added
+- **Skriv ut – Tilpass til én side** (on by default): if the agenda doesn't fit on one A4 page, the text is made smaller in steps until it does. The preview says how much smaller. Untick it to print at full size over more pages.
+
+### Fixed
+- **Plass til notater** now shows a "Notater" heading with four lines to write on (before it was two faint lines that were hard to see).
+
+### Changed
+- The **Skriv ut** button under the agenda has an outline like the other buttons.
+
 ## v39 – 24 November 2026 (page only)
 
 ### Fixed
