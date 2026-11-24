@@ -1316,7 +1316,8 @@
         var row = { tittel: val(form, 'tittel'), type: 'avklaring' };
         if (!row.tittel) { toast('Skriv spørsmålet'); return; }
         if (!t.auto_svar) {
-          row.spoer = val(form, 'spoer'); ensurePeople(namesOf(row.spoer));   // v22 row.felt = (val(form, 'felt') || '').replace(/[{}\s]/g, ''); row.svar = val(form, 'svar');
+          row.spoer = val(form, 'spoer'); ensurePeople(namesOf(row.spoer));   // v22
+          row.felt = (val(form, 'felt') || '').replace(/[{}\s]/g, ''); row.svar = val(form, 'svar');   // v34: this was inside the comment above, so Svar and Feltnavn weren't saved
           row.status = row.svar ? 'Ferdig' : 'Ikke startet';
         }
         if (groupNames.length) row.delmaal = val(form, 'delmaal');

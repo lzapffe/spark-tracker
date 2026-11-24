@@ -3,6 +3,11 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v34 – 24 November 2026 (page only)
+
+### Fixed
+- **Avklaring form:** Svar and Feltnavn are saved again. Since v22 a line break was missing, so the code that saved them sat inside a comment: the answer was dropped, and the avklaring stayed open as a task. Answers typed in that form since then need to be typed in again.
+
 ## v33 – 23 November 2026 (page only)
 
 ### Personer
