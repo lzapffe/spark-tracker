@@ -2546,7 +2546,7 @@
   // v37: print the year's agenda as a programme (layout B). The switches are remembered in this browser.
   var PRINT_OPTS = [['ans', 'Ansvarlig'], ['who', 'Hvem som pitcher'], ['dig', 'Digitalt'], ['food', 'Matlevering'], ['place', 'Sted'], ['notes', 'Plass til notater']];
   function printOpts() { var o = {}; try { o = JSON.parse(localStorage.getItem('spark-print') || '{}') || {}; } catch (e) { o = {}; } PRINT_OPTS.forEach(function (x) { if (o[x[0]] === undefined) o[x[0]] = true; }); return o; }
-  function agendaPrintHtml(r, o) {
+  function agendaPrintHtml(r, o) {   // v38: same layout as example B
     var s = byId('Serier', r.serie_id), list = agendasOf(s), a = pickedVariant(list, r, s) || list[0]; if (!a) return '';
     var rows = agRows(a), start = agStart(a, r), at = 0, slots = slotsOf(r), food = o.food ? foodDeliveries(r) : [], fi = 0, out = [];
     var foodLine = function (f) { return '<div class="pr-row"><span></span><span class="pr-food">' + esc(f.text) + '</span></div>'; };
@@ -2557,16 +2557,17 @@
       if (isPitchRow(it.x)) {   // pitch rows next to each other become one "Pitcher" item
         var grp = [it]; while (i + 1 < timed.length && isPitchRow(timed[i + 1].x)) grp.push(timed[++i]);
         var names = [];
-        grp.forEach(function (g) { slots.filter(function (y) { return y.rad === g.x.id && y.prosjekt_id; }).forEach(function (y) { names.push('<li><span class="pr-t">' + esc(g.fra) + '</span> ' + esc(shortName(y.prosjekt_id)) + (o.dig && y.digitalt === 'ja' ? ' <span class="pr-dig">digitalt</span>' : '') + '</li>'); }); });
-        out.push('<div class="pr-row"><span class="pr-tm">' + esc(it.fra) + '</span><div><div class="pr-w">Pitcher</div>' + (o.who && names.length ? '<ul>' + names.join('') + '</ul>' : '') + '</div></div>');
+        grp.forEach(function (g) { slots.filter(function (y) { return y.rad === g.x.id && y.prosjekt_id; }).forEach(function (y) { names.push('<li class="pr-sans"><span class="pr-m">' + esc(g.fra) + '</span>  ' + esc(shortName(y.prosjekt_id)) + (o.dig && y.digitalt === 'ja' ? ' <span class="pr-dig">digitalt</span>' : '') + '</li>'); }); });
+        out.push('<div class="pr-row"><span class="pr-tm pr-sans">' + esc(it.fra) + '</span><div><div class="pr-w">Pitcher</div>' + (o.who && names.length ? '<ul>' + names.join('') + '</ul>' : '') + '</div></div>');
         continue;
       }
-      out.push('<div class="pr-row' + (isBreak(it.x) ? ' pr-brk' : '') + '"><span class="pr-tm">' + esc(it.fra) + '</span><div class="pr-w">' + esc(it.x.hva || '') + (o.ans && it.x.ansvarlig ? ' <small>· ' + esc(shortPerson(it.x.ansvarlig)) + '</small>' : '') + '</div></div>');
+      var what = String(it.x.hva || '').trim() || (isBreak(it.x) ? 'Pause' : '');
+      out.push('<div class="pr-row' + (isBreak(it.x) ? ' pr-brk' : '') + '"><span class="pr-tm pr-sans">' + esc(it.fra) + '</span><div class="pr-w">' + esc(what) + (o.ans && it.x.ansvarlig ? ' <small>· ' + esc(shortPerson(it.x.ansvarlig)) + '</small>' : '') + '</div></div>');
     }
     while (fi < food.length) out.push(foodLine(food[fi++]));
     var when = r.dato ? longDate(r.dato) : '';
-    return '<div class="pr-sheet"><div class="pr-k">SPARK · UiO</div><h1>' + esc(runName(r)) + '</h1><div class="pr-s">' + esc(when) + (o.place && r.sted ? '<br>' + esc(r.sted) : '') + '</div>' +
-      '<div class="pr-list">' + out.join('') + '</div>' + (o.notes ? '<div class="pr-notes">Notater</div>' : '') + '</div>';
+    return '<div class="pr-wrap"><div class="pr-sheet"><div><div class="pr-k pr-sans">SPARK · UiO</div><div class="pr-t">' + esc(runName(r)) + '</div><div class="pr-s pr-sans">' + esc(when.charAt(0).toUpperCase() + when.slice(1)) + (o.place && r.sted ? '<br>' + esc(r.sted) : '') + '</div></div>' +
+      '<div class="pr-list">' + out.join('') + '</div>' + (o.notes ? '<div class="pr-foot pr-sans"><div class="pr-notes"></div></div>' : '') + '</div></div>';
   }
   function agendaPrint(rid) {
     var r = byId('Runder', rid); if (!r) return;

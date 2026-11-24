@@ -1094,29 +1094,33 @@ table.ag td { padding-left: 8px; padding-right: 8px; }
 input.money.bad, .cat-row input.bad { border-color: var(--warn); }
 /* v37: catering deliveries in the agenda: small and quiet */
 table.ag tr.ag-food td { padding-top: 1px; padding-bottom: 1px; border-top: 0; font-size: 12px; font-style: italic; color: var(--muted); }
-/* v37: the agenda printout (layout B). The same markup is the preview in the drawer and the printed page. */
+/* v38: the agenda printout, laid out like example B. Sizes are in em / % of the sheet width (cqw), so the preview
+   in the drawer and the printed A4 page look the same, only bigger or smaller. */
 #printArea { display: none; }
-.pr-preview { background: #fff; color: #1c1f1d; border: 1px solid var(--line); border-radius: var(--r-s); padding: 22px 26px; margin-top: 10px; }
-.pr-sheet { font-family: "Source Serif 4", Georgia, "Times New Roman", serif; color: #1c1f1d; font-size: 13px; line-height: 1.4; }
-.pr-k { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: #6b716d; }
-.pr-sheet h1 { font-size: 30px; line-height: 1.05; font-weight: 600; margin: 4px 0 0; color: #1c1f1d; }
-.pr-s { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #6b716d; margin-top: 6px; }
-.pr-list { display: grid; gap: 9px; margin-top: 18px; }
-.pr-row { display: grid; grid-template-columns: 4.2em minmax(0, 1fr); gap: 10px; align-items: baseline; }
-.pr-tm { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-weight: 600; font-variant-numeric: tabular-nums; }
-.pr-w { font-size: 1.12em; }
-.pr-w small { color: #6b716d; font-size: .8em; }
-.pr-brk .pr-w { color: #6b716d; font-style: italic; }
-.pr-row ul { list-style: none; margin: 3px 0 0; padding: 0; display: grid; gap: 1px; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: .9em; }
-.pr-t { color: #6b716d; font-variant-numeric: tabular-nums; margin-right: 4px; }
-.pr-dig { font-size: .8em; border: 1px solid #d7dbd8; border-radius: 3px; padding: 0 4px; color: #6b716d; }
-.pr-food { font-size: .82em; color: #6b716d; font-style: italic; }
-.pr-notes { margin-top: 22px; border-top: 1px solid #d7dbd8; padding-top: 6px; min-height: 9em; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: #6b716d; }
+.pr-preview { margin-top: 10px; max-width: 480px; box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 6px 18px rgba(0,0,0,.08); }
+.pr-wrap { container-type: inline-size; }
+.pr-sheet { --pr-ink: #1c1f1d; --pr-muted: #6b716d; --pr-line: #d7dbd8; background: #fff; color: var(--pr-ink); aspect-ratio: 210 / 297; box-sizing: border-box; padding: 9%; overflow: hidden;
+  display: flex; flex-direction: column; gap: 1.27em; font-family: "Source Serif 4", Georgia, "Times New Roman", serif; font-size: 2.52cqw; line-height: 1.45; }
+.pr-sheet .pr-sans { font-family: "Hanken Grotesk", "Schibsted Grotesk", system-ui, sans-serif; }
+.pr-k { font-size: .78em; letter-spacing: .14em; text-transform: uppercase; color: var(--pr-muted); }
+.pr-t { font-size: 2.6em; line-height: 1.05; font-weight: 600; margin-top: .15em; }
+.pr-s { color: var(--pr-muted); margin-top: .55em; }
+.pr-list { display: grid; gap: .82em; }
+.pr-row { display: grid; grid-template-columns: 4.2em minmax(0, 1fr); gap: .9em; align-items: baseline; }
+.pr-tm { font-weight: 600; font-size: 1.05em; font-variant-numeric: tabular-nums; }
+.pr-w { font-size: 1.15em; }
+.pr-w small { color: var(--pr-muted); font-size: .8em; }
+.pr-brk .pr-w { color: var(--pr-muted); font-style: italic; }
+.pr-row ul { list-style: none; margin: .27em 0 0; padding: 0; font-size: .92em; display: grid; gap: .1em; }
+.pr-m { color: var(--pr-muted); font-variant-numeric: tabular-nums; }
+.pr-dig { font-size: .78em; border: 1px solid var(--pr-line); border-radius: 3px; padding: 0 .35em; color: var(--pr-muted); font-style: normal; white-space: nowrap; }
+.pr-food { font-size: .82em; color: var(--pr-muted); font-style: italic; }
+.pr-foot { margin-top: auto; border-top: 1px solid var(--pr-line); padding-top: .7em; font-size: .9em; color: var(--pr-muted); }
+.pr-notes { height: 5.5em; border-top: 1px dotted var(--pr-line); margin-top: .7em; }
 @media print {
-  @page { size: A4; margin: 20mm 20mm; }
+  @page { size: A4; margin: 0; }
   body > *:not(#printArea) { display: none !important; }
-  #printArea { display: block !important; }
-  body { background: #fff !important; }
-  .pr-sheet { font-size: 12pt; }
-  .pr-sheet h1 { font-size: 28pt; }
+  #printArea { display: block !important; width: 210mm; }
+  html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
+  .pr-sheet { width: 210mm; height: 297mm; aspect-ratio: auto; }
 }

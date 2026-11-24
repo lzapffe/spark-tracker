@@ -3,6 +3,11 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v38 – 24 November 2026 (page only)
+
+### Changed
+- **Skriv ut (agenda):** the printout now looks like example B: Source Serif 4 for the title and the agenda, Hanken Grotesk for times and names, the same sizes and spacing, and the whole width of the A4 page (the preview is a small A4 sheet). A break with no text says "Pause". The two fonts are loaded from Google Fonts in index.html.
+
 ## v37 – 24 November 2026 (page only)
 
 ### Added
