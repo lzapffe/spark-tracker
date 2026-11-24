@@ -1228,7 +1228,7 @@
         var row = { tittel: val(form, 'tittel'), prosjekt_id: gj === 'pro' ? val(form, 'prosjekt_id') : '', gruppe: gj === 'grp' ? grp : '', utenom: isProjGrp ? out.join(',') : '',
           avkrysset: gj === 'grp' && !PANEL_GROUPS[grp] && Object.keys(ticks).length ? JSON.stringify(ticks) : '',
           personer: gj === 'grp' && grp === 'personer' ? val(form, 'personer') : '', trenger: gj === 'grp' ? val(form, 'trenger') : '', teller: gj === 'grp' && PANEL_GROUPS[grp] ? teller : '',
-          kobling: isProjGrp && grp !== 'sokere' ? val(form, 'kobling') || '' : '',   // v27 (d)
+          kobling: isProjGrp && grp !== 'sokere' ? val(form, 'kobling') || '' : /\|panel$/.test(t.kobling || '') ? t.kobling : '',   // v27 (d); v36: keeps the "Panelet er klart" link
           type: val(form, 'type'), status: val(form, 'status'), liste: val(form, 'liste'), spor: val(form, 'spor'),
           frist: val(form, 'frist'), fase: val(form, 'fase'), venter_paa: val(form, 'venter_paa'), oppfolging: val(form, 'oppfolging'), notat: val(form, 'notat'),
           sjekkliste: newCl.length ? JSON.stringify(newCl) : '' };
@@ -2170,19 +2170,55 @@
     save('Runder', [{ id: r.id, frist_status: JSON.stringify(st) }]).then(function () { if (msg) toast(msg); state.keepScroll = true; render(); });
   }
   // v27: a delivery also ticks the linked group tasks (d) and milepæler (a); a notice says what, with Angre.
+  // v36: a tick shows at once. The ticks of one year are saved together 1.2 s after the last click (dlFlush),
+  // so several projects can be ticked in a row. dlQueue: {runId: {timer, json (frist_status), tasks: {id: row}, pam: {projectId: on}}}.
+  var dlQueue = {}, dlChain = Promise.resolve();
   function dlToggleLevert(arg, quiet) {
-    var p = arg.split('|'), r = byId('Runder', p[0]), st = dlState(r), lev = Object.assign({}, (st[p[1]] || {}).levert || {});
+    var p = arg.split('|'), r = byId('Runder', p[0]), s = r && byId('Serier', r.serie_id), st = dlState(r), lev = Object.assign({}, (st[p[1]] || {}).levert || {});
     var on = !lev[p[2]], before = linkSnap(p[2], r, 'frist', p[1]);
     if (lev[p[2]]) delete lev[p[2]]; else lev[p[2]] = today();
     st[p[1]] = Object.assign({}, st[p[1]] || {}, { levert: lev });
     var g = syncGroupsFromDeadline(r, p[1], p[2], on);
-    save('Runder', [{ id: r.id, frist_status: JSON.stringify(st) }]).then(function () { return g.rows.length ? save('Oppgaver', g.rows) : null; }).then(function () {
-      var msg = g.msg.concat(linkDiff(before, linkSnap(p[2], r, 'frist', p[1]), on));
-      state.keepScroll = true; render();
-      if (msg.length && !quiet) toast(msg.join(' · '), function () { dlToggleLevert(arg, true); });
-      else if (quiet) toast('Angret');
-    });
+    var q = dlQueue[r.id] || (dlQueue[r.id] = { tasks: {}, pam: {} });
+    r.frist_status = q.json = JSON.stringify(st);
+    g.rows.forEach(function (row) { var t = byId('Oppgaver', row.id); if (t) Object.assign(t, row); q.tasks[row.id] = Object.assign(q.tasks[row.id] || {}, row); });
+    var msg = g.msg.concat(linkDiff(before, linkSnap(p[2], r, 'frist', p[1]), on));
+    // v36: a sign-up deadline (Påmeldingsfrist) also signs the project up, and unticking takes a Påmeldt away again
+    var f = s && deadlineList(s).find(function (x) { return x.id === p[1]; });
+    if (f && f.pamelding === 'ja' && byId('Prosjekter', p[2])) {
+      var a = state.d.Deltakelse.find(function (x) { return x.runde_id === r.id && x.prosjekt_id === p[2]; });
+      q.pam[p[2]] = on;
+      if (on && !a) msg.push(shortName(p[2]) + ' er meldt på');
+      if (!on && a && a.status === 'Påmeldt') msg.push(shortName(p[2]) + ' er ikke påmeldt lenger');
+    }
+    clearTimeout(q.timer); q.timer = setTimeout(function () { dlFlush(r.id); }, 1200);
+    state.keepScroll = true; render();
+    if (msg.length && !quiet) toast(msg.join(' · '), function () { dlToggleLevert(arg, true); });
+    else if (quiet) toast('Angret');
   }
+  function dlFlush(rid) {
+    var q = dlQueue[rid]; if (!q) return dlChain;
+    delete dlQueue[rid]; clearTimeout(q.timer);
+    dlChain = dlChain.then(function () {
+      var d = state.d, rows = Object.keys(q.tasks).map(function (k) { return q.tasks[k]; }), add = [], del = [];
+      Object.keys(q.pam).forEach(function (pid) {
+        var a = d.Deltakelse.find(function (x) { return x.runde_id === rid && x.prosjekt_id === pid; });
+        if (q.pam[pid] && !a) add.push({ runde_id: rid, prosjekt_id: pid, status: 'Påmeldt' });
+        else if (!q.pam[pid] && a && a.status === 'Påmeldt') del.push(a.id);
+      });
+      return save('Runder', [{ id: rid, frist_status: q.json }])
+        .then(function () { return rows.length ? save('Oppgaver', rows) : null; })
+        .then(function () { return add.length || del.length ? save('Deltakelse', add, del) : null; })
+        .then(function () {
+          // Clicks made while this was saving: the answer from the sheet must not undo them on the screen.
+          var nq = dlQueue[rid], r = byId('Runder', rid);
+          if (nq && r) { r.frist_status = nq.json; Object.keys(nq.tasks).forEach(function (k) { var t = byId('Oppgaver', k); if (t) Object.assign(t, nq.tasks[k]); }); }
+          state.keepScroll = true; render();
+        });
+    }).catch(function () {});
+    return dlChain;
+  }
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') Object.keys(dlQueue).forEach(dlFlush); });
   function dlReminderDone(arg) {
     var p = arg.split('|'), r = byId('Runder', p[0]), ch = {};
     ch[p[2] === 'purring' ? 'purret' : 'paminnet'] = today();
@@ -2224,13 +2260,16 @@
         var dt = dates[f.id], changed = own[f.id] ? ' <span class="chip c-alt">endret i år</span>' : dt !== std[f.id] ? ' <span class="chip c-alt">flyttet</span>' : '';
         var group = dlGroup(f, r), out = (st[f.id] || {}).utenom || [], lev = (st[f.id] || {}).levert || {};
         var mem = group.filter(function (x) { return out.indexOf(x.id) < 0; });
-        var ticks = mem.length ? '<div class="dl-ticks"><span class="dm-m">Levert ' + mem.filter(function (x) { return lev[x.id]; }).length + '/' + mem.length + ':</span> ' + mem.map(function (x) {
+        // v36: when everyone has delivered, the deadline folds to one line marked done; "Vis prosjektene" opens it.
+        var done = mem.length > 0 && mem.every(function (x) { return lev[x.id]; }), dk = r.id + '|' + f.id, open = !!(state.dlOpen && state.dlOpen[dk]);
+        var ticks = !mem.length ? '' : done && !open ? '<div class="dl-ticks"><button type="button" class="plink" data-dlopen="' + esc(dk) + '">Vis prosjektene (' + mem.length + ')</button></div>' :
+          '<div class="dl-ticks"><span class="dm-m">Levert ' + mem.filter(function (x) { return lev[x.id]; }).length + '/' + mem.length + ':</span> ' + mem.map(function (x) {
           return '<button type="button" class="chip ' + (lev[x.id] ? 'c-done' : 'c-na') + ' dl-tick" data-dllev="' + esc(r.id + '|' + f.id + '|' + x.id) + '" aria-pressed="' + !!lev[x.id] + '">' + (lev[x.id] ? '✓ ' : '') + esc(x.kortnavn) + '</button>';
-        }).join(' ') + '</div>' : '';
-        return '<div class="dl-item"><div class="dl-date"><b>' + esc(fmtDateW(dt) || '–') + '</b>' + (f.tid ? '<small>kl. ' + esc(f.tid) + '</small>' : '') + '</div>' +
+        }).join(' ') + (done ? ' <button type="button" class="plink" data-dlopen="' + esc(dk) + '">Skjul</button>' : '') + '</div>';
+        return '<div class="dl-item' + (done ? ' dl-done' : '') + '"><div class="dl-date"><b>' + esc(fmtDateW(dt) || '–') + '</b>' + (f.tid ? '<small>kl. ' + esc(f.tid) + '</small>' : '') + '</div>' +
           '<div class="dl-main"><b>' + esc(f.navn) + '</b>' + changed + ' ' + dlForChip(f) + weekendWarn(dt) +
           '<small class="dl-note">' + esc(ruleText(f, s)) + (own[f.id] && std[f.id] ? ' · standard: ' + esc(fmtDateW(std[f.id])) : '') + (f.notat ? ' · ' + esc(f.notat) : '') + '</small>' + linksToDeadline(s, f.id, r.id) + ticks + '</div>' +
-          '<div class="dl-side">' + dlStatus(dt) + '<button type="button" class="btn small ghost" data-dledit="' + esc(s.id + '|' + f.id + '|' + r.id) + '">Rediger</button></div></div>';
+          '<div class="dl-side">' + (done ? '<span class="chip c-done">✓ Alle levert</span>' : dlStatus(dt)) + '<button type="button" class="btn small ghost" data-dledit="' + esc(s.id + '|' + f.id + '|' + r.id) + '">Rediger</button></div></div>';
       }).map(function (html, i) { var f = sortedDeadlines(s, dates)[i]; return { dt: dates[f.id], html: html }; }), eventMarks(r, s).map(function (m) { return { dt: m.dt, html: eventLine(m) }; })) + '</div>' : '<div class="empty">Ingen frister ennå.</div>') +
       '<div class="row wrap"><button type="button" class="btn small" data-dledit="' + esc(s.id + '||' + r.id) + '">+ Ny frist</button></div></section>';
   }
@@ -2277,7 +2316,8 @@
       }
       html += '<label class="f">Navn<input type="text" data-dlk="navn" value="' + esc(f.navn) + '" placeholder="F.eks. Påmeldingsfrist"></label>' +
         row('For hvem', segBtns('for', DL_FOR, f['for'] || '')) +
-        (f['for'] === 'prosjekter' ? row('Hvilke prosjekter', segBtns('grupper', DL_GROUPS, f.grupper || 'aktive')) : '') +
+        (f['for'] === 'prosjekter' ? row('Hvilke prosjekter', segBtns('grupper', DL_GROUPS, f.grupper || 'aktive')) +
+          '<label class="check"><input type="checkbox" data-dlpam="1"' + (f.pamelding === 'ja' ? ' checked' : '') + '> Påmeldingsfrist: et kryss melder prosjektet på (Påmeldt)</label>' : '') +   // v36
         row('Når', segBtns('hvordan', { fast: 'Fast dato hvert år', rel: 'Før eller etter noe' }, f.hvordan));
       if (f.hvordan === 'fast') {
         var m = String(f.fast || '').split('-');
@@ -2338,7 +2378,16 @@
           if (text !== s.oppgavemal) row2.oppgavemal = text;
         }
         closeDrawer();
-        save('Serier', [row2]).then(function () { toast('Lagret. Åpne oppgaver flyttes etter den nye fristen.'); render(); });
+        // v36: a deadline that just became a Påmeldingsfrist signs up the projects already ticked on it (years not archived)
+        var pamAdd = [];
+        if (f.pamelding === 'ja' && f['for'] === 'prosjekter' && !(old && old.pamelding === 'ja')) state.d.Runder.filter(function (x) { return x.serie_id === s.id && x.arkivert !== 'ja'; }).forEach(function (x) {
+          Object.keys((dlState(x)[f.id] || {}).levert || {}).forEach(function (pid) {
+            if (byId('Prosjekter', pid) && !state.d.Deltakelse.some(function (a) { return a.runde_id === x.id && a.prosjekt_id === pid; })) pamAdd.push({ runde_id: x.id, prosjekt_id: pid, status: 'Påmeldt' });
+          });
+        });
+        save('Serier', [row2]).then(function () { return pamAdd.length ? save('Deltakelse', pamAdd) : null; }).then(function () {
+          toast('Lagret. Åpne oppgaver flyttes etter den nye fristen.' + (pamAdd.length ? ' Meldt på: ' + pamAdd.map(function (a) { return shortName(a.prosjekt_id); }).join(', ') + '.' : '')); render();
+        });
       });
     var box = $('dlForm'), dr = $('drawer');
     var draw = function () { box.innerHTML = body(); };
@@ -2352,6 +2401,7 @@
     });
     box.addEventListener('input', function (e) {
       var el = e.target, k = el.dataset.dlk;
+      if (el.dataset.dlpam) { f.pamelding = el.checked ? 'ja' : ''; return; }   // v36
       if (el.dataset.dlout) {
         var id = el.dataset.dlout; out = out.filter(function (x) { return x !== id; }); if (!el.checked) out.push(id); return;
       }
@@ -2506,7 +2556,7 @@
     var used = r && a === (picked || list[0]), pitches = used && (isPitch(s) || rows.some(isPitchRow) || slotsOf(r).length > 0);
     var table = rows.length ? '<div class="tablewrap"><table class="t ag"><tr><th>Tid</th><th>Hva</th><th>Ansvarlig</th></tr>' + rows.map(function (x) {
       var from = hhmm(start, at); at += Number(x.min) || 0;
-      return '<tr class="' + (isBreak(x) ? 'brk' : '') + '"><td class="agt">' + from + '–' + hhmm(start, at) + '</td><td>' + (isBreak(x) ? '<span class="chip c-brk">Pause</span> ' : '') + esc(x.hva) + (pitches ? agendaSlotCell(r, x) : '') + expHtml(s, 'agenda:' + x.id) + '</td><td>' + (x.ansvarlig ? personLink(x.ansvarlig) : '') + '</td></tr>';
+      return '<tr class="' + (isBreak(x) ? 'brk' : '') + '"><td class="agt">' + from + '–' + hhmm(start, at) + '</td><td' + (x.ansvarlig ? '' : ' colspan="2"') + '>' + (isBreak(x) ? '<span class="chip c-brk">Pause</span> ' : '') + esc(x.hva) + (pitches ? agendaSlotCell(r, x) : '') + expHtml(s, 'agenda:' + x.id) + '</td>' + (x.ansvarlig ? '<td>' + personLink(x.ansvarlig) + '</td>' : '') + '</tr>';   // v36: colspan
     }).join('') + '</table></div>' : '<div class="empty">Ingen bolker ennå. Klikk «Rediger agendaen».</div>';
     return '<section class="panel"><h2>Agenda</h2>' + (seg || note ? '<div class="agbar"><div class="row wrap">' + seg + '</div><div class="row wrap">' + note + '</div></div>' : '') + span + table +
       (a.merknad ? '<p class="pre ag-note">' + esc(a.merknad) + '</p>' : '') + (pitches ? agendaSlotFoot(r) : '') +
@@ -6305,7 +6355,7 @@
       case 'maler': return s ? malerPanel(s, r) : '';
       case 'gjester': return guestPanel(r);
       case 'mat': return s ? matPanel(r, s) : '';
-      case 'hvem': return attendPanel(r, att, candidates);
+      case 'hvem': return s && isPitch(s) ? pitchAppsPanel(r) : attendPanel(r, att, candidates);   // v36
       case 'notater': return '<section class="panel"><h2>Notater for dette året</h2>' + (r.notater ? '<p class="pre">' + esc(r.notater) + '</p>' : '<div class="empty">Ingen notater. Klikk Rediger.</div>') + '</section>';
       case 'utgifter': return expensePanel(r);
       case 'info': return s ? '<section class="panel"><h2>Generell info</h2>' + (s.beskrivelse ? '<p class="pre">' + esc(s.beskrivelse) + '</p>' : '<div class="empty">Ingen generell info ennå.</div>') + expHtml(s, '') + '</section>' : '';
@@ -6378,6 +6428,18 @@
           return '<button type="button" data-attbtn="' + esc(p.id) + '" data-run="' + esc(r.id) + '" data-val="' + esc(on ? '' : v) + '" aria-pressed="' + on + '">' + esc(v) + '</button>';
         }).join('') + '</span>' + (mentor ? '<button class="btn small ghost" data-invite="mentor" data-id="' + esc(p.id) + '">Inviter mentor</button></div>' : '') + '</div>';
     }).join('') : '<div class="empty">Ingen aktive prosjekter.</div>') + '</section>';
+  }
+  // v36: on a pitch day the Prosjekter box lists this year's applicants on the Pitch step, without attendance buttons.
+  function pitchApps(r) {
+    return state.d.Søkere.filter(function (a) { return (!r.aar || a.soknadsaar === r.aar) && (a.status === 'Aktiv' || !a.status) && stepOf(a) === 'Pitch'; })
+      .sort(function (a, b) { return String(a.kortnavn || '').localeCompare(String(b.kortnavn || ''), 'nb', { numeric: true }); });
+  }
+  function pitchAppsPanel(r) {
+    var l = pitchApps(r);
+    return '<section class="panel"><h2>Prosjekter</h2>' + (l.length ? l.map(function (a) {
+      var sl = slotOf(r, a.id), meta = [a.fakultet || '', sl ? 'pitch ' + slotText(sl) : ''].filter(Boolean).join(' · ');
+      return '<div class="task"><span></span><div><div class="tt"><button type="button" class="plink" data-edit-applicant="' + esc(a.id) + '">' + esc(a.kortnavn) + '</button></div>' + (meta ? '<div class="meta">' + esc(meta) + '</div>' : '') + '</div></div>';
+    }).join('') : '<div class="empty">Prosjektene vises her når de er satt til Pitch på Søkere.</div>') + '</section>';
   }
   // The panel picker in the activity form: tick, side and ↑ ↓, plus the type's standard.
   function panelPicker(s) {
@@ -6682,9 +6744,13 @@
     var tal = kind === 'taler', all = panelOf(r).map(function (p, i) { return { p: p, i: i }; }).filter(function (x) { return (x.p.rolle === 'taler') === tal; }).sort(panelSort);
     var list = all.map(function (x) { return x.p; }), yes = list.filter(function (p) { return p.svar === 'Ja'; }).length, key = esc(r.id) + (tal ? '|taler' : '');
     var next = panelNext(list, tal), wait = list.filter(function (p) { return panelSvar(p) === 'Venter'; });
+    // v36: "Panelet er klart" (the linked task is done): only Ja and Venter are shown; the rest under "Vis alle".
+    var klar = !tal && panelDone(r), showAll = !!(state.panAll && state.panAll[r.id]);
+    var hid = klar && !showAll ? all.filter(function (x) { var v = panelSvar(x.p); return v !== 'Ja' && v !== 'Venter'; }).length : 0;
+    if (hid) all = all.filter(function (x) { var v = panelSvar(x.p); return v === 'Ja' || v === 'Venter'; });
     var cell = function (x, k, html, label) { return '<td data-l="' + label + '" data-pcell="' + esc(r.id + '|' + x.i + '|' + k) + '" title="Klikk for å endre">' + html + '</td>'; };
     return '<section class="panel"><h2><span>' + (tal ? 'Foredragsholdere' : 'Panelet') + '</span><button class="btn small" data-panedit="' + esc(r.id) + '||' + (tal ? 'taler' : '') + '">' + (tal ? '+ Foredragsholder' : '+ Panelmedlem') + '</button></h2>' + (tal ? '' : dupNote(r, 'p')) +   // v33
-      (list.length ? '<div class="meta">' + yes + ' har sagt ja · ' + wait.length + ' venter på svar</div><div class="tablewrap"><table class="t ptab"><thead><tr><th>Navn</th><th>' + (tal ? 'Tema' : 'Kompetanse') + '</th><th>Valg</th><th>E-post sendt</th><th>Svar</th><th>Dager siden kontakt</th></tr></thead><tbody>' + all.map(function (x) {
+      (list.length ? '<div class="meta">' + (klar ? '<span class="chip c-done">✓ Panelet er klart</span> ' : '') + yes + ' har sagt ja · ' + wait.length + ' venter på svar</div><div class="tablewrap"><table class="t ptab"><thead><tr><th>Navn</th><th>' + (tal ? 'Tema' : 'Kompetanse') + '</th><th>Valg</th><th>E-post sendt</th><th>Svar</th><th>Dager siden kontakt</th></tr></thead><tbody>' + all.map(function (x) {
         var p = x.p, sv = panelSvar(p), last = panelLast(p), days = last ? daysBetween(last, today()) : null, org = panelOrg(p);
         var late = days != null && days > panelDays() && sv !== 'Ja' && sv !== 'Nei';
         var komp = tal ? esc(p.kompetanse || '') : panelKomp(p).map(function (k) { return '<span class="chip c-na">' + esc(k) + '</span>'; }).join(' ');
@@ -6695,9 +6761,30 @@
           cell(x, 'sendt', p.sendt ? esc(fmtDate(p.sendt)) : '<span class="why">ikke sendt</span>', 'E-post sendt') +
           cell(x, 'svar', (sv ? '<span class="chip ' + (PANEL_SVAR[sv] || 'c-na') + '">' + esc(sv) + '</span>' : '') + (sv === 'Venter' && p.purres ? '<small class="why">purres ' + esc(fmtDate(p.purres)) + '</small>' : ''), 'Svar') +
           '<td data-l="Dager siden kontakt" data-pcell="' + esc(r.id + '|' + x.i + '|sist') + '"' + (last ? ' title="Sist kontakt ' + esc(fmtDate(last)) + '"' : '') + '>' + (days != null && sv === 'Venter' ? '<span class="' + (late ? 'chip c-q' : '') + '">' + days + ' d</span>' : '') + '</td></tr>';   // v29: only for Venter
-      }).join('') + '</tbody></table></div>' : '<div class="empty">' + (tal ? 'Ingen foredragsholdere ennå. Legg dem inn her, så holder listen styr på hvem som har fått e-post, hvem som har svart og når de skal purres.' : 'Ingen i panelet ennå. Legg inn kandidatene her, så holder listen styr på hvem som har fått e-post, hvem som har svart og når de skal purres.') + '</div>') +
-      '<div class="row wrap">' + (next.length ? '<button class="btn small" data-pansend="' + key + '">Send til de neste (' + next.length + ')</button>' : '') + (wait.length ? '<button class="btn small" data-panpurr="' + key + '">Purr dem som venter (' + wait.length + ')</button>' : '') +
+      }).join('') + '</tbody></table></div>' + (klar && list.length > all.length || showAll && klar ? '<div class="row"><button type="button" class="plink" data-panall="' + esc(r.id) + '">' + (showAll ? 'Vis bare Ja og Venter' : 'Vis alle (' + list.length + ')') + '</button></div>' : '') : '<div class="empty">' + (tal ? 'Ingen foredragsholdere ennå. Legg dem inn her, så holder listen styr på hvem som har fått e-post, hvem som har svart og når de skal purres.' : 'Ingen i panelet ennå. Legg inn kandidatene her, så holder listen styr på hvem som har fått e-post, hvem som har svart og når de skal purres.') + '</div>') +
+      '<div class="row wrap">' + (!tal && list.length ? (klar ? '<button class="btn small ghost" data-panklar="' + esc(r.id) + '|0">Åpne panelet igjen</button>' : '<button class="btn small" data-panklar="' + esc(r.id) + '|1">Panelet er klart</button>') : '') +
+        (next.length && !klar ? '<button class="btn small" data-pansend="' + key + '">Send til de neste (' + next.length + ')</button>' : '') + (wait.length ? '<button class="btn small" data-panpurr="' + key + '">Purr dem som venter (' + wait.length + ')</button>' : '') +
         (tal ? '<button class="btn small ghost" data-invite="foredragsholder" data-id="' + esc(r.id) + '">Inviter foredragsholder</button>' : '') + '</div></section>';   // v28: moved from "Til denne aktiviteten"
+  }
+  // v36: the task that says the panel is done carries kobling "<runId>|panel". Done task = the list folds.
+  function panelTask(r) { return state.d.Oppgaver.find(function (t) { return t.runde_id === r.id && t.kobling === r.id + '|panel'; }) || null; }
+  function panelDone(r) { var t = panelTask(r); return !!t && t.status === 'Ferdig'; }
+  function panelKlar(arg) {
+    var a = arg.split('|'), r = byId('Runder', a[0]), on = a[1] === '1', t = r && panelTask(r); if (!r) return;
+    var done = function (msg) { state.keepScroll = true; if (state.panAll) delete state.panAll[r.id]; render(); toast(msg); };
+    if (t) { save('Oppgaver', [{ id: t.id, status: on ? 'Ferdig' : 'Ikke startet' }]).then(function () { done(on ? 'Panelet er klart. «' + t.tittel + '» er krysset av.' : 'Panelet er åpent igjen. «' + t.tittel + '» er ikke ferdig lenger.'); }); return; }
+    if (!on) return;
+    // First time: choose which of the year's tasks this ticks (a task with "panel" in the name is picked to start with).
+    var cands = state.d.Oppgaver.filter(function (x) { return x.runde_id === r.id && !x.gruppe && !x.kobling && x.type !== 'avklaring'; })
+      .sort(function (x, y) { return String(x.tittel).localeCompare(String(y.tittel), 'nb'); });
+    var guess = cands.find(function (x) { return /panel/i.test(x.tittel) && openTask(x); }) || cands.find(function (x) { return /panel/i.test(x.tittel); });
+    openDrawer('<h2>Panelet er klart</h2><p class="empty">Velg oppgaven som er ferdig når panelet er klart. Den krysses av nå, og senere legger panellisten seg sammen når oppgaven er ferdig.</p>' +
+      field('Oppgave', 'oppg', '', 'select', option('', guess ? guess.id : '', 'Ingen: lag oppgaven «Panelet er klart»') + cands.map(function (x) { return option(x.id, guess ? guess.id : '', x.tittel + (openTask(x) ? '' : ' (ferdig)')); }).join('')) + actions(),
+      function (form) {
+        var id = val(form, 'oppg'), row = id ? { id: id, kobling: r.id + '|panel', status: 'Ferdig' } : { tittel: 'Panelet er klart', runde_id: r.id, aar: r.aar, fase: 'Felles', liste: '', status: 'Ferdig', kobling: r.id + '|panel' };
+        closeDrawer();
+        save('Oppgaver', [row]).then(function () { done('Panelet er klart. «' + (id ? byId('Oppgaver', id).tittel : 'Panelet er klart') + '» er krysset av.'); });
+      });
   }
   // (22) Click a cell (Valg, E-post sendt, Svar, Dager siden kontakt) to change just that value.
   function panelCellEdit(td) {
@@ -7261,10 +7348,11 @@
     // v35: the choices are this year's active applicants (Søkere). A project or applicant already picked stays in the list.
     var picked = lines.map(function (x) { return x.prosjekt_id; }).filter(Boolean);
     var byName = function (a, b) { return String(a.kortnavn || '').localeCompare(String(b.kortnavn || ''), 'nb', { numeric: true }); };
-    var apps = state.d.Søkere.filter(function (a) { return picked.indexOf(a.id) >= 0 || ((!r.aar || a.soknadsaar === r.aar) && (a.status === 'Aktiv' || !a.status)); }).sort(byName);
+    var onPitch = pitchApps(r).map(function (a) { return a.id; });   // v36: only applicants on the Pitch step
+    var apps = state.d.Søkere.filter(function (a) { return picked.indexOf(a.id) >= 0 || onPitch.indexOf(a.id) >= 0; }).sort(byName);
     var before = picked.filter(function (id, i) { return picked.indexOf(id) === i && !apps.some(function (a) { return a.id === id; }); }).map(function (id) { return byId('Prosjekter', id); }).filter(Boolean).sort(byName);
     var pOpts = function (cur) {
-      return option('', cur || '', '–') + (apps.length ? '<optgroup label="Søkere ' + esc(r.aar || '') + '">' + apps.map(function (p) { return option(p.id, cur || '', p.kortnavn); }).join('') + '</optgroup>' : '') +
+      return option('', cur || '', '–') + (apps.length ? '<optgroup label="Søkere på Pitch ' + esc(r.aar || '') + '">' + apps.map(function (p) { return option(p.id, cur || '', p.kortnavn); }).join('') + '</optgroup>' : '') +
         (before.length ? '<optgroup label="Valgt fra før">' + before.map(function (p) { return option(p.id, cur || '', p.kortnavn); }).join('') + '</optgroup>' : '');
     };
     var rowHtml = function (x, i) {
@@ -7275,7 +7363,7 @@
         (x.old ? '<label class="check"><input type="checkbox" name="rm_' + i + '"> Fjern</label>' : '<span></span>') + '</div>';
     };
     openDrawer('<h2>Pitcher: ' + esc(runName(r)) + '</h2>' +
-      (rows.length ? '<p class="empty">Tidene kommer fra agendaen (pitch-radene). Velg blant søkerne ' + esc(r.aar || '') + '.</p>' + (apps.length ? '' : '<p class="empty">Ingen aktive søkere for ' + esc(r.aar || '') + ' ennå.</p>') :
+      (rows.length ? '<p class="empty">Tidene kommer fra agendaen (pitch-radene). Velg blant søkerne som står på Pitch.</p>' + (apps.length ? '' : '<p class="empty">Ingen søkere står på Pitch for ' + esc(r.aar || '') + ' ennå. Flytt dem til Pitch på Søkere.</p>') :
         '<div class="banner"><div>Agendaen har ingen pitch-rader ennå. Rediger agendaen og trykk «+ Pitch» for hver pitch.</div></div>') +
       '<div id="slotRows" class="slot-rows">' + lines.map(rowHtml).join('') + '</div>' + actions(),
       function (form) {
@@ -7623,7 +7711,10 @@
     if (ds.waittask) { closeDrawer(); waitTask(ds.waittask); return; }
     if (ds.gotans) { gotAnswer(ds.gotans); return; }
     if (ds.splittask) { splitTask(ds.splittask); return; }
+    if (ds.panklar) { panelKlar(ds.panklar); return; }   // v36
+    if (ds.panall) { state.panAll = state.panAll || {}; state.panAll[ds.panall] = !state.panAll[ds.panall]; state.keepScroll = true; render(); return; }
     if (ds.dllev) { dlToggleLevert(ds.dllev); return; }
+    if (ds.dlopen) { state.dlOpen = state.dlOpen || {}; state.dlOpen[ds.dlopen] = !state.dlOpen[ds.dlopen]; state.keepScroll = true; render(); return; }   // v36
     if (ds.dlrem) { dlReminderDone(ds.dlrem); return; }
     if (ds.dlmail) { dlCopyMail(ds.dlmail); return; }
     if (ds.fmon) { state.filters.fmon = ds.fmon; render(); return; }

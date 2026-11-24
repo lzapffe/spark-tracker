@@ -3,6 +3,16 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v36 – 24 November 2026 (page only)
+
+### Changed
+- **Frister – ticks:** a tick on a deadline shows at once. Ticks on the same year are saved together about a second after the last click, so you can tick several projects in a row without waiting. (Before, each tick waited for the sheet, and a second click before the first was saved could overwrite it.)
+- **Frister – finished:** when every project on a deadline has delivered, the deadline folds to one line with "✓ Alle levert". **Vis prosjektene** opens it (to untick someone), **Skjul** folds it again.
+- **Påmeldingsfrist:** a deadline for projects can be marked "Påmeldingsfrist" in its form. A tick on it signs the project up (Påmeldt) for that year, and taking the tick away removes a Påmeldt again (Deltatt etc. are left alone). Turning it on signs up the projects already ticked, on years that aren't archived.
+- **Pitch days:** the Prosjekter box lists that year's applicants on the **Pitch** step (name, faculty, pitch time), with no attendance buttons; empty: "Prosjektene vises her når de er satt til Pitch på Søkere." "Velg prosjekter til pitchene" lists only applicants on the Pitch step (anyone already picked stays).
+- **Agenda:** when a row has no Ansvarlig, the Hva text also uses that column, and the cells have a little less padding, so long names fit on one line.
+- **Panelet er klart:** a button on Panelet. It ticks a task you choose the first time (a task with "panel" in the name is suggested; "Ingen" makes a done task "Panelet er klart"); the link is kept in the task's `kobling` as `<year id>|panel`. While that task is done, Panelet shows only Ja and Venter (**Vis alle (n)** shows the rest) and hides "Send til de neste". **Åpne panelet igjen** sets the task back to Ikke startet.
+
 ## v35 – 24 November 2026 (page only)
 
 ### Changed

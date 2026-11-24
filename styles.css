@@ -1083,3 +1083,9 @@ h2.sec-h { font-size: 20px; margin-top: 8px; scroll-margin-top: 70px; }
   .cat-row [data-ck="pris"] { grid-column: 1 / 3; }
   .cat-row [data-ck="antall"] { grid-column: 3 / 4; }
 }
+
+/* v36: a deadline where everyone has delivered is folded and greyed */
+.dl-item.dl-done .dl-main > b, .dl-item.dl-done .dl-date b { color: var(--muted); }
+.dl-item.dl-done .dl-note { display: none; }
+/* v36: a little less space in the agenda cells, so long names fit on one line */
+table.ag td { padding-left: 8px; padding-right: 8px; }
