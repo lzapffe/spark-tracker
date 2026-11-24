@@ -3,6 +3,19 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v37 – 24 November 2026 (page only)
+
+### Added
+- **Skriv ut** under the agenda on a year page: the agenda as a programme on one A4 page (start times, pitches grouped under "Pitcher", food deliveries as small lines). Switches for Ansvarlig, Hvem som pitcher, Digitalt, Matlevering, Sted and Plass til notater, with a preview; the switches are remembered in this browser.
+- **Food delivery in the agenda:** each catering row's time (now labelled **Levering** fra–til in the food form) shows in the year's agenda as a small grey line at the right time, e.g. "11:15–12:00 Levering: Lunsj".
+- **+ Erfaring** button in the Generell info panel on a year page.
+
+### Changed
+- **Budget:** the totals (Planlagt totalt, Brukt, Igjen, Venter på refusjon) are under the budget table instead of at the top.
+
+### Fixed
+- **Amounts:** "1250 kr", "kr 1 250", "1 250,-", "1.250,50" and "1,250.50" are read correctly. An amount SPARK still can't read is marked and the form isn't saved, instead of the amount quietly becoming 0.
+
 ## v36 – 24 November 2026 (page only)
 
 ### Changed

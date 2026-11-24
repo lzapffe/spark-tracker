@@ -914,6 +914,7 @@
     form.addEventListener('submit', function (e) {
       e.preventDefault();
       if (badDates(form)) return;   // v30
+      if (badMoney(form)) return;   // v37
       if (form.dataset.busy) return;
       form.dataset.busy = '1'; setTimeout(function () { delete form.dataset.busy; }, 1200);
       onSubmit(form);
@@ -2533,6 +2534,59 @@
     state.d.Prosjekter.filter(function (p) { return p.fase !== 'Arkivert'; }).forEach(function (p) { add(p.leder); projContacts(p).forEach(function (c) { add(c.navn); }); });
     return out;
   }
+  // v37: deliveries from the year's catering rows: [{fra, text: "11:15–12:00 Levering: Lunsj"}], sorted by time.
+  function foodDeliveries(r) {
+    var m = r ? matOf(r) : {};
+    if (m.pa === 'nei' || !Array.isArray(m.catering)) return [];
+    return m.catering.filter(function (x) { return normTime(x.fra || ''); }).map(function (x) {
+      var f = normTime(x.fra), t = normTime(x.til || '');
+      return { fra: f, text: f + (t ? '–' + t : '') + ' Levering' + (String(x.hva || '').trim() ? ': ' + String(x.hva).trim() : '') };
+    }).sort(function (a, b) { return a.fra < b.fra ? -1 : a.fra > b.fra ? 1 : 0; });
+  }
+  // v37: print the year's agenda as a programme (layout B). The switches are remembered in this browser.
+  var PRINT_OPTS = [['ans', 'Ansvarlig'], ['who', 'Hvem som pitcher'], ['dig', 'Digitalt'], ['food', 'Matlevering'], ['place', 'Sted'], ['notes', 'Plass til notater']];
+  function printOpts() { var o = {}; try { o = JSON.parse(localStorage.getItem('spark-print') || '{}') || {}; } catch (e) { o = {}; } PRINT_OPTS.forEach(function (x) { if (o[x[0]] === undefined) o[x[0]] = true; }); return o; }
+  function agendaPrintHtml(r, o) {
+    var s = byId('Serier', r.serie_id), list = agendasOf(s), a = pickedVariant(list, r, s) || list[0]; if (!a) return '';
+    var rows = agRows(a), start = agStart(a, r), at = 0, slots = slotsOf(r), food = o.food ? foodDeliveries(r) : [], fi = 0, out = [];
+    var foodLine = function (f) { return '<div class="pr-row"><span></span><span class="pr-food">' + esc(f.text) + '</span></div>'; };
+    var timed = rows.map(function (x) { var f = hhmm(start, at); at += Number(x.min) || 0; return { x: x, fra: f }; });
+    for (var i = 0; i < timed.length; i++) {
+      var it = timed[i];
+      while (fi < food.length && food[fi].fra < it.fra) out.push(foodLine(food[fi++]));
+      if (isPitchRow(it.x)) {   // pitch rows next to each other become one "Pitcher" item
+        var grp = [it]; while (i + 1 < timed.length && isPitchRow(timed[i + 1].x)) grp.push(timed[++i]);
+        var names = [];
+        grp.forEach(function (g) { slots.filter(function (y) { return y.rad === g.x.id && y.prosjekt_id; }).forEach(function (y) { names.push('<li><span class="pr-t">' + esc(g.fra) + '</span> ' + esc(shortName(y.prosjekt_id)) + (o.dig && y.digitalt === 'ja' ? ' <span class="pr-dig">digitalt</span>' : '') + '</li>'); }); });
+        out.push('<div class="pr-row"><span class="pr-tm">' + esc(it.fra) + '</span><div><div class="pr-w">Pitcher</div>' + (o.who && names.length ? '<ul>' + names.join('') + '</ul>' : '') + '</div></div>');
+        continue;
+      }
+      out.push('<div class="pr-row' + (isBreak(it.x) ? ' pr-brk' : '') + '"><span class="pr-tm">' + esc(it.fra) + '</span><div class="pr-w">' + esc(it.x.hva || '') + (o.ans && it.x.ansvarlig ? ' <small>· ' + esc(shortPerson(it.x.ansvarlig)) + '</small>' : '') + '</div></div>');
+    }
+    while (fi < food.length) out.push(foodLine(food[fi++]));
+    var when = r.dato ? longDate(r.dato) : '';
+    return '<div class="pr-sheet"><div class="pr-k">SPARK · UiO</div><h1>' + esc(runName(r)) + '</h1><div class="pr-s">' + esc(when) + (o.place && r.sted ? '<br>' + esc(r.sted) : '') + '</div>' +
+      '<div class="pr-list">' + out.join('') + '</div>' + (o.notes ? '<div class="pr-notes">Notater</div>' : '') + '</div>';
+  }
+  function agendaPrint(rid) {
+    var r = byId('Runder', rid); if (!r) return;
+    var o = printOpts();
+    openDrawer('<h2>Skriv ut agendaen</h2><p class="empty">Velg hva som skal være med. Utskriften er én A4-side.</p>' +
+      '<div class="cl">' + PRINT_OPTS.map(function (x) { return '<label><input type="checkbox" data-propt="' + x[0] + '"' + (o[x[0]] ? ' checked' : '') + '> ' + esc(x[1]) + '</label>'; }).join('') + '</div>' +
+      '<div class="pr-preview" id="prPreview">' + agendaPrintHtml(r, o) + '</div>' +
+      '<div class="actions"><span></span><span><button type="button" class="btn ghost" data-close>Lukk</button> <button class="btn primary" type="submit">Skriv ut</button></span></div>',
+      function () {
+        var area = $('printArea') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'printArea' }));
+        area.innerHTML = agendaPrintHtml(r, o);
+        window.print();
+      });
+    $('drawer').classList.add('wide');
+    $('drawerForm').addEventListener('change', function (e) {
+      var k = e.target.dataset && e.target.dataset.propt; if (!k) return;
+      o[k] = e.target.checked; try { localStorage.setItem('spark-print', JSON.stringify(o)); } catch (err) { /* not saved; fine */ }
+      $('prPreview').innerHTML = agendaPrintHtml(r, o);
+    });
+  }
   function agendaPanel(s, r) {
     var list = agendasOf(s), picked = pickedVariant(list, r, s), key = seriesRoot(s) + '|' + (r ? r.id : '');
     var sel = (state.filters.agVar || {})[key];
@@ -2554,12 +2608,17 @@
     }
     // v28: on a year page the agenda that year uses also shows who pitches in each Pitch row (was the Tidspunkter panel)
     var used = r && a === (picked || list[0]), pitches = used && (isPitch(s) || rows.some(isPitchRow) || slotsOf(r).length > 0);
+    // v37: the catering deliveries (Levering fra–til) as small lines, placed by time
+    var food = used ? foodDeliveries(r) : [], fi = 0;
+    var foodRow = function (f) { return '<tr class="ag-food"><td></td><td colspan="2">' + esc(f.text) + '</td></tr>'; };
     var table = rows.length ? '<div class="tablewrap"><table class="t ag"><tr><th>Tid</th><th>Hva</th><th>Ansvarlig</th></tr>' + rows.map(function (x) {
       var from = hhmm(start, at); at += Number(x.min) || 0;
-      return '<tr class="' + (isBreak(x) ? 'brk' : '') + '"><td class="agt">' + from + '–' + hhmm(start, at) + '</td><td' + (x.ansvarlig ? '' : ' colspan="2"') + '>' + (isBreak(x) ? '<span class="chip c-brk">Pause</span> ' : '') + esc(x.hva) + (pitches ? agendaSlotCell(r, x) : '') + expHtml(s, 'agenda:' + x.id) + '</td>' + (x.ansvarlig ? '<td>' + personLink(x.ansvarlig) + '</td>' : '') + '</tr>';   // v36: colspan
-    }).join('') + '</table></div>' : '<div class="empty">Ingen bolker ennå. Klikk «Rediger agendaen».</div>';
+      var pre = ''; while (fi < food.length && food[fi].fra < from) pre += foodRow(food[fi++]);
+      return pre + '<tr class="' + (isBreak(x) ? 'brk' : '') + '"><td class="agt">' + from + '–' + hhmm(start, at) + '</td><td' + (x.ansvarlig ? '' : ' colspan="2"') + '>' + (isBreak(x) ? '<span class="chip c-brk">Pause</span> ' : '') + esc(x.hva) + (pitches ? agendaSlotCell(r, x) : '') + expHtml(s, 'agenda:' + x.id) + '</td>' + (x.ansvarlig ? '<td>' + personLink(x.ansvarlig) + '</td>' : '') + '</tr>';   // v36: colspan
+    }).join('') + food.slice(fi).map(foodRow).join('') + '</table></div>' : '<div class="empty">Ingen bolker ennå. Klikk «Rediger agendaen».</div>';
     return '<section class="panel"><h2>Agenda</h2>' + (seg || note ? '<div class="agbar"><div class="row wrap">' + seg + '</div><div class="row wrap">' + note + '</div></div>' : '') + span + table +
       (a.merknad ? '<p class="pre ag-note">' + esc(a.merknad) + '</p>' : '') + (pitches ? agendaSlotFoot(r) : '') +
+      (used ? '<div class="row wrap"><button type="button" class="btn small ghost" data-agprint="' + esc(r.id) + '">Skriv ut</button></div>' : '') +   // v37
       '<div class="row wrap"><button class="btn small" data-agedit="' + esc(a.id) + '" data-agserie="' + esc(s.id) + '"' + (r ? ' data-agrun="' + esc(r.id) + '"' : '') + '>Rediger agendaen</button><button class="btn small ghost" data-agedit="" data-agserie="' + esc(s.id) + '"' + (r ? ' data-agrun="' + esc(r.id) + '"' : '') + '>+ Variant for et annet antall</button></div></section>';
   }
   // v28: opened from a year (rid), the times are counted from that year's Klokkeslett when it has one (it was always
@@ -2817,10 +2876,10 @@
     };
     var drawCat = function () {
       var n = people();
-      var headRow = '<div class="cat-row cat-head" aria-hidden="true"><span>Fra</span><span>Til</span><span class="cat-hva">Hva</span><span data-ck="pris">Kr per person</span><span data-ck="antall">Antall</span><span></span></div>';
+      var headRow = '<div class="cat-row cat-head" aria-hidden="true"><span>Levering</span><span>til</span><span class="cat-hva">Hva</span><span data-ck="pris">Kr per person</span><span data-ck="antall">Antall</span><span></span></div>';
       cbox.innerHTML = (cat.length ? headRow + cat.map(function (x, i) {
-        return '<div class="cat-row"><input type="text" inputmode="numeric" data-ci="' + i + '" data-ck="fra" value="' + esc(x.fra || '') + '" placeholder="Fra" aria-label="Fra (tt:mm)">' +
-          '<input type="text" inputmode="numeric" data-ci="' + i + '" data-ck="til" value="' + esc(x.til || '') + '" placeholder="Til" aria-label="Til (tt:mm)">' +
+        return '<div class="cat-row"><input type="text" inputmode="numeric" data-ci="' + i + '" data-ck="fra" value="' + esc(x.fra || '') + '" placeholder="Fra" aria-label="Levering fra (tt:mm)">' +
+          '<input type="text" inputmode="numeric" data-ci="' + i + '" data-ck="til" value="' + esc(x.til || '') + '" placeholder="Til" aria-label="Levering til (tt:mm)">' +
           '<input type="text" class="cat-hva" data-ci="' + i + '" data-ck="hva" value="' + esc(x.hva || '') + '" placeholder="Hva, f.eks. lunsj" aria-label="Hva">' +
           '<input type="text" inputmode="numeric" data-ci="' + i + '" data-ck="pris" value="' + esc(x.pris ? moneyVal(x.pris) : '') + '" placeholder="kr per person" aria-label="Pris per person">' +
           '<input type="number" min="0" data-ci="' + i + '" data-ck="antall" value="' + esc(x.antall || '') + '" placeholder="' + esc(n || 'Antall') + '" aria-label="Antall bestilt">' +
@@ -2833,7 +2892,7 @@
       var el = e.target, i = Number(el.dataset.ci); if (!cat[i]) return;
       if (el.dataset.ck === 'fra' || el.dataset.ck === 'til') { el.value = normTime(el.value); cat[i][el.dataset.ck] = el.value; }
       if (el.dataset.ck === 'fra' && el.value && !cat[i].til) { cat[i].til = addHour(el.value); var t = cbox.querySelector('[data-ci="' + i + '"][data-ck="til"]'); if (t) t.value = cat[i].til; }   // "til" = one hour later
-      if (el.dataset.ck === 'pris') { el.value = cat[i].pris ? moneyVal(rawMoney(cat[i].pris)) : ''; }
+      if (el.dataset.ck === 'pris') { if (cat[i].pris && !moneyOk(cat[i].pris)) { el.classList.add('bad'); toast('Skriv prisen med tall, for eksempel 45 eller 45,50'); } else { el.classList.remove('bad'); el.value = cat[i].pris ? moneyVal(rawMoney(cat[i].pris)) : ''; } }   // v37
       sums();
     });
     cbox.addEventListener('click', function (e) {
@@ -4366,7 +4425,21 @@
   // Amount fields are text boxes (a number box can't show spaces): shown as 10 000, saved as 10000.
   function moneyVal(v) { return v === '' || v == null ? '' : fmtNum(num(v)); }
   function moneyInput(name, value, attrs) { return '<input type="text" inputmode="numeric" class="money" name="' + name + '" value="' + esc(moneyVal(value)) + '"' + (attrs || '') + '>'; }
-  function rawMoney(text) { return String(text || '').replace(/[\s\u00a0]/g, '').replace(',', '.'); }
+  // v37: also reads "1250 kr", "kr 1 250", "1 250,-", "1.250,50" and "1,250.50". Anything else stays as typed, so
+  // badMoney() can mark it instead of it becoming 0.
+  function rawMoney(text) {
+    var t = String(text || '').toLowerCase().replace(/[\s\u00a0']/g, '').replace(/^(kr|nok)\.?/, '').replace(/(kr|nok)\.?$/, '').replace(/[.,]-+$/, '').replace(/-+$/, '');
+    if (/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(t)) return t.replace(/\./g, '').replace(',', '.');
+    if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(t)) return t.replace(/,/g, '');
+    return t.replace(',', '.');
+  }
+  function moneyOk(text) { var t = rawMoney(text); return t === '' || !isNaN(Number(t)); }
+  function badMoney(root) {
+    var bad = [].filter.call((root || document).querySelectorAll('input.money'), function (el) { return !moneyOk(el.value); });
+    bad.forEach(function (el) { el.classList.add('bad'); });
+    if (bad.length) toast('Skriv beløpet med tall, for eksempel 1250, 1 250 eller 1250,50');
+    return bad.length > 0;
+  }
   function segBtns(list, cur, attr) { return '<span class="seg">' + list.map(function (z) { return '<button type="button" ' + attr + '="' + z[0] + '" aria-pressed="' + (cur === z[0]) + '">' + z[1] + '</button>'; }).join('') + '</span>'; }
 
 
@@ -5144,10 +5217,11 @@
     }).join('');
 
     return head('Budsjett ' + Y, 'Hele SPARK-budsjettet · lønn, prosjektmidler, arrangementer og annet', tools) +
-      '<div class="kpis">' + kpi('Planlagt totalt', kr(totPlan)) + kpi('Brukt ' + (Y === cy ? 'hittil i år' : 'i ' + Y), kr(totActual)) +
-        kpi('Igjen', kr(totPlan - totActual), totPlan - totActual < 0) + kpi('Venter på refusjon', kr(waitSum), waitSum > 0) + '</div>' +
       '<section class="panel"><h2>Budsjett ' + Y + ' <span class="hint">trykk en rad for å endre · lønn: SPARK-timene hittil i år · prosjektmidler: betalte utbetalinger</span></h2>' +
         '<div class="tablewrap"><table class="t budget"><tr><th>Post</th><th>Gjelder / status</th><th class="numc">Planlagt</th><th class="numc">Faktisk</th><th class="numc">Igjen</th></tr>' + body + '</table></div></section>' +
+      // v37: the totals under the budget instead of at the top
+      '<div class="kpis">' + kpi('Planlagt totalt', kr(totPlan)) + kpi('Brukt ' + (Y === cy ? 'hittil i år' : 'i ' + Y), kr(totActual)) +
+        kpi('Igjen', kr(totPlan - totActual), totPlan - totActual < 0) + kpi('Venter på refusjon', kr(waitSum), waitSum > 0) + '</div>' +
       (l && !oldSalary ? '<section class="panel"><h2>Lønn per måned <span class="hint">arbeidsdager × 7,5 t × ' + pctOf(l) + ' %, ekstra dager telles likt</span><button class="btn small" data-act="editsalary">Rediger lønn</button></h2>' +
         '<div class="mtiles">' + tiles + '</div></section>' : '') +
       '<section class="panel"><h2>Utgifter ' + Y + ' <span class="hint">farget = lagt ut selv, venter på refusjon</span></h2>' +
@@ -5304,6 +5378,7 @@
   function addExpense(form) {
     var r = byId('Runder', form.dataset.run), amt = rawMoney($('exAmt').value), what = $('exWhat').value.trim(), post = $('exPost').value, link = $('exLink').value.trim();
     if (badDates($('exDate').parentNode)) return;   // v30
+    if (badMoney($('exAmt').parentNode)) return;   // v37
     var date = $('exDate').value || today(), own = $('exOwn').checked ? 'ja' : '';
     if (!amt) { toast('Skriv beløpet'); return; }
     if (link && !/^https?:\/\//i.test(link)) { toast('Lenken må starte med https://'); return; }
@@ -6358,7 +6433,8 @@
       case 'hvem': return s && isPitch(s) ? pitchAppsPanel(r) : attendPanel(r, att, candidates);   // v36
       case 'notater': return '<section class="panel"><h2>Notater for dette året</h2>' + (r.notater ? '<p class="pre">' + esc(r.notater) + '</p>' : '<div class="empty">Ingen notater. Klikk Rediger.</div>') + '</section>';
       case 'utgifter': return expensePanel(r);
-      case 'info': return s ? '<section class="panel"><h2>Generell info</h2>' + (s.beskrivelse ? '<p class="pre">' + esc(s.beskrivelse) + '</p>' : '<div class="empty">Ingen generell info ennå.</div>') + expHtml(s, '') + '</section>' : '';
+      case 'info': return s ? '<section class="panel"><h2>Generell info</h2>' + (s.beskrivelse ? '<p class="pre">' + esc(s.beskrivelse) + '</p>' : '<div class="empty">Ingen generell info ennå.</div>') + expHtml(s, '') +
+        '<div class="row wrap"><button type="button" class="btn small" data-expnew="' + esc(s.id + '|' + r.id) + '">+ Erfaring</button></div></section>' : '';   // v37
     }
     return '';
   }
@@ -7713,6 +7789,7 @@
     if (ds.splittask) { splitTask(ds.splittask); return; }
     if (ds.panklar) { panelKlar(ds.panklar); return; }   // v36
     if (ds.panall) { state.panAll = state.panAll || {}; state.panAll[ds.panall] = !state.panAll[ds.panall]; state.keepScroll = true; render(); return; }
+    if (ds.agprint) { agendaPrint(ds.agprint); return; }   // v37
     if (ds.dllev) { dlToggleLevert(ds.dllev); return; }
     if (ds.dlopen) { state.dlOpen = state.dlOpen || {}; state.dlOpen[ds.dlopen] = !state.dlOpen[ds.dlopen]; state.keepScroll = true; render(); return; }   // v36
     if (ds.dlrem) { dlReminderDone(ds.dlrem); return; }
@@ -7830,7 +7907,10 @@
   // Amount fields: show the spaces again when you leave the field (10000 → 10 000).
   document.addEventListener('focusout', function (e) {
     var el = e.target;
-    if (el && el.classList && el.classList.contains('money') && el.value.trim() !== '') el.value = moneyVal(rawMoney(el.value));
+    if (el && el.classList && el.classList.contains('money') && el.value.trim() !== '') {
+      if (!moneyOk(el.value)) { el.classList.add('bad'); toast('Skriv beløpet med tall, for eksempel 1250, 1 250 eller 1250,50'); return; }   // v37: no more silent 0
+      el.classList.remove('bad'); el.value = moneyVal(rawMoney(el.value));
+    }
   });
 
   // Filters: remember the choice and redraw.

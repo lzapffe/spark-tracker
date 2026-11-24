@@ -1089,3 +1089,34 @@ h2.sec-h { font-size: 20px; margin-top: 8px; scroll-margin-top: 70px; }
 .dl-item.dl-done .dl-note { display: none; }
 /* v36: a little less space in the agenda cells, so long names fit on one line */
 table.ag td { padding-left: 8px; padding-right: 8px; }
+
+/* v37: an amount SPARK can't read is marked, not saved as 0 */
+input.money.bad, .cat-row input.bad { border-color: var(--warn); }
+/* v37: catering deliveries in the agenda: small and quiet */
+table.ag tr.ag-food td { padding-top: 1px; padding-bottom: 1px; border-top: 0; font-size: 12px; font-style: italic; color: var(--muted); }
+/* v37: the agenda printout (layout B). The same markup is the preview in the drawer and the printed page. */
+#printArea { display: none; }
+.pr-preview { background: #fff; color: #1c1f1d; border: 1px solid var(--line); border-radius: var(--r-s); padding: 22px 26px; margin-top: 10px; }
+.pr-sheet { font-family: "Source Serif 4", Georgia, "Times New Roman", serif; color: #1c1f1d; font-size: 13px; line-height: 1.4; }
+.pr-k { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: #6b716d; }
+.pr-sheet h1 { font-size: 30px; line-height: 1.05; font-weight: 600; margin: 4px 0 0; color: #1c1f1d; }
+.pr-s { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #6b716d; margin-top: 6px; }
+.pr-list { display: grid; gap: 9px; margin-top: 18px; }
+.pr-row { display: grid; grid-template-columns: 4.2em minmax(0, 1fr); gap: 10px; align-items: baseline; }
+.pr-tm { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pr-w { font-size: 1.12em; }
+.pr-w small { color: #6b716d; font-size: .8em; }
+.pr-brk .pr-w { color: #6b716d; font-style: italic; }
+.pr-row ul { list-style: none; margin: 3px 0 0; padding: 0; display: grid; gap: 1px; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: .9em; }
+.pr-t { color: #6b716d; font-variant-numeric: tabular-nums; margin-right: 4px; }
+.pr-dig { font-size: .8em; border: 1px solid #d7dbd8; border-radius: 3px; padding: 0 4px; color: #6b716d; }
+.pr-food { font-size: .82em; color: #6b716d; font-style: italic; }
+.pr-notes { margin-top: 22px; border-top: 1px solid #d7dbd8; padding-top: 6px; min-height: 9em; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: #6b716d; }
+@media print {
+  @page { size: A4; margin: 20mm 20mm; }
+  body > *:not(#printArea) { display: none !important; }
+  #printArea { display: block !important; }
+  body { background: #fff !important; }
+  .pr-sheet { font-size: 12pt; }
+  .pr-sheet h1 { font-size: 28pt; }
+}
