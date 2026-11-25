@@ -3,6 +3,11 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v43 – 25 November 2026 (page only)
+
+### Fixed
+- **Deadline ticks:** ticking several projects in a row while an earlier batch was still saving could make a tick disappear for a moment and come back (done → not done → done), and a click in that moment could lose a tick. The page now keeps your newest ticks until every waiting save is done, and puts them back after each save step.
+
 ## v42 – 25 November 2026 (page only)
 
 ### Added

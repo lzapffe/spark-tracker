@@ -2176,6 +2176,14 @@
   // v36: a tick shows at once. The ticks of one year are saved together 1.2 s after the last click (dlFlush),
   // so several projects can be ticked in a row. dlQueue: {runId: {timer, json (frist_status), tasks: {id: row}, pam: {projectId: on}}}.
   var dlQueue = {}, dlChain = Promise.resolve();
+  // v43: dlLatest {runId: {json, tasks, n}} = the newest ticks on the screen, kept until every save for that year
+  // (also ones already waiting in dlChain, n of them) is done, and put back after each save step.
+  var dlLatest = {};
+  function dlKeep(rid) {
+    var L = dlLatest[rid], r = byId('Runder', rid); if (!L || !r) return;
+    r.frist_status = L.json;
+    Object.keys(L.tasks).forEach(function (k) { var t = byId('Oppgaver', k); if (t) Object.assign(t, L.tasks[k]); });
+  }
   function dlToggleLevert(arg, quiet) {
     var p = arg.split('|'), r = byId('Runder', p[0]), s = r && byId('Serier', r.serie_id), st = dlState(r), lev = Object.assign({}, (st[p[1]] || {}).levert || {});
     var on = !lev[p[2]], before = linkSnap(p[2], r, 'frist', p[1]);
@@ -2184,7 +2192,8 @@
     var g = syncGroupsFromDeadline(r, p[1], p[2], on);
     var q = dlQueue[r.id] || (dlQueue[r.id] = { tasks: {}, pam: {} });
     r.frist_status = q.json = JSON.stringify(st);
-    g.rows.forEach(function (row) { var t = byId('Oppgaver', row.id); if (t) Object.assign(t, row); q.tasks[row.id] = Object.assign(q.tasks[row.id] || {}, row); });
+    var L = dlLatest[r.id] || (dlLatest[r.id] = { tasks: {}, n: 0 }); L.json = q.json;   // v43
+    g.rows.forEach(function (row) { var t = byId('Oppgaver', row.id); if (t) Object.assign(t, row); q.tasks[row.id] = Object.assign(q.tasks[row.id] || {}, row); L.tasks[row.id] = Object.assign(L.tasks[row.id] || {}, row); });
     var msg = g.msg.concat(linkDiff(before, linkSnap(p[2], r, 'frist', p[1]), on));
     // v36: a sign-up deadline (Påmeldingsfrist) also signs the project up, and unticking takes a Påmeldt away again
     var f = s && deadlineList(s).find(function (x) { return x.id === p[1]; });
@@ -2202,6 +2211,8 @@
   function dlFlush(rid) {
     var q = dlQueue[rid]; if (!q) return dlChain;
     delete dlQueue[rid]; clearTimeout(q.timer);
+    if (dlLatest[rid]) dlLatest[rid].n++;   // v43
+    var keep = function (x) { dlKeep(rid); return x; };
     dlChain = dlChain.then(function () {
       var d = state.d, rows = Object.keys(q.tasks).map(function (k) { return q.tasks[k]; }), add = [], del = [];
       Object.keys(q.pam).forEach(function (pid) {
@@ -2209,16 +2220,16 @@
         if (q.pam[pid] && !a) add.push({ runde_id: rid, prosjekt_id: pid, status: 'Påmeldt' });
         else if (!q.pam[pid] && a && a.status === 'Påmeldt') del.push(a.id);
       });
-      return save('Runder', [{ id: rid, frist_status: q.json }])
-        .then(function () { return rows.length ? save('Oppgaver', rows) : null; })
+      return save('Runder', [{ id: rid, frist_status: q.json }]).then(keep)
+        .then(function () { return rows.length ? save('Oppgaver', rows).then(keep) : null; })
         .then(function () { return add.length || del.length ? save('Deltakelse', add, del) : null; })
         .then(function () {
-          // Clicks made while this was saving: the answer from the sheet must not undo them on the screen.
-          var nq = dlQueue[rid], r = byId('Runder', rid);
-          if (nq && r) { r.frist_status = nq.json; Object.keys(nq.tasks).forEach(function (k) { var t = byId('Oppgaver', k); if (t) Object.assign(t, nq.tasks[k]); }); }
+          // Clicks made while this was saving (v43: also ones already waiting to be saved) must not be undone on the screen.
+          dlKeep(rid);
+          var L = dlLatest[rid]; if (L && --L.n <= 0 && !dlQueue[rid]) delete dlLatest[rid];
           state.keepScroll = true; render();
         });
-    }).catch(function () {});
+    }).catch(function () { var L = dlLatest[rid]; if (L && --L.n <= 0 && !dlQueue[rid]) delete dlLatest[rid]; });
     return dlChain;
   }
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') Object.keys(dlQueue).forEach(dlFlush); });
