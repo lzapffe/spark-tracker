@@ -3,6 +3,11 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v42 – 25 November 2026 (page only)
+
+### Added
+- **Deltakere – Kopier e-poster:** copies the participants' e-mails as one line separated by "; " (from Personer, or a project's contacts). People without an e-mail are left out; the message says how many, and a box under the list names them (click a name to add the e-mail, then copy again).
+
 ## v41 – 25 November 2026 (page + back end)
 
 ### Added

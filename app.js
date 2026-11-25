@@ -2974,13 +2974,26 @@
     save('Oppgaver', rows).then(function () { toast(rows.length + (rows.length === 1 ? ' oppgave' : ' oppgaver') + ' lagt til'); state.keepScroll = true; render(); });
   }
   // The guest list of an event year: people from the signed-up projects, contacts, or anyone typed in.
+  // v42: "Kopier e-poster": the guests' e-mails (from Personer, or a project's contacts) as "a@x.no; b@y.no".
+  // Guests without an e-mail are left out and listed in a box under the list until the next copy.
+  function guestMails(r) {
+    var mails = [], miss = [];
+    guestsOf(r).forEach(function (x) { var e = String(emailOf(x.navn) || '').trim(); if (!e) miss.push(x.navn); else if (mails.map(function (m) { return m.toLowerCase(); }).indexOf(e.toLowerCase()) < 0) mails.push(e); });
+    return { mails: mails, miss: miss };
+  }
+  function guestNoMail(r) {
+    var miss = (state.guestMiss || {})[r.id]; if (!miss) return '';
+    miss = miss.filter(function (n) { return guestsOf(r).some(function (x) { return x.navn === n; }) && !emailOf(n); });
+    if (!miss.length) return '';
+    return '<div class="gm-miss"><b>⚠ Mangler e-post (' + miss.length + '):</b> ' + miss.map(function (n) { return personLink(n); }).join(', ') + '<br><span class="dm-m">De er ikke med i det du kopierte. Klikk et navn for å legge inn e-posten, og kopier igjen.</span></div>';
+  }
   function guestPanel(r) {
     var g = guestsOf(r), on = matOf(r).pa === 'ja';
     return '<section class="panel"><h2>Deltakere</h2>' + dupNote(r, 'g') + (g.length ? '<div class="tasklist">' + g.map(function (x, i) {
       return '<div class="task"><span></span><div class="t"><div class="tt">' + personLink(x.navn) + '</div><div class="meta">' + esc(x.hvor || '') + (x.allergier ? ' <span class="chip ' + (on ? 'c-late' : 'c-prog') + '">' + (on ? '⚠ ' : '') + 'Allergi: ' + esc(x.allergier) + '</span>' : '') + '</div></div>' +
         '<div class="right"><button type="button" class="btn small ghost" data-guestedit="' + esc(r.id + '|' + i) + '">Endre</button><button type="button" class="btn small ghost" data-guestdel="' + esc(r.id + '|' + i) + '" aria-label="Fjern ' + esc(x.navn) + '">✕</button></div></div>';
-    }).join('') + '</div><p class="dm-m">' + g.length + ' på listen</p>' : '<div class="empty">Ingen deltakere ennå.</div>') +
-      '<div class="row wrap"><button type="button" class="btn small" data-guestedit="' + esc(r.id) + '|">+ Deltaker</button>' + (g.length ? '<button type="button" class="btn small ghost" data-guestcopy="' + esc(r.id) + '">Kopier listen</button>' : '') + (signedUp(r).length ? '<button type="button" class="btn small ghost" data-guestall="' + esc(r.id) + '">Legg til alle fra de påmeldte prosjektene</button>' : '') + '</div></section>';
+    }).join('') + '</div><p class="dm-m">' + g.length + ' på listen</p>' + guestNoMail(r) : '<div class="empty">Ingen deltakere ennå.</div>') +
+      '<div class="row wrap"><button type="button" class="btn small" data-guestedit="' + esc(r.id) + '|">+ Deltaker</button>' + (g.length ? '<button type="button" class="btn small ghost" data-guestcopy="' + esc(r.id) + '">Kopier listen</button><button type="button" class="btn small ghost" data-guestmail="' + esc(r.id) + '">Kopier e-poster</button>' : '') + (signedUp(r).length ? '<button type="button" class="btn small ghost" data-guestall="' + esc(r.id) + '">Legg til alle fra de påmeldte prosjektene</button>' : '') + '</div></section>';
   }
   // Everyone who can be picked as a guest, with their allergies from Personer / Kontakter.
   function guestCandidates(r) {
@@ -5452,14 +5465,14 @@
     var addr = function (s) { return encodeURIComponent(s || '').replace(/%40/g, '@').replace(/%2C/g, ','); };
     return 'mailto:' + addr(to) + '?' + (cc ? 'cc=' + addr(cc) + '&' : '') + 'subject=' + enc(subject) + '&body=' + enc(body);
   }
-  function copyText(text) {
-    var done = function () { toast('Kopiert'); };
-    if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).then(done, function () { copyFallback(text); }); return; }
-    copyFallback(text);
+  function copyText(text, msg) {   // v42: msg = the toast instead of "Kopiert"
+    var done = function () { toast(msg || 'Kopiert'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).then(done, function () { copyFallback(text, msg); }); return; }
+    copyFallback(text, msg);
   }
-  function copyFallback(text) {
+  function copyFallback(text, msg) {
     var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
-    try { document.execCommand('copy'); toast('Kopiert'); } catch (e) { toast('Klarte ikke å kopiere'); }
+    try { document.execCommand('copy'); toast(msg || 'Kopiert'); } catch (e) { toast('Klarte ikke å kopiere'); }
     ta.remove();
   }
   function fillTpl(text, v) { return String(text || '').replace(/\{([\wæøåÆØÅ]+)\}/g, function (m, k) { return v[k] != null && v[k] !== '' ? v[k] : m; }); }
@@ -7950,6 +7963,13 @@
     if (ds.guestall) { addAllGuests(ds.guestall); return; }
     if (ds.dedupe) { dedupeRun(ds.dedupe); return; }   // v33
     if (ds.guestcopy) { copyText(guestsOf(byId('Runder', ds.guestcopy)).map(function (x) { var c = contactOf(x.navn); return '- ' + (c ? personName(c) : x.navn); }).join('\n')); return; }   // v31: one line per guest, "- Navn", always the full name from Personer
+    if (ds.guestmail) {   // v42
+      var gmr = byId('Runder', ds.guestmail), gm = guestMails(gmr);
+      (state.guestMiss = state.guestMiss || {})[gmr.id] = gm.miss; state.keepScroll = true; render();
+      if (!gm.mails.length) { toast('Ingen av deltakerne har e-post ennå'); return; }
+      copyText(gm.mails.join('; '), 'Kopiert ' + gm.mails.length + ' e-post' + (gm.mails.length === 1 ? '' : 'er') + (gm.miss.length ? '. ' + gm.miss.length + ' mangler e-post' : ''));
+      return;
+    }
     if (ds.guestdel) { var gd = ds.guestdel.split('|'), gr = byId('Runder', gd[0]), gl = guestsOf(gr); gl.splice(Number(gd[1]), 1); saveGuests(gr, gl, 'Fjernet'); return; }
     if (ds.reltask) { relatedTask(ds.reltask); return; }
     if (ds.waittask) { closeDrawer(); waitTask(ds.waittask); return; }
