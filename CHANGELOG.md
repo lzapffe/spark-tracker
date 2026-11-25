@@ -3,6 +3,20 @@
 All notable changes to SPARK-tracker, newest first. Dates are when the version was built.
 "Page" = the files in this repository; "back end" = `Kode.gs` in Apps Script.
 
+## v41 – 25 November 2026 (page + back end)
+
+### Added
+- **Sjekklister** on an activity year: a new half-width panel (Venstre, under Avklaringer; it can be moved or turned off in the panel settings like the others). Each list folds out in the panel: tick points off, add a point, **Skriv ut listen** (one A4 page with a box per point) and **Rediger** (name, deadline, points, delete).
+- Each checklist is also a task, "Sjekkliste: <navn>", with the list's deadline. The task row shows a progress bar (e.g. 2/5) and a **Gå til sjekklisten** button, which is also at the top of the task form. It opens the year, unfolds the list and highlights it. In the list, "Oppgave: …" opens the task.
+- Ticking the last point marks the task done; ticking the task's circle ticks every point.
+- **Templates:** "Bruk listen hvert år" (on by default) saves the list on the activity, with the deadline as days from the date. New years get the lists as tasks automatically (back end). A year that already exists shows "Fra malen … Lag fra malen".
+
+### Changed
+- Agenda printout heading: "SPARK samfunnsinnovasjon · UiO".
+
+### Back end (Kode.gs)
+- New column `Serier.sjekklister` (run `setup` once). `makeRunTasks_` also makes the checklist tasks (`makeChecklistTasks_`), but not from "Oppdater fra listen".
+
 ## v40 – 24 November 2026 (page only)
 
 ### Added

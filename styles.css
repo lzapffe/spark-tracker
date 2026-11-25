@@ -1132,3 +1132,36 @@ table.ag tr.ag-food td { padding-top: 1px; padding-bottom: 1px; border-top: 0; f
   .pr-sheet { width: auto; height: auto; min-height: 0; aspect-ratio: auto; padding: 0; overflow: visible; font-size: calc(15pt * var(--pr-scale, 1)); box-shadow: none; }
   .pr-sheet.pr-fit { height: 258mm; overflow: hidden; }   /* v40: one page: 297 mm minus the margins, a little to spare */
 }
+
+/* v41: Sjekklister (checklists on an activity year) */
+.sl-panel h2 { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.sl-row { border-top: 1px solid var(--line); border-radius: var(--r-s); }
+.sl-row:first-of-type { border-top: 0; }
+.sl-head { display: flex; gap: 12px; align-items: center; width: 100%; background: none; border: 0; padding: 10px 2px; cursor: pointer; text-align: left; color: inherit; font: inherit; }
+.sl-name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.sl-name small { color: var(--muted); }
+.sl-row.done .sl-name b { color: var(--muted); }
+.sl-arrow { color: var(--muted); width: 1em; }
+.sl-body { padding: 0 2px 10px; }
+.sl-prog { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.sl-bar { width: 80px; height: 6px; border: 0; border-radius: 3px; overflow: hidden; background: var(--line); appearance: none; -webkit-appearance: none; vertical-align: middle; }
+.sl-bar::-webkit-progress-bar { background: var(--line); border-radius: 3px; }
+.sl-bar::-webkit-progress-value { background: var(--done, #3f7d5a); border-radius: 3px; }
+.sl-bar::-moz-progress-bar { background: var(--done, #3f7d5a); border-radius: 3px; }
+.task .meta .sl-bar { width: 60px; }
+.sl-n { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sl-items { display: grid; gap: 2px; margin: 4px 0 6px; }
+.sl-item { display: flex; gap: 10px; align-items: center; padding: 7px 8px; border-radius: var(--r-s); cursor: pointer; }
+.sl-item:hover { background: var(--card2); }
+.sl-item input { width: 18px; height: 18px; flex: none; accent-color: var(--done, #3f7d5a); }
+.sl-item.on span { text-decoration: line-through; color: var(--muted); }
+.sl-add { display: flex; gap: 6px; margin: 4px 0 8px; }
+.sl-add input { flex: 1; min-width: 0; }
+.sl-link { font-size: 12.5px; color: var(--muted); margin: 6px 0; }
+.sl-miss { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.sl-go { white-space: nowrap; }
+.task .right:has(.sl-go) { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.sl-drow { align-items: center; gap: 10px; margin: 0 0 10px; }
+.sl-plist { display: grid; gap: .6em; margin-top: 1.4em; }
+.sl-prow { display: flex; gap: .7em; align-items: flex-start; }
+.sl-box { flex: none; width: 1em; height: 1em; margin-top: .15em; border: 1.5px solid currentColor; display: inline-flex; align-items: center; justify-content: center; font-size: .9em; line-height: 1; }

@@ -233,7 +233,8 @@
     if (t.gruppe && !gline) { var mem = taskMembers(t), tk = taskTicks(t); meta.push('<span class="chip c-info">' + esc(TASK_GROUPS[t.gruppe] || t.gruppe) + ' · ' + mem.filter(function (x) { return tk[x.id]; }).length + '/' + taskNeed(t, mem) + '</span>'); }
     if (q && (t.auto_svar || avkWho(t))) meta.push(t.auto_svar ? '<span>fylles fra året</span>' : '<span>spør: ' + personLink(avkWho(t), 'spor') + '</span>');
     var cl = t.sjekkliste ? JSON.parse(t.sjekkliste) : [];
-    if (cl.length) meta.push(cl.filter(function (x) { return x.ferdig; }).length + '/' + cl.length);
+    if (slKey(t)) meta.push(slBar(t));   // v41: a checklist task shows a bar
+    else if (cl.length) meta.push(cl.filter(function (x) { return x.ferdig; }).length + '/' + cl.length);
     var pd = !t.frist && openTask(t) ? provDue(t) : '';
     var dateTxt = t.frist ? fmtDate(t.frist) : pd ? '~ ' + fmtDateW(pd) : '';
     var extra = '';
@@ -263,7 +264,7 @@
       '<button class="ring ' + ring + '" data-done="' + esc(t.id) + '" aria-label="Merk som ferdig" title="Ferdig (Shift-klikk eller hold inne: pågående)"></button>';
     return '<div class="task' + (t.status === 'Ferdig' ? ' isdone' : '') + (q ? ' q' + (openTask(t) ? '' : ' done') : '') + hl + '">' + box +
       '<div class="t" data-task="' + esc(t.id) + '"><div class="tt">' + title + '</div>' + extra + '<div class="meta">' + meta.join('') + '</div>' + (gline ? groupLine(t) : '') + '</div>' +
-      '<div class="right">' + when + '</div></div>';   // v21: the ◐ button is gone (Shift-click / hold the circle instead)
+      '<div class="right">' + (slKey(t) ? slGoBtn(t) : '') + when + '</div></div>';   // v41: + Gå til sjekklisten; v21: the ◐ button is gone (Shift-click / hold the circle instead)
   }
   function taskList(list, opts) { return list.length ? '<div class="tasklist">' + list.map(function (t) { return taskRow(t, opts); }).join('') + '</div>' : '<div class="empty">' + ((opts && opts.empty) || 'Ingenting her.') + '</div>'; }
   function sortTasks(list) { return list.slice().sort(function (a, b) { return (a.frist || '9999') < (b.frist || '9999') ? -1 : (a.frist || '9999') > (b.frist || '9999') ? 1 : (a.tittel < b.tittel ? -1 : 1); }); }
@@ -1192,6 +1193,7 @@
       }).join('') + '</div></details>';
     };
     openDrawer('<h2>' + (id ? 'Oppgave' : 'Ny oppgave') + '</h2>' +
+      (id && slKey(t) ? '<div class="row wrap sl-drow">' + slBar(t) + slGoBtn(t) + '</div>' : '') +   // v41
       (state.view === 'rundeoppg' && id ? '<div class="lk-legend"><span><i class="lk-kb"></i>må gjøres først</span><span><i class="lk-ku"></i>låses opp av denne</span></div>' : '') +
       (rel ? '<p class="empty">Relatert til <button type="button" class="plink" data-task="' + esc(rel.id) + '">' + esc(rel.tittel) + '</button></p>' : '') +
       field('Tittel', 'tittel', t.tittel) +
@@ -1229,7 +1231,7 @@
         var row = { tittel: val(form, 'tittel'), prosjekt_id: gj === 'pro' ? val(form, 'prosjekt_id') : '', gruppe: gj === 'grp' ? grp : '', utenom: isProjGrp ? out.join(',') : '',
           avkrysset: gj === 'grp' && !PANEL_GROUPS[grp] && Object.keys(ticks).length ? JSON.stringify(ticks) : '',
           personer: gj === 'grp' && grp === 'personer' ? val(form, 'personer') : '', trenger: gj === 'grp' ? val(form, 'trenger') : '', teller: gj === 'grp' && PANEL_GROUPS[grp] ? teller : '',
-          kobling: isProjGrp && grp !== 'sokere' ? val(form, 'kobling') || '' : /\|panel$/.test(t.kobling || '') ? t.kobling : '',   // v27 (d); v36: keeps the "Panelet er klart" link
+          kobling: isProjGrp && grp !== 'sokere' ? val(form, 'kobling') || '' : /\|panel$|\|ck\|/.test(t.kobling || '') ? t.kobling : '',   // v27 (d); v36: keeps the "Panelet er klart" link; v41: and a checklist's
           type: val(form, 'type'), status: val(form, 'status'), liste: val(form, 'liste'), spor: val(form, 'spor'),
           frist: val(form, 'frist'), fase: val(form, 'fase'), venter_paa: val(form, 'venter_paa'), oppfolging: val(form, 'oppfolging'), notat: val(form, 'notat'),
           sjekkliste: newCl.length ? JSON.stringify(newCl) : '' };
@@ -2566,7 +2568,7 @@
     }
     while (fi < food.length) out.push(foodLine(food[fi++]));
     var when = r.dato ? longDate(r.dato) : '';
-    return '<div class="pr-wrap"><div class="pr-sheet' + (o.fit ? ' pr-fit' : '') + '"><div><div class="pr-k pr-sans">SPARK · UiO</div><div class="pr-t">' + esc(runName(r)) + '</div><div class="pr-s pr-sans">' + esc(when.charAt(0).toUpperCase() + when.slice(1)) + (o.place && r.sted ? '<br>' + esc(r.sted) : '') + '</div></div>' +
+    return '<div class="pr-wrap"><div class="pr-sheet' + (o.fit ? ' pr-fit' : '') + '"><div><div class="pr-k pr-sans">SPARK samfunnsinnovasjon · UiO</div><div class="pr-t">' + esc(runName(r)) + '</div><div class="pr-s pr-sans">' + esc(when.charAt(0).toUpperCase() + when.slice(1)) + (o.place && r.sted ? '<br>' + esc(r.sted) : '') + '</div></div>' +
       '<div class="pr-list">' + out.join('') + '</div>' + (o.notes ? '<div class="pr-foot pr-sans"><div class="pr-notes">Notater</div><i class="pr-line"></i><i class="pr-line"></i><i class="pr-line"></i><i class="pr-line"></i></div>' : '') + '</div></div>';   // v40: lines to write on
   }
   function agendaPrint(rid) {
@@ -6368,6 +6370,7 @@
   // The top of the page (Kan gjøres nå, Venter på noen, the delmål flow) is always shown.
   var RUN_PANELS = [
     { k: 'avk', n: 'Avklaringer', on: 1, w: 'hel' },
+    { k: 'sjekk', n: 'Sjekklister', on: 1, w: 'v' },   // v41
     { k: 'panel', n: 'Panelet', on: 0, w: 'v' },   // v28: was "Panel (kandidatliste)"
     { k: 'talere', n: 'Foredragsholdere', on: 0, w: 'v' },   // v21
     { k: 'frister', n: 'Frister', on: 0, w: 'h' },
@@ -6416,6 +6419,7 @@
   function panelHasData(k, r, s, att) {
     switch (k) {
       case 'avk': return state.d.Oppgaver.some(function (t) { return t.runde_id === r.id && isAvk(t); });
+      case 'sjekk': return slTasks(r).length > 0 || slTemplates(s).length > 0;   // v41
       case 'panel': return panelOf(r).some(function (p) { return p.rolle !== 'taler'; });
       case 'talere': return panelOf(r).some(function (p) { return p.rolle === 'taler'; });
       case 'frister': return !!s && (deadlineList(s).length > 0 || Object.keys(ownDeadlines(r)).length > 0);
@@ -6434,6 +6438,7 @@
   function runPanelHtml(k, r, s, tasks, att, candidates) {
     switch (k) {
       case 'avk': return avkPanel(r, tasks);
+      case 'sjekk': return slPanel(r, s);   // v41
       case 'panel': return panelPanel(r);
       case 'talere': return panelPanel(r, 'taler');
       case 'frister': return s ? runDeadlinesPanel(r, s) : '';
@@ -7265,7 +7270,7 @@
   window.addEventListener('resize', function () { if (state.view === 'rundeoppg') flDraw(); if (state.view === 'runde') dmFlowDraw(); });
   // After a page is drawn: arrows, the glide animation and the jump to a delmål.
   function afterRender() {
-    if (state.view === 'runde') { dmFlowDraw(); masonry(); }
+    if (state.view === 'runde') { dmFlowDraw(); masonry(); slAfter(); }   // v41: slAfter
     if (state.view === 'progress') initYearPlan();   // v25
     if (state.view !== 'rundeoppg') return;
     if (state.flOld && $('flCv')) flAnimate(state.flOld); else flDraw();
@@ -7367,12 +7372,153 @@
     var next = status || (t.status === 'Ferdig' ? 'Ikke startet' : 'Ferdig');
     var before = state.d.Oppgaver.length;
     var fx = next === 'Ferdig' ? celebrate(id) : Promise.resolve();
-    Promise.all([save('Oppgaver', [{ id: id, status: next }]), fx]).then(function () {
+    var row = { id: id, status: next };
+    if (next === 'Ferdig' && slKey(t)) row.sjekkliste = JSON.stringify(slPoints(t).map(function (x) { return { tekst: x.tekst, ferdig: true }; }));   // v41: the whole list is ticked
+    Promise.all([save('Oppgaver', [row]), fx]).then(function () {
       // Finishing can add a "notes for next time" task, or unlock other tasks, on the server: reload then.
       render();   // v28: new notes task, unlocked and refund tasks come back with the save
       toast(next === 'Ferdig' ? 'Ferdig' : next === 'Pågående' ? 'Pågående' : 'Åpnet igjen');
       return before;
     });
+  }
+
+
+  // =====================================================================
+  // Version 41: checklists (Sjekklister) on an activity year
+  // =====================================================================
+  // A checklist is a task on the year with kobling "<runId>|ck|<listId>"; its points are the task's sjekkliste
+  // [{tekst, ferdig}], so the task and the list are the same thing. Ticking the last point marks the task done,
+  // and ticking the task's circle ticks every point. The activity keeps reusable lists in Serier.sjekklister,
+  // JSON [{id, navn, dager (days from the activity date, e.g. -1), punkter: [tekst]}]; a new year gets one task
+  // per list (Kode.gs makeRunTasks_), and "Lag fra malen" adds missing ones to a year that already exists.
+  function slKey(t) { var m = /^([^|]+)\|ck\|(.+)$/.exec((t && t.kobling) || ''); return m ? { rid: m[1], id: m[2] } : null; }
+  function slTasks(r) { return state.d.Oppgaver.filter(function (t) { var k = slKey(t); return k && k.rid === r.id; }).sort(function (a, b) { return String(a.frist || '9').localeCompare(String(b.frist || '9')) || String(a.tittel).localeCompare(String(b.tittel), 'nb'); }); }
+  function slTemplates(s) { var l = jsonOf(s && s.sjekklister, []); return Array.isArray(l) ? l : []; }
+  function slPoints(t) { var l = jsonOf(t.sjekkliste, []); return Array.isArray(l) ? l : []; }
+  function slName(t) { return String(t.tittel || '').replace(/^Sjekkliste:\s*/, ''); }
+  function slStatus(pts, old) { var n = pts.filter(function (x) { return x.ferdig; }).length; return pts.length && n === pts.length ? 'Ferdig' : n ? 'Pågående' : old === 'Venter på' ? old : 'Ikke startet'; }
+  function slBar(t) {   // a <progress> bar needs no inline width (the page's CSP blocks style="")
+    var pts = slPoints(t), n = pts.filter(function (x) { return x.ferdig; }).length;
+    return '<span class="sl-prog"><progress class="sl-bar" max="' + (pts.length || 1) + '" value="' + n + '" aria-hidden="true"></progress><span class="sl-n">' + n + '/' + pts.length + '</span></span>';
+  }
+  function slGoBtn(t) { return '<button type="button" class="btn small sl-go" data-slgo="' + esc(t.id) + '">Gå til sjekklisten</button>'; }
+  function slMissing(r, s) { var have = slTasks(r).map(function (t) { return slKey(t).id; }); return slTemplates(s).filter(function (l) { return have.indexOf(l.id) < 0; }); }
+  function slDue(r, dager) { return r.dato && dager !== '' && dager != null && !isNaN(Number(dager)) ? addDays(r.dato, Number(dager)) : ''; }
+  function slTaskRow(r, l) {
+    var due = slDue(r, l.dager);
+    return { tittel: 'Sjekkliste: ' + l.navn, runde_id: r.id, aar: r.aar, fase: 'Felles', type: 'oppgave', liste: '', status: 'Ikke startet', frist: due, opprinnelig_frist: due,
+      mal_dager: l.dager === '' || l.dager == null ? '' : String(l.dager), kobling: r.id + '|ck|' + l.id,
+      sjekkliste: (l.punkter || []).length ? JSON.stringify(l.punkter.map(function (p) { return { tekst: p, ferdig: false }; })) : '' };
+  }
+
+  function slPanel(r, s) {
+    var open = state.slOpen = state.slOpen || {}, list = slTasks(r), miss = s ? slMissing(r, s) : [];
+    var rows = list.map(function (t) {
+      var pts = slPoints(t), on = !!open[t.id];
+      return '<div class="sl-row' + (on ? ' open' : '') + (t.status === 'Ferdig' ? ' done' : '') + '" id="sl_' + esc(t.id) + '">' +
+        '<button type="button" class="sl-head" data-sltog="' + esc(t.id) + '" aria-expanded="' + on + '"><span class="sl-name"><b>' + esc(slName(t)) + '</b>' +
+          '<small>' + (t.status === 'Ferdig' ? '✓ ferdig' : t.frist ? 'frist ' + esc(fmtDateW(t.frist)) : 'ingen frist') + '</small></span>' + slBar(t) + '<span class="sl-arrow" aria-hidden="true">' + (on ? '▾' : '▸') + '</span></button>' +
+        (on ? '<div class="sl-body"><div class="sl-items">' + (pts.length ? pts.map(function (x, i) {
+            return '<label class="sl-item' + (x.ferdig ? ' on' : '') + '"><input type="checkbox" data-slt="' + esc(t.id) + '|' + i + '"' + (x.ferdig ? ' checked' : '') + '> <span>' + esc(x.tekst) + '</span></label>';
+          }).join('') : '<div class="empty">Ingen punkter ennå.</div>') + '</div>' +
+          '<div class="sl-add"><input type="text" data-sladdin="' + esc(t.id) + '" placeholder="Nytt punkt" aria-label="Nytt punkt"><button type="button" class="btn small" data-sladd="' + esc(t.id) + '">Legg til</button></div>' +
+          '<p class="sl-link">Oppgave: <button type="button" class="plink" data-task="' + esc(t.id) + '">' + esc(t.tittel) + '</button>' + (t.frist ? ' · frist ' + esc(fmtDateW(t.frist)) : '') + '. Den blir ferdig når alt er krysset av.</p>' +
+          '<div class="row wrap"><button type="button" class="btn small" data-slprint="' + esc(t.id) + '">Skriv ut listen</button><button type="button" class="btn small" data-sledit="' + esc(t.id) + '">Rediger</button></div></div>' : '') +
+        '</div>';
+    }).join('');
+    return '<section class="panel sl-panel"><h2><span>Sjekklister</span><button type="button" class="btn small" data-slnew="' + esc(r.id) + '">+ Sjekkliste</button></h2>' +
+      (rows || (miss.length ? '' : '<div class="empty">Ingen sjekklister ennå. Lag en med + Sjekkliste.</div>')) +
+      (miss.length ? '<div class="sl-miss"><span class="empty">Fra malen, ikke laget for ' + esc(r.aar) + ': ' + esc(miss.map(function (l) { return l.navn; }).join(', ')) + '</span> <button type="button" class="btn small" data-slmal="' + esc(r.id) + '">Lag fra malen</button></div>' : '') +
+      '</section>';
+  }
+
+  // Ticks: shown at once, saved shortly after (several quick ticks become one save per list).
+  var slTimers = {};
+  function slSet(t, pts) {
+    t.sjekkliste = pts.length ? JSON.stringify(pts) : ''; var was = t.status; t.status = slStatus(pts, t.status);
+    state.keepScroll = true; render();
+    if (t.status === 'Ferdig' && was !== 'Ferdig') toast('Alt er krysset av. «' + t.tittel + '» er ferdig.');
+    clearTimeout(slTimers[t.id]);
+    slTimers[t.id] = setTimeout(function () { delete slTimers[t.id]; save('Oppgaver', [{ id: t.id, sjekkliste: t.sjekkliste, status: t.status }]).then(function () {
+      var c = byId('Oppgaver', t.id);
+      if (slTimers[t.id] && c) { c.sjekkliste = t.sjekkliste; c.status = t.status; }   // newer ticks are waiting: keep showing them
+      state.keepScroll = true; render();
+    }); }, 700);
+  }
+  function slTick(arg, on) { var a = arg.split('|'), t = byId('Oppgaver', a[0]); if (!t) return; var pts = slPoints(t); if (!pts[Number(a[1])]) return; pts[Number(a[1])].ferdig = on; slSet(t, pts); }
+  function slAddPoint(id) {
+    var t = byId('Oppgaver', id), inp = document.querySelector('[data-sladdin="' + id + '"]'), txt = inp ? inp.value.trim() : ''; if (!t || !txt) return;
+    var pts = slPoints(t); pts.push({ tekst: txt, ferdig: false }); slSet(t, pts);
+    setTimeout(function () { var i = document.querySelector('[data-sladdin="' + id + '"]'); if (i) i.focus(); }, 30);
+  }
+  // "Gå til sjekklisten": open the year, unfold the list and point at it.
+  function slGo(id) {
+    var t = byId('Oppgaver', id), k = slKey(t); if (!k) return;
+    closeDrawer(); (state.slOpen = state.slOpen || {})[id] = true; state.slJump = id;
+    if (location.hash === '#runde/' + k.rid) render(); else location.hash = '#runde/' + k.rid;
+  }
+  function slAfter() {
+    var id = state.slJump; state.slJump = ''; if (!id) return;
+    var el = document.getElementById('sl_' + id); if (!el) return;
+    el.scrollIntoView({ block: 'start' }); window.scrollBy(0, -90);
+    el.classList.remove('lk-flash'); void el.offsetWidth; el.classList.add('lk-flash');
+  }
+  function slMakeFromTemplate(rid) {
+    var r = byId('Runder', rid), s = r && byId('Serier', r.serie_id); if (!s) return;
+    var rows = slMissing(r, s).map(function (l) { return slTaskRow(r, l); }); if (!rows.length) return;
+    save('Oppgaver', rows).then(function () { state.keepScroll = true; render(); toast(rows.length === 1 ? 'Sjekklisten er laget' : rows.length + ' sjekklister er laget'); });
+  }
+  // New or edit: name, deadline, points (one per line) and whether the list is part of the activity's template.
+  function slEdit(rid, id) {
+    var t = id ? byId('Oppgaver', id) : null, r = byId('Runder', t ? slKey(t).rid : rid), s = r && byId('Serier', r.serie_id); if (!r) return;
+    var lid = t ? slKey(t).id : 'ck' + Date.now().toString(36), tpl = slTemplates(s), inTpl = tpl.some(function (l) { return l.id === lid; });
+    var pts = t ? slPoints(t) : [];
+    openDrawer('<h2>' + (t ? 'Rediger sjekkliste' : 'Ny sjekkliste') + '</h2>' +
+      field('Navn', 'navn', t ? slName(t) : '') +
+      field('Frist', 'frist', t ? t.frist : '', 'date') +
+      field('Punkter (ett per linje)', 'punkter', pts.map(function (x) { return x.tekst; }).join('\n'), 'textarea') +
+      (s ? '<div class="cl"><label><input type="checkbox" name="mal"' + (!t || inTpl ? ' checked' : '') + '> Bruk listen hvert år (lagres i malen for ' + esc(s.navn) + ')</label></div>' +
+        '<p class="empty">' + (r.dato ? 'Fristen lagres i malen som dager fra datoen for aktiviteten.' : 'Året har ingen dato ennå, så malen får ingen frist.') + ' Krysser du ikke av, gjelder listen bare ' + esc(r.aar) + '.</p>' : '') +
+      actions(t ? '<button type="button" class="btn danger" data-sldel="' + esc(t.id) + '">Slett</button>' : ''),
+      function (form) {
+        var navn = (val(form, 'navn') || '').trim(); if (!navn) { toast('Skriv et navn'); return; }
+        var frist = val(form, 'frist') || '', lines = (val(form, 'punkter') || '').split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
+        var done = {}; pts.forEach(function (x) { if (x.ferdig) done[x.tekst] = true; });   // ticks follow the text
+        var newPts = lines.map(function (x) { return { tekst: x, ferdig: !!done[x] }; });
+        var dager = frist && r.dato ? String(daysBetween(r.dato, frist)) : '';
+        var row = { tittel: 'Sjekkliste: ' + navn, frist: frist, mal_dager: dager, sjekkliste: newPts.length ? JSON.stringify(newPts) : '', status: slStatus(newPts, t ? t.status : '') };
+        if (t) row.id = t.id; else Object.assign(row, { runde_id: r.id, aar: r.aar, fase: 'Felles', type: 'oppgave', liste: '', opprinnelig_frist: frist, kobling: r.id + '|ck|' + lid });
+        var jobs = [save('Oppgaver', [row])];
+        if (s) {
+          var want = !!form.querySelector('[name="mal"]').checked, next = tpl.filter(function (l) { return l.id !== lid; });
+          if (want) { var at = tpl.findIndex(function (l) { return l.id === lid; }), item = { id: lid, navn: navn, dager: dager, punkter: lines }; if (at >= 0) next.splice(at, 0, item); else next.push(item); }
+          if (want || inTpl) jobs.push(save('Serier', [{ id: s.id, sjekklister: next.length ? JSON.stringify(next) : '' }]));
+        }
+        closeDrawer();
+        Promise.all(jobs).then(function (res) {
+          var nt = res[0] && res[0][0]; if (nt && nt.id) (state.slOpen = state.slOpen || {})[nt.id] = true;
+          state.keepScroll = true; render(); toast(t ? 'Sjekklisten er lagret' : 'Sjekklisten er laget');
+        });
+      });
+  }
+  function slDelete(id) {
+    var t = byId('Oppgaver', id); if (!t) return;
+    if (!window.confirm('Slette «' + t.tittel + '» for ' + t.aar + '? Punktene og kryssene for dette året forsvinner. Malen for aktiviteten beholdes (fjern haken i Rediger for å ta listen ut av malen).')) return;
+    closeDrawer();
+    save('Oppgaver', [], [id]).then(function () { state.keepScroll = true; render(); toast('Sjekklisten er slettet'); });
+  }
+  // Print one list: the same sheet style as the agenda printout, a box per point (ticked ones keep their tick).
+  function slPrintHtml(t) {
+    var k = slKey(t), r = k && byId('Runder', k.rid);
+    return '<div class="pr-wrap"><div class="pr-sheet"><div><div class="pr-k pr-sans">SPARK samfunnsinnovasjon · UiO</div><div class="pr-t">' + esc(slName(t)) + '</div>' +
+      '<div class="pr-s pr-sans">' + esc(r ? runName(r) : '') + (t.frist ? ' · ' + esc(longDate(t.frist)) : '') + '</div></div>' +
+      '<div class="sl-plist">' + slPoints(t).map(function (x) { return '<div class="sl-prow"><span class="sl-box">' + (x.ferdig ? '✓' : '') + '</span><span>' + esc(x.tekst) + '</span></div>'; }).join('') + '</div></div></div>';
+  }
+  function slPrint(id) {
+    var t = byId('Oppgaver', id); if (!t) return;
+    var area = $('printArea') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'printArea' }));
+    area.innerHTML = slPrintHtml(t);
+    window.print();
   }
 
 
@@ -7671,6 +7817,8 @@
   });
   ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) { document.addEventListener(ev, function () { clearTimeout(pressTimer); }); });
   document.addEventListener('contextmenu', function (e) { if (e.target.closest('[data-done]') && longPressed) e.preventDefault(); });
+  document.addEventListener('change', function (e) { var a = e.target.dataset && e.target.dataset.slt; if (a) slTick(a, e.target.checked); });   // v41
+  document.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.dataset && e.target.dataset.sladdin) { e.preventDefault(); slAddPoint(e.target.dataset.sladdin); } });   // v41
   document.addEventListener('click', function (e) {
     var el = e.target.closest('td[data-pcell], button, a, tr, [data-task], [data-go], [data-step-edit], [data-hit], [data-tip], [data-wf], [data-expense], [data-msopen], [data-pedit], [data-rcpmore]');
     // v19: on a year's task page, a click outside the open form (and not on another task) closes it.
@@ -7684,6 +7832,14 @@
     if (ds.psalt) { var psl = ds.psalt.split('|'); editAlternative(psl[0], psl[1]); return; }
     if (ds.psy) { state.filters.psy = ds.psy; state.keepScroll = true; render(); return; }   // v21: a pressed button again = no status
     if (ds.mergerow) { e.preventDefault(); var ms = state.mergeSel = state.mergeSel || {}; ms[ds.mergerow] = !ms[ds.mergerow]; state.keepScroll = true; render(); return; }   // v32
+    if (ds.slgo) { slGo(ds.slgo); return; }   // v41: checklists
+    if (ds.sltog) { var slo = state.slOpen = state.slOpen || {}; slo[ds.sltog] = !slo[ds.sltog]; state.keepScroll = true; render(); return; }
+    if (ds.slnew) { slEdit(ds.slnew); return; }
+    if (ds.sledit) { slEdit('', ds.sledit); return; }
+    if (ds.sldel) { slDelete(ds.sldel); return; }
+    if (ds.sladd) { slAddPoint(ds.sladd); return; }
+    if (ds.slprint) { slPrint(ds.slprint); return; }
+    if (ds.slmal) { slMakeFromTemplate(ds.slmal); return; }
     if (ds.go) { e.preventDefault(); location.hash = '#' + ds.go; return; }
     if (ds.done) {
       if (longPressed) { longPressed = false; return; }
